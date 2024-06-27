@@ -16,7 +16,7 @@ flowchart TD
 ## Innovations
 
 * Treating QEC as Quantum Abstract Machines
-* A new ISA that focuses on quantum operations
+* A new ISA that focuses on quantum operations.
   Why?
     Flexibility needed to describe different instruction sets and the ability to programmatically translate from one to the other.
 
@@ -28,16 +28,17 @@ flowchart TD
 
 ## What about hybrid?
  * Quantum computers are not efficient at performing classical computations:
- * The QISA should focus on quantum instructions, adding classical computation for a hybrid model is having to define a full classic ISA + a new ISA for quantum.
- * In reality, not much is gained as classical and quantum compute cannot share memory or instructions.
- * A QPU should be like a GPU: a seperate processor unit that the QPU can invoke to perform specific computations
- * As such, our model is that all quantum computation is expressed in terms of a quantum circuit (or kernel) that the QPU needs to fully execute
+ * In reality, not much is gained using a hybrid model as classical and quantum compute cannot share memory or instructions.
+ * The QISA should focus on quantum instructions: adding classical computation to achieve a hybrid model is having to define a full classic ISA + a new ISA for quantum.
+ * A QPU should be like a GPU: a seperate processor unit that the QPU can invoke to perform specific computations. It needs its own QISA.
+ * As such, our model is that all quantum computation is expressed in terms of a quantum circuit (or kernel) that the QPU needs to fully execute:
     - In this model, if a truly hybrid algorithm needs to execute, the quantum computation should be broken into multiple circuits that are sent for execution one at a time, the state of the qubits do not need to be reset between executions as such the classical computation can be performed between circuits.
+    - The only classic component supported by our QISA is a set of classical registers used to store the outcome of measurements and to perform classically-controlled operatiosn based on the value in the register. No classical computation, though.
 
 
-## Tools
+## Tools enabled by this QISA
 
-* A flexible end-to-end compiler for logical circuits into HW instructions
+* A flexible full (or partial) stack compiler for logical circuits into HW instructions
 * Visualization tools for quantum circuits described in our new IR
 * A tool to automatically calculate the noise model of QEC codes.
 
@@ -51,7 +52,6 @@ import qstack
 
 circuit = qstack.load_program('circuit.ir')
 qvm = qstack.load_machine('standard')
-
 results = qvm.emulate(circuit)
 ```
 
@@ -59,7 +59,6 @@ To target the 'c4' quantum error correction code:
 ```python
 c4_qvm = qvm.target('c4')
 c4_circuit = c4_qvm.compile(circuit)
-
 results = c4_qvm.emulate(c4_circuit)
 ```
 
