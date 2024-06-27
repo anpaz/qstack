@@ -6,7 +6,7 @@ Quantum programs typical require several layer of abstractions to make them easi
 
 ```mermaid
 flowchart TD
-    Logical circuit --> QEC encoded circuit --> HW  instructions
+    A(Logical circuit) --> B(QEC encoded circuit) --> C(HW  instructions)
 ```
 
   * Logical circuit: represents a quantum program that uses an idealized (error-free) set of instructions.
