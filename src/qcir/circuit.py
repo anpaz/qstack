@@ -65,9 +65,9 @@ class Instruction:
         if self.targets:
             value += " " + " ".join([str(t) for t in self.targets])
         if self.attributes:
-            value += (" " * max(len(value) + 5, 40)) + ", ".join([str(t) for t in self.attributes])
+            value += (" " * max(25 - len(value), 5)) + ", ".join([str(t) for t in self.attributes])
         if self.comment:
-            value += (" " * max(len(value) + 5, 40)) + str(self.comment)
+            value += (" " * max(37 - len(value), 5)) + str(self.comment)
         return value
 
 
@@ -130,11 +130,11 @@ def circuit_dimensions(circuit: Circuit) -> tuple[int, int, int]:
                     assert False, "Unknown target type."
 
     q_count = circuit.get_metadata("qubit_count", max_q + 1)
-    if q_count > max_q + 1:
-        logger.warning(f"qubit count in metadata ({q_count}) is qubits in the circuit {max_q + 1}")
+    if q_count < max_q + 1:
+        logger.warning(f"qubit count in metadata ({q_count}) is less than qubits in the circuit ({max_q + 1})")
 
     r_count = circuit.get_metadata("register_count", max_r + 1)
-    if r_count > max_r + 1:
-        logger.warning(f"qubit count in metadata ({r_count}) is qubits in the circuit {max_q + 1}")
+    if r_count < max_r + 1:
+        logger.warning(f"qubit count in metadata ({r_count}) is less than registers in the circuit ({max_r + 1})")
 
     return (q_count, r_count, instr_count)

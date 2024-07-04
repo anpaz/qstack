@@ -10,14 +10,14 @@ circuit = Circuit(
     instruction_set="standard",
     instructions=[
         Attribute("version", "1.0"),
-        Attribute("qubit_count", 2),
-        Attribute("circuit_depth", 2),
+        Attribute("qubit_count", 4),
+        Attribute("register_count", 4),
         Tick(),
         Comment("Prepare Bell"),
         Instruction("prepare_bell", [QubitId(0), QubitId(1)]),
         Tick(),
         Comment("Measure qubits into classical registers"),
-        Instruction("mz", [QubitId(0), RegisterId(0)]),
+        Instruction("mz", [QubitId(0), RegisterId(0)], attributes=[Attribute("ctrl")]),
         Instruction("mz", [QubitId(1), RegisterId(1)]),
     ],
 )
