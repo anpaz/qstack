@@ -26,13 +26,14 @@ print(circuit)
 
 
 # %%
-from qstack import machine
+import qstack
 
-qvm = machine.create_qvm('standard')
+qvm = qstack.create_qvm('standard')
 
 # %%
 emulator = qvm.create_emulator()
 
 # %%
 emulator.eval(circuit, shots=10)
+
 # %%

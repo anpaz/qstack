@@ -1,4 +1,10 @@
 from dataclasses import dataclass
+from typing import Any
+from .utils import cache_field
+
+import logging
+
+logger = logging.getLogger("qcir")
 
 
 @dataclass(frozen=True)
@@ -71,6 +77,13 @@ class Circuit:
     instruction_set: str
     instructions: list[Comment | Attribute | Tick | Instruction]
 
+    def get_metadata(self, key: str, default: str = None) -> Any:
+        md = cache_field(self, "_metadata", lambda: circuit_metadata(self))
+        return md.get(key, default)
+
+    def get_dimensions(self) -> tuple[int, int, int]:
+        return cache_field(self, "_dimensions", lambda: circuit_dimensions(self))
+
     def __repr__(self):
         name = f"name: {self.name}"
         inst_set = f"instruction set: {self.instruction_set}"
@@ -84,24 +97,18 @@ class Circuit:
         )
 
 
-def max_register(circuit: Circuit) -> int:
-    max = 0
-    for i in circuit.instructions:
-        for t in i.targets:
-            if isinstance(t, RegisterId):
-                if t.value > max:
-                    max = t.value
-    return max
-
-
-def max_qubit(circuit: Circuit) -> int:
-    max = 0
-    for i in circuit.instructions:
-        for t in i.targets:
-            if isinstance(t, QubitId):
-                if t.value > max:
-                    max = t.value
-    return max
+def circuit_metadata(circuit: Circuit) -> dict[str, str]:
+    result = {}
+    for inst in circuit.instructions:
+        if isinstance(inst, Comment):
+            pass
+        elif isinstance(inst, Tick) or isinstance(inst, Instruction):
+            break
+        elif isinstance(inst, Attribute):
+            result[inst.name] = inst.value
+        else:
+            assert False, f"Unknown instruction: {inst}"
+    return result
 
 
 def circuit_dimensions(circuit: Circuit) -> tuple[int, int, int]:
@@ -121,4 +128,13 @@ def circuit_dimensions(circuit: Circuit) -> tuple[int, int, int]:
                         max_q = t.value
                 else:
                     assert False, "Unknown target type."
-    return (max_q + 1, max_r + 1, instr_count)
+
+    q_count = circuit.get_metadata("qubit_count", max_q + 1)
+    if q_count > max_q + 1:
+        logger.warning(f"qubit count in metadata ({q_count}) is qubits in the circuit {max_q + 1}")
+
+    r_count = circuit.get_metadata("register_count", max_r + 1)
+    if r_count > max_r + 1:
+        logger.warning(f"qubit count in metadata ({r_count}) is qubits in the circuit {max_q + 1}")
+
+    return (q_count, r_count, instr_count)

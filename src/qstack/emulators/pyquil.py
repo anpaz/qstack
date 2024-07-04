@@ -3,7 +3,7 @@ from pyquil.quil import DefGate
 from pyquil.gates import MEASURE
 from pyquil import get_qc
 
-from qcir.circuit import Circuit, QubitId, RegisterId, circuit_dimensions, Instruction
+from qcir.circuit import Circuit, QubitId, RegisterId, Instruction
 
 from .emulator import Emulator
 from ..instruction_definition import InstructionDefinition
@@ -29,7 +29,7 @@ class pyQuilEmulator(Emulator):
 
     def eval(self, circuit: Circuit, *, shots: int) -> tuple:
         p = self._program.copy()
-        q_count, r_count, _ = circuit_dimensions(circuit)
+        q_count, r_count, _ = circuit.get_dimensions()
         readout = p.declare("readout", "BIT", r_count)
 
         for inst in [i for i in circuit.instructions if isinstance(i, Instruction)]:
