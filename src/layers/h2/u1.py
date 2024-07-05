@@ -2,7 +2,7 @@ import numpy as np
 import math
 import cmath
 
-from qstack.instruction_definition import InstructionDefinition, InstructionType
+from qstack.instruction_definition import InstructionDefinition
 
 
 class U1(InstructionDefinition):

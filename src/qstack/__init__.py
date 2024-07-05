@@ -1,1 +1,1 @@
-from .machine import create_qvm
+from .machine import create_qvm  # noqa F401

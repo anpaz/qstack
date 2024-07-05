@@ -1,6 +1,5 @@
-import numpy as np
 
-from qstack.instruction_definition import InstructionType, InstructionDefinition
+from qstack.instruction_definition import InstructionDefinition
 
 
 class PrepareZero(InstructionDefinition):

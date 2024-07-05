@@ -1,6 +1,5 @@
-import numpy as np
 
-from qstack.instruction_definition import InstructionDefinition, InstructionType
+from qstack.instruction_definition import InstructionDefinition
 
 
 class MeasureZ(InstructionDefinition):

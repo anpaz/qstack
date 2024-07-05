@@ -1,6 +1,5 @@
-import numpy as np
 
-from qstack.instruction_definition import InstructionDefinition, InstructionType
+from qstack.instruction_definition import InstructionDefinition
 
 
 class MeasureZ(InstructionDefinition):
@@ -12,6 +11,5 @@ class MeasureZ(InstructionDefinition):
     # def instruction_type(self) -> str:
     #     return InstructionType.MEASUREMENT
 
-    @property
     def matrix(self):
         return None

@@ -1,6 +1,6 @@
 import numpy as np
 
-from qstack.instruction_definition import InstructionType, InstructionDefinition
+from qstack.instruction_definition import InstructionDefinition
 
 
 class PrepareBell(InstructionDefinition):
@@ -12,7 +12,6 @@ class PrepareBell(InstructionDefinition):
     # def instruction_type(self) -> str:
     #     return InstructionType.PREPARATION
 
-    @property
     def matrix(self):
         # prepare statements return
         sqrt1_2 = np.sqrt(1 / 2)
