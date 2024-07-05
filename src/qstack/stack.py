@@ -4,7 +4,7 @@ from layers.h2 import H2InstructionSet
 from layers.standard import StandardInstructionSet
 
 
-class QVM:
+class Stack:
     def __init__(self, instruction_set: set[InstructionDefinition]):
         self._instructions = instruction_set
 
@@ -14,12 +14,12 @@ class QVM:
         return pyQuilEmulator(self._instructions)
 
 
-def create_qvm(target: str):
+def create_stack(target: str):
     if target == "standard":
-        return QVM(StandardInstructionSet.instruction_set)
+        return Stack(StandardInstructionSet.instruction_set)
 
-    if target == "h2":
-        return QVM(H2InstructionSet.instruction_set)
+    elif target == "h2":
+        return Stack(H2InstructionSet.instruction_set)
 
     else:
         assert False, f"Invalid instruction set: {target}"

@@ -41,7 +41,7 @@ print(circuit)
 # %%
 import qstack
 
-emulator = qstack.create_qvm("h2").create_emulator()
+emulator = qstack.create_stack("h2").create_emulator()
 emulator.eval(circuit, shots=10)
 
 # %%

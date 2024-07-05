@@ -1,1 +1,1 @@
-from .machine import create_qvm  # noqa F401
+from .stack import create_stack  # noqa F401
