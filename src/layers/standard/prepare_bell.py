@@ -6,8 +6,7 @@ from qstack.instruction_definition import InstructionType, InstructionDefinition
 class PrepareBell(InstructionDefinition):
     @property
     def names(self):
-        # return ["|bell>", "|bell⟩", "prepare_bell"]
-        return ["prepare_bell"]
+        return ["|bell>", "|bell⟩", "prepare_bell"]
 
     # @property
     # def instruction_type(self) -> str:

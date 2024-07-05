@@ -9,26 +9,43 @@ from .emulator import Emulator
 from ..instruction_definition import InstructionDefinition
 
 import logging
+import re
 
 logger = logging.getLogger("qstack")
 
 
+def clean_pyquil_name(gate_name):
+    return "qstack__" + re.sub(r"\W+", "_", gate_name)
+
+
 class pyQuilEmulator(Emulator):
+
+    def get_operation(self, program: Program, inst: Instruction):
+        op_name = inst.operation
+        if inst.parameters:
+            op_name += "(" + ",".join([str(p) for p in inst.parameters]) + ")"
+
+        if not op_name in self.constructors:
+            i = next(filter(lambda i: inst.operation in i.names, self.instruction_set))
+            if inst.parameters:
+                matrix = i.matrix(*inst.parameters)
+            else:
+                matrix = i.matrix()
+            if matrix is not None:
+                definition = DefGate(clean_pyquil_name(op_name), matrix)
+                ctx = definition.get_constructor()
+                self.constructors[op_name] = ctx
+                program += definition
+            else:
+                self.constructors[op_name] = None
+        return self.constructors[op_name]
+
     def __init__(self, instruction_set: set[InstructionDefinition]):
-        p = Program()
-        constructors = {}
-        for inst in instruction_set:
-            if inst.matrix is not None:
-                for name in inst.names:
-                    definition = DefGate(name, inst.matrix)
-                    ctx = definition.get_constructor()
-                    constructors[name] = ctx
-                    p += definition
-        self._program = p
-        self._constructors = constructors
+        self.instruction_set = instruction_set
+        self.constructors = {}
 
     def eval(self, circuit: Circuit, *, shots: int) -> tuple:
-        p = self._program.copy()
+        p = Program()
         q_count, r_count, _ = circuit.get_dimensions()
         readout = p.declare("readout", "BIT", r_count)
 
@@ -36,8 +53,8 @@ class pyQuilEmulator(Emulator):
             qubits = [t.value for t in inst.targets if isinstance(t, QubitId)]
             registers = [t.value for t in inst.targets if isinstance(t, RegisterId)]
 
-            if inst.operation in self._constructors:
-                op = self._constructors[inst.operation]
+            op = self.get_operation(p, inst)
+            if op:
                 p += op(*qubits)
 
             if len(registers) == 1:
