@@ -51,14 +51,14 @@ class Tick:
 
 @dataclass(frozen=True)
 class Instruction:
-    operation: str
+    name: str
     targets: list[QubitId | RegisterId] | None
     parameters: list[str | int | float | tuple] | None = None
     attributes: list[Attribute] | None = None
     comment: Comment | None = None
 
     def __repr__(self):
-        value = f"{self.operation}"
+        value = f"{self.name}"
 
         if self.parameters:
             value += "(" + ", ".join([str(t) for t in self.parameters]) + ")"
@@ -74,7 +74,6 @@ class Instruction:
 @dataclass(frozen=True)
 class Circuit:
     name: str
-    instruction_set: str
     instructions: list[Comment | Attribute | Tick | Instruction]
 
     def get_metadata(self, key: str, default: str = None) -> Any:
@@ -84,17 +83,15 @@ class Circuit:
     def get_dimensions(self) -> tuple[int, int, int]:
         return cache_field(self, "_dimensions", lambda: circuit_dimensions(self))
 
+    def __add__(self, other):
+        if isinstance(other, Circuit):
+            return Circuit(self.name, self.instructions + [Tick()] + other.instructions)
+        return NotImplemented
+
     def __repr__(self):
         name = f"name: {self.name}"
-        inst_set = f"instruction set: {self.instruction_set}"
-        line = "-" * max(len(name), len(inst_set))
-        return (
-            f"# {line}\n"
-            + f"# {name}\n"
-            + f"# {inst_set}\n"
-            + f"# {line}\n"
-            + "\n".join([str(i) for i in self.instructions])
-        )
+        line = "-" * len(name)
+        return f"# {line}\n" + f"# {name}\n" + f"# {line}\n" + "\n".join([str(i) for i in self.instructions])
 
 
 def circuit_metadata(circuit: Circuit) -> dict[str, str]:

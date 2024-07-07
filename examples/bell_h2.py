@@ -45,7 +45,7 @@ emulator = qstack.create_stack("h2").create_emulator()
 emulator.eval(circuit, shots=10)
 
 # %%
-from layers.h2 import U1, R
+from layers.instruction_sets.h2 import U1, R
 
 gate = U1()
 print(gate.matrix(math.pi, 0) * 1j)

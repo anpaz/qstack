@@ -1,25 +1,33 @@
+from dataclasses import dataclass
 from .instruction_definition import InstructionDefinition
-
-from layers.h2 import H2InstructionSet
-from layers.standard import StandardInstructionSet
+from .compiler import Compiler
 
 
+
+@dataclass(frozen=True)
 class Stack:
-    def __init__(self, instruction_set: set[InstructionDefinition]):
-        self._instructions = instruction_set
+    instruction_set: set[InstructionDefinition]
+    emulator: emulators.Emulator | None = None
+    compiler: "Stack" | None = None
 
-    def create_emulator(self):
-        from .emulators.pyquil import pyQuilEmulator
+stacks = {}
+def init(config):
+    for i in config:
+        stacks[i] = config[i]
 
-        return pyQuilEmulator(self._instructions)
 
 
 def create_stack(target: str):
     if target == "standard":
-        return Stack(StandardInstructionSet.instruction_set)
+        return Stack(standard.InstructionSet)
 
-    elif target == "h2":
-        return Stack(H2InstructionSet.instruction_set)
+    elif target == "matrix":
+        return Stack(matrix.InstructionSet, emulator=emulators.MatrixEmulator)
+
+    elif target == "standard.matrix":
+        return Stack(standard.InstructionSet, compiler=Compiler(standard.InstructionSet, matrix.InstructionSet, [
+            standard__matrix.
+        ]))
 
     else:
         assert False, f"Invalid instruction set: {target}"
