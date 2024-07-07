@@ -1,4 +1,4 @@
-from qcir.circuit import Circuit, Instruction
+from qcir.circuit import Circuit, Instruction, Comment
 from qstack import Handler, InstructionDefinition
 
 from instruction_sets.standard import instructions as standard
@@ -20,7 +20,9 @@ class MeasureZ(Handler):
     def handle(self, inst: Instruction, _):
         return Circuit(
             self.__class__.__name__,
-            [matrix.Measure(targets=inst.targets)],
+            [
+                matrix.Measure(targets=inst.targets),
+            ],
         )
 
 
@@ -52,6 +54,7 @@ class PrepareBell(Handler):
         return Circuit(
             self.__class__.__name__,
             [
+                Comment(f"start: " + inst.name),
                 matrix.Matrix1(parameters=H, targets=[inst.targets[0]]),
                 matrix.Matrix2(parameters=CX, targets=[inst.targets[0], inst.targets[1]]),
             ],

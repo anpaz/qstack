@@ -86,6 +86,8 @@ class Circuit:
     def __add__(self, other):
         if isinstance(other, Circuit):
             return Circuit(self.name, self.instructions + [Tick()] + other.instructions)
+        elif other is None:
+            return self
         return NotImplemented
 
     def __repr__(self):

@@ -1,12 +1,14 @@
 from qcir import QubitId, RegisterId
 from qstack import InstructionDefinition
 
+v_type = complex | float | int
+
 # fmt: off
 Matrix1 = InstructionDefinition(
     name="matrix1",
     parameters=[
-        float, float,
-        float, float,
+        v_type, v_type,
+        v_type, v_type,
     ],
     targets=[QubitId],
 )
@@ -14,10 +16,10 @@ Matrix1 = InstructionDefinition(
 Matrix2 = InstructionDefinition(
     name="matrix2",
     parameters=[
-        float, float, float, float,
-        float, float, float, float,
-        float, float, float, float,
-        float, float, float, float,
+        v_type, v_type, v_type, v_type,
+        v_type, v_type, v_type, v_type,
+        v_type, v_type, v_type, v_type,
+        v_type, v_type, v_type, v_type,
     ],
     targets=[QubitId, QubitId]
 )

@@ -31,9 +31,9 @@ print(circuit)
 
 
 # %%
-from compilers import Standard2Matrix
+from compilers import StandardToMatrix
 
-compiler = Standard2Matrix()
+compiler = StandardToMatrix()
 target = compiler.compile(circuit)
 
 print(target)

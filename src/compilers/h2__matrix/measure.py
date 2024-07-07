@@ -4,34 +4,21 @@ from qstack import Handler, InstructionDefinition
 from instruction_sets.h2 import instructions as h2
 from instruction_sets.matrix import instructions as matrix
 
-import cmath
-import numpy as np
 
-
-class RZ(Handler):
+class Measure(Handler):
     @property
     def source(self):
-        return h2.RZ
+        return h2.Measure
 
     def uses(self) -> set[InstructionDefinition]:
         return {
-            matrix.Matrix1,
+            matrix.Measure,
         }
 
     def handle(self, inst: Instruction, _):
-        i = 1j
-        theta = inst.parameters[0]
-        a_00 = cmath.exp(-i * theta / 2.0)
-        a_11 = cmath.exp(i * theta / 2.0)
-        # fmt: off
-        m = [
-            a_00, 0.0,
-            0.0, a_11,
-        ]
         return Circuit(
             self.__class__.__name__,
             [
-                Comment(f"start: " + inst.name), 
-                matrix.Matrix1(parameters=m, targets=inst.targets)],
+                matrix.Measure(targets=inst.targets),
+            ],
         )
-        # fmt: on

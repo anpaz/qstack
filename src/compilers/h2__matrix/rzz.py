@@ -1,28 +1,39 @@
-import numpy as np
+from qcir.circuit import Circuit, Instruction, Comment
+from qstack import Handler, InstructionDefinition
+
+from instruction_sets.h2 import instructions as h2
+from instruction_sets.matrix import instructions as matrix
+
 import cmath
+import numpy as np
 
-from qstack.instruction_definition import InstructionDefinition
 
-
-class RZZ(InstructionDefinition):
-
+class RZZ(Handler):
     @property
-    def names(self):
-        return ["rzz"]
+    def source(self):
+        return h2.RZZ
 
-    # @property
-    # def instruction_type(self) -> str:
-    #     return InstructionType.MEASUREMENT
+    def uses(self) -> set[InstructionDefinition]:
+        return {
+            matrix.Matrix2,
+        }
 
-    def matrix(self, theta: float):
+    def handle(self, inst: Instruction, _):
+        theta = inst.parameters[0]
         i = 1j
         const = cmath.exp(-i * theta / 2.0)
         a = cmath.exp(i * theta)
-        return const * np.array(
+        # fmt: off
+        m = [
+            const,     0.0,      0.0,   0.0,
+               0.0, a*const,     0.0,   0.0,
+               0.0,     0.0, a*const,    0.0,
+               0.0,     0.0,     0.0, const,
+        ]
+        return Circuit(
+            self.__class__.__name__,
             [
-                [1, 0, 0, 0],
-                [0, a, 0, 0],
-                [0, 0, a, 0],
-                [0, 0, 0, 1],
-            ]
+                Comment(f"start: " + inst.name), 
+                matrix.Matrix2(parameters=m, targets=inst.targets)],
         )
+        # fmt: on

@@ -1,15 +1,17 @@
+from qcir.circuit import Circuit, Instruction, Comment
+from qstack import Handler, InstructionDefinition
 
-from qstack.instruction_definition import InstructionDefinition
+from instruction_sets.h2 import instructions as h2
+from instruction_sets.matrix import instructions as matrix
 
 
-class PrepareZero(InstructionDefinition):
+class PrepareZero(Handler):
     @property
-    def names(self):
-        return ["|0>", "|0⟩", "prepare_zero"]
+    def source(self):
+        return h2.PrepareZero
 
-    # @property
-    # def instruction_type(self) -> str:
-    #     return InstructionType.PREPARATION
+    def uses(self) -> set[InstructionDefinition]:
+        return {}
 
-    def matrix(self):
+    def handle(self, inst: Instruction, _):
         return None

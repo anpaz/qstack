@@ -8,9 +8,10 @@ init_logging.debug_qstack()
 import math
 from qcir import Circuit, Instruction, QubitId, Tick, Comment, RegisterId, Attribute
 
+from instruction_sets.h2.instructions import U1, RZ, ZZ, Measure
+
 circuit = Circuit(
     name="prepare bell",
-    instruction_set="h2",
     instructions=[
         Attribute("version", "1.0"),
         # Attribute("qubit_count", 4),
@@ -20,18 +21,18 @@ circuit = Circuit(
         Instruction("|0⟩", [QubitId(1)]),
         Tick(),
         Comment("H 0"),
-        Instruction("u1", parameters=[math.pi / 2.0, -math.pi / 2.0], targets=[QubitId(0)]),
-        Instruction("rz", parameters=[math.pi], targets=[QubitId(0)]),
+        U1(parameters=[math.pi / 2.0, -math.pi / 2.0], targets=[QubitId(0)]),
+        RZ(parameters=[math.pi], targets=[QubitId(0)]),
         Tick(),
         Comment("CX 0 1"),
-        Instruction("u1", parameters=[-math.pi / 2.0, math.pi / 2.0], targets=[QubitId(1)]),
-        Instruction("zz", [QubitId(0), QubitId(1)]),
-        Instruction("rz", parameters=[-math.pi / 2.0], targets=[QubitId(0)]),
-        Instruction("u1", parameters=[math.pi / 2.0, math.pi], targets=[QubitId(1)]),
-        Instruction("rz", parameters=[-math.pi / 2.0], targets=[QubitId(1)]),
+        U1(parameters=[-math.pi / 2.0, math.pi / 2.0], targets=[QubitId(1)]),
+        ZZ([QubitId(0), QubitId(1)]),
+        RZ(parameters=[-math.pi / 2.0], targets=[QubitId(0)]),
+        U1(parameters=[math.pi / 2.0, math.pi], targets=[QubitId(1)]),
+        RZ(parameters=[-math.pi / 2.0], targets=[QubitId(1)]),
         Tick(),
-        Instruction("mz", [QubitId(0), RegisterId(0)]),
-        Instruction("mz", [QubitId(1), RegisterId(1)]),
+        Measure([QubitId(0), RegisterId(0)]),
+        Measure([QubitId(1), RegisterId(1)]),
     ],
 )
 
@@ -39,14 +40,16 @@ print(circuit)
 
 
 # %%
-import qstack
+from compilers import StandardToMatrix, H2ToMatrix
 
-emulator = qstack.create_stack("h2").create_emulator()
-emulator.eval(circuit, shots=10)
+compiler = H2ToMatrix()
+target = compiler.compile(circuit)
+
+print(target)
 
 # %%
-from layers.instruction_sets.h2 import U1, R
+from qstack.emulators.pyQuil import Emulator
 
-gate = U1()
-print(gate.matrix(math.pi, 0) * 1j)
+emulator = Emulator()
+emulator.eval(target, shots=10)
 # %%

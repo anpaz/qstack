@@ -2,7 +2,7 @@ from ..base_compiler import BaseCompiler as BaseCompiler
 from .handlers import PrepareBell, MeasureZ
 
 
-class Standard2Matrix(BaseCompiler):
+class StandardToMatrix(BaseCompiler):
 
     def __init__(self):
         super().__init__(

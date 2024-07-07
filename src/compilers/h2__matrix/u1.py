@@ -1,39 +1,49 @@
-import numpy as np
-import math
+from qcir.circuit import Circuit, Instruction, Comment
+from qstack import Handler, InstructionDefinition
+
+from instruction_sets.h2 import instructions as h2
+from instruction_sets.matrix import instructions as matrix
+
 import cmath
+import numpy as np
 
-from qstack.instruction_definition import InstructionDefinition
 
-
-class U1(InstructionDefinition):
-
+class U1(Handler):
     @property
-    def names(self):
-        return ["u1"]
+    def source(self):
+        return h2.U1
 
-    # @property
-    # def instruction_type(self) -> str:
-    #     return InstructionType.MEASUREMENT
+    def uses(self) -> set[InstructionDefinition]:
+        return {
+            matrix.Matrix1,
+        }
 
-    def matrix(self, theta, phi):
+    def handle(self, inst: Instruction, _):
         i = 1j
-
-        a_00 = math.cos(theta / 2)
-        a_11 = math.cos(theta / 2)
+        theta = inst.parameters[0]
+        phi = inst.parameters[1]
+        a_00 = cmath.cos(theta / 2)
+        a_11 = cmath.cos(theta / 2)
 
         #  −𝑖 𝑒^{−𝑖𝜑} sin(𝜃/2)
         exponent = cmath.exp(-i * phi)
-        sine_value = math.sin(theta / 2)
+        sine_value = cmath.sin(theta / 2)
         a_01 = -i * exponent * sine_value
 
         #  −𝑖 𝑒^{𝑖𝜑} sin(𝜃/2)
         exponent = cmath.exp(i * phi)
-        sine_value = math.sin(theta / 2)
+        sine_value = cmath.sin(theta / 2)
         a_10 = -i * exponent * sine_value
 
-        return np.array(
+        # fmt: off
+        m = [
+            a_00, a_01,
+            a_10, a_11,
+        ]
+        return Circuit(
+            self.__class__.__name__,
             [
-                [a_00, a_01],
-                [a_10, a_11],
-            ]
+                Comment(f"start: " + inst.name), 
+                matrix.Matrix1(parameters=m, targets=inst.targets)],
         )
+        # fmt: on
