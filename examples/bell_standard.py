@@ -31,12 +31,13 @@ print(circuit)
 
 
 # %%
-from compilers import StandardToMatrix
+from compilers import StandardToMatrix, StandardToH2, H2ToMatrix
 
 compiler = StandardToMatrix()
 target = compiler.compile(circuit)
 
 print(target)
+
 
 # %%
 from qstack.emulators.pyQuil import Emulator
@@ -44,7 +45,22 @@ from qstack.emulators.pyQuil import Emulator
 emulator = Emulator()
 emulator.eval(target, shots=10)
 
-# emulator = qstack.create_stack("standard").create_emulator()
-# emulator.eval(circuit, shots=10)
+# %%
+
+# %%
+compiler = StandardToH2()
+target = compiler.compile(circuit)
+
+print(target)
+
+# %%
+compiler = H2ToMatrix()
+target = compiler.compile(target)
+
+print(target)
+
+# %%
+emulator = Emulator()
+emulator.eval(target, shots=10)
 
 # %%
