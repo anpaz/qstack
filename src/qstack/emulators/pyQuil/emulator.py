@@ -1,15 +1,12 @@
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
+
 import numpy as np
-
-from qcir.circuit import Circuit, Instruction
-
-from pyquil import Program
-from pyquil import get_qc
+from pyquil import Program, get_qc
 from pyquil.quilatom import MemoryReference
 
-from qstack import InstructionDefinition, Emulator
-from qstack import Handler
+from qcir.circuit import Circuit, Instruction
+from qstack import Emulator, Handler, InstructionDefinition
 
 from .context import Context
 from .handlers import Matrix1, Matrix2, Measure

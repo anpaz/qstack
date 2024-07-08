@@ -10,6 +10,7 @@ from qcir import Circuit, Instruction, QubitId, Tick, Comment, RegisterId, Attri
 
 from instruction_sets.h2.instructions import U1, RZ, ZZ, Measure
 
+
 circuit = Circuit(
     name="prepare bell",
     instructions=[

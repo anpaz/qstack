@@ -1,8 +1,8 @@
+import logging
 from dataclasses import dataclass
 from typing import Any
-from .utils import cache_field
 
-import logging
+from .utils import cache_field
 
 logger = logging.getLogger("qcir")
 

@@ -31,7 +31,7 @@ print(circuit)
 
 
 # %%
-from compilers import StandardToMatrix, StandardToH2, H2ToMatrix
+from compilers import StandardToMatrix, H2Emulation
 
 compiler = StandardToMatrix()
 target = compiler.compile(circuit)
@@ -46,16 +46,8 @@ emulator = Emulator()
 emulator.eval(target, shots=10)
 
 # %%
-
-# %%
-compiler = StandardToH2()
+compiler = H2Emulation()
 target = compiler.compile(circuit)
-
-print(target)
-
-# %%
-compiler = H2ToMatrix()
-target = compiler.compile(target)
 
 print(target)
 

@@ -1,6 +1,5 @@
-from qstack.instruction_definition import InstructionDefinition
 from qcir import QubitId, RegisterId
-
+from qstack.instruction_definition import InstructionDefinition
 
 Measure = InstructionDefinition(name="measure", targets=[QubitId, RegisterId])
 

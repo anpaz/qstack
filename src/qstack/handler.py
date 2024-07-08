@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Set
 
 from qcir import Circuit, Instruction
+
 from .instruction_definition import InstructionDefinition
 
 

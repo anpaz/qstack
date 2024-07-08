@@ -1,13 +1,12 @@
+import numpy as np
+from pyquil.gates import MEASURE
+from pyquil.quil import DefGate
+
 from qcir.circuit import Instruction, QubitId, RegisterId
 from qstack import InstructionDefinition
-
-from pyquil.quil import DefGate
-from pyquil.gates import MEASURE
-
 from qstack.handler import Handler
-from .context import Context
 
-import numpy as np
+from .context import Context
 
 
 def _matrix_operation(inst: Instruction, qubits_count: int, context: Context):

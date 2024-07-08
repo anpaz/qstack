@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+
 from qcir.circuit import Circuit
 from qstack.instruction_definition import InstructionDefinition
 

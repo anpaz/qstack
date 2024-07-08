@@ -1,10 +1,9 @@
-from qcir.circuit import Circuit, Instruction, Comment
-from qstack import Handler, InstructionDefinition
-
-from instruction_sets.standard import instructions as standard
-from instruction_sets.matrix import instructions as matrix
-
 import math
+
+from instruction_sets.matrix import instructions as matrix
+from instruction_sets.standard import instructions as standard
+from qcir.circuit import Circuit, Comment, Instruction
+from qstack import Handler, InstructionDefinition
 
 
 class MeasureZ(Handler):

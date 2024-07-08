@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from qcir.circuit import Circuit, Instruction, Attribute
+
+from qcir.circuit import Attribute, Circuit, Instruction
 from qstack import Handler, InstructionDefinition
 
 
