@@ -1,3 +1,5 @@
 __pycache__/
 qstack.egg-info/
+build/
+dist/
 .venv*/

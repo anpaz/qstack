@@ -23,5 +23,8 @@ setup(
         # List your project dependencies here, e.g.
         "numpy",
         "pyquil",
+        # wip:
+        "qiskit",
+        "pytket",
     ],
 )
