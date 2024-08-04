@@ -58,3 +58,73 @@ class PrepareBell(Handler):
                 matrix.Matrix2(parameters=CX, targets=[inst.targets[0], inst.targets[1]]),
             ],
         )
+
+
+class PrepareZero(Handler):
+    @property
+    def source(self):
+        return standard.PrepareZero
+
+    def uses(self) -> set[InstructionDefinition]:
+        return {}
+
+    def handle(self, inst: Instruction, _):
+        return Circuit(
+            self.__class__.__name__,
+            [],
+        )
+
+
+class Hadamard(Handler):
+    @property
+    def source(self):
+        return standard.Hadamard
+
+    def uses(self) -> set[InstructionDefinition]:
+        return {
+            matrix.Matrix1,
+        }
+
+    def handle(self, inst: Instruction, _):
+        # fmt: off
+        sqrt1_2 = math.sqrt(1. / 2.)
+        H = [
+            sqrt1_2,  sqrt1_2,
+            sqrt1_2, -sqrt1_2,
+        ]
+        # fmt: on
+        return Circuit(
+            self.__class__.__name__,
+            [
+                Comment(f"start: " + inst.name),
+                matrix.Matrix1(parameters=H, targets=[inst.targets[0]]),
+            ],
+        )
+
+
+class CtrlX(Handler):
+    @property
+    def source(self):
+        return standard.CtrlX
+
+    def uses(self) -> set[InstructionDefinition]:
+        return {
+            matrix.Matrix2,
+        }
+
+    def handle(self, inst: Instruction, _):
+        # fmt: off
+        CX = [
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 1.0, 
+            0.0, 0.0, 1.0, 0.0,
+        ]
+        # fmt: on
+        return Circuit(
+            self.__class__.__name__,
+            [
+                Comment(f"start: " + inst.name),
+                matrix.Matrix2(parameters=CX, targets=[inst.targets[0], inst.targets[1]]),
+            ],
+        )

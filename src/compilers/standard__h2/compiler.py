@@ -1,5 +1,5 @@
 from ..base_compiler import BaseCompiler as BaseCompiler
-from .handlers import PrepareBell, MeasureZ
+from .handlers import PrepareBell, MeasureZ, PrepareZero, Hadamard, CtrlX
 
 
 class StandardToH2(BaseCompiler):
@@ -8,6 +8,9 @@ class StandardToH2(BaseCompiler):
         super().__init__(
             {
                 PrepareBell(),
+                PrepareZero(),
+                Hadamard(),
+                CtrlX(),
                 MeasureZ(),
             }
         )
