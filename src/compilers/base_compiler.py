@@ -14,7 +14,7 @@ class BaseCompiler:
 
     @property
     def input_instruction_set(self) -> set[InstructionDefinition]:
-        return [h.source for h in self.handlers.values()]
+        return {h.source for h in self.handlers.values()}
 
     @property
     def output_instruction_set(self) -> set[InstructionDefinition]:
