@@ -2,13 +2,11 @@
 import math
 import init_logging
 
-init_logging.debug_qstack()
-
 # %%
 import math
 from qcir import Circuit, Instruction, QubitId, Tick, Comment, RegisterId, Attribute
 
-from instruction_sets.h2.instructions import U1, RZ, ZZ, Measure
+from runtimes.h2.instruction_set import U1, RZ, ZZ, Measure, PrepareZero
 
 
 circuit = Circuit(
@@ -18,8 +16,8 @@ circuit = Circuit(
         # Attribute("qubit_count", 4),
         # Attribute("register_count", 4),
         Tick(),
-        Instruction("|0⟩", [QubitId(0)]),
-        Instruction("|0⟩", [QubitId(1)]),
+        PrepareZero([QubitId(0)]),
+        PrepareZero([QubitId(1)]),
         Tick(),
         Comment("H 0"),
         U1(parameters=[math.pi / 2.0, -math.pi / 2.0], targets=[QubitId(0)]),

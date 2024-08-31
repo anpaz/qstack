@@ -1,32 +1,32 @@
 import logging
-from dataclasses import dataclass
 
-import numpy as np
 from pyquil import Program, get_qc
-from pyquil.quilatom import MemoryReference
+from pyquil.api import MemoryMap
 
 from qcir.circuit import Circuit, Instruction
-from qstack import Emulator, Handler, InstructionDefinition
 
 from .context import Context
-from .handlers import Matrix1, Matrix2, Measure
+from . import handlers
+import runtimes.matrix.instruction_set as matrix
+
 
 logger = logging.getLogger("qstack")
 
 
-class pyQuilEmulator(Emulator):
-
+class pyQuilEmulator:
     def __init__(self):
-        self.handlers: dict[str, Handler] = {
-            handler.source.name: handler for handler in [Matrix1(), Matrix2(), Measure()]
+        self.handlers = {
+            gate.name: handler
+            for (gate, handler) in [
+                (matrix.Matrix1, handlers.handle_matrix1),
+                (matrix.Matrix2, handlers.handle_matrix2),
+                (matrix.Measure, handlers.handle_measure),
+            ]
         }
 
-    @property
-    def instruction_set(self) -> set[InstructionDefinition]:
-        return {handler.source for handler in self.handlers.values()}
-
-    def eval(self, circuit: Circuit, *, shots: int) -> tuple:
-        q_count, r_count, _ = circuit.get_dimensions()
+    def eval(self, circuit: Circuit, *, shots: int, memory: tuple[int, ...]) -> tuple:
+        q_count = circuit.qubit_count
+        r_count = len(memory)
         assert q_count < 30, f"Only support simulation of up to 29 qubits, circuit reports: {q_count}"
 
         program = Program()
@@ -34,7 +34,7 @@ class pyQuilEmulator(Emulator):
 
         for inst in [i for i in circuit.instructions if isinstance(i, Instruction)]:
             if inst.name in self.handlers:
-                self.handlers[inst.name].handle(inst, context)
+                self.handlers[inst.name](inst, context)
             else:
                 assert False, f"Invalid instruction: {inst}. Valid instructions are: {pyQuilEmulator.handlers.keys()}."
 
@@ -45,7 +45,8 @@ class pyQuilEmulator(Emulator):
         qc_name = f"{q_count}q-qvm"
         qc = get_qc(qc_name)
         executable = qc.compile(context.program)
-        results = qc.run(executable)
+        memory_map = {"readout": memory}
+        results = qc.run(executable, memory_map=memory_map)
 
         bitstrings = results.get_register_map().get("readout")
         return bitstrings

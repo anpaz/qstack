@@ -1,7 +1,7 @@
-from abc import ABC, abstractmethod
 
 from qcir.circuit import Attribute, Circuit, Instruction
 from qstack import Handler, InstructionDefinition
+from qstack.quantum_kernel import QuantumKernel
 
 
 class Context:
@@ -23,8 +23,9 @@ class BaseCompiler:
             result = result.union(h.uses)
         return result
 
-    def compile(self, source: Circuit) -> Circuit:
+    def compile(self, source: Circuit) -> QuantumKernel:
         target = Circuit(source.name, [Attribute("compiler", self.__class__.__name__)])
+        instructions = set()
         context = Context()
 
         for inst in [inst for inst in source.instructions if isinstance(inst, Instruction)]:
@@ -32,8 +33,9 @@ class BaseCompiler:
             handler = self.handlers[inst.name]
             assert is_valid_instruction(inst, handler.source)
             target += handler.handle(inst, context)
+            instructions.add(handler.source)
 
-        return target
+        return QuantumKernel(source.name, instructions, target.n)
 
 
 def is_valid_instruction(instruction: Instruction, definition: InstructionDefinition):

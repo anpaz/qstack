@@ -1,7 +1,7 @@
 import cmath
 
-from instruction_sets.h2 import instructions as h2
-from instruction_sets.matrix import instructions as matrix
+from runtimes.h2 import instruction_set as instruction_set
+from runtimes.matrix.instruction_set import instructions as matrix
 from qcir.circuit import Circuit, Comment, Instruction
 from qstack import Handler, InstructionDefinition
 
@@ -9,7 +9,7 @@ from qstack import Handler, InstructionDefinition
 class RZ(Handler):
     @property
     def source(self):
-        return h2.RZ
+        return instruction_set.RZ
 
     def uses(self) -> set[InstructionDefinition]:
         return {
@@ -29,7 +29,7 @@ class RZ(Handler):
         return Circuit(
             self.__class__.__name__,
             [
-                Comment(f"start: " + inst.name), 
+                Comment("start: " + inst.name), 
                 matrix.Matrix1(parameters=m, targets=inst.targets)],
         )
         # fmt: on

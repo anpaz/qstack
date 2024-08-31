@@ -1,13 +1,13 @@
-from instruction_sets.h2 import instructions as h2
-from instruction_sets.matrix import instructions as matrix
-from qcir.circuit import Circuit, Comment, Instruction
+from runtimes.h2 import instruction_set as instruction_set
+from runtimes.matrix.instruction_set import instructions as matrix
+from qcir.circuit import Circuit, Instruction
 from qstack import Handler, InstructionDefinition
 
 
 class Measure(Handler):
     @property
     def source(self):
-        return h2.Measure
+        return instruction_set.Measure
 
     def uses(self) -> set[InstructionDefinition]:
         return {

@@ -1,12 +1,9 @@
 # %%
 import init_logging
 
-init_logging.debug_qstack()
-
 # %%
-from qcir import Circuit, Instruction, QubitId, Tick, Comment, RegisterId, Attribute
-
-from instruction_sets.standard.instructions import MeasureZ, PrepareBell
+from qcir import *
+from runtimes.standard.instruction_set import *
 
 circuit = Circuit(
     name="two bells",
@@ -16,7 +13,14 @@ circuit = Circuit(
         # Attribute("register_count", 4000),
         Tick(),
         Comment("Prepare Bell Pairs"),
-        PrepareBell([QubitId(0), QubitId(2)]),
+        PrepareZero([QubitId(0)]),
+        PrepareZero([QubitId(2)]),
+        Tick(),
+        Hadamard([QubitId(0)]),
+        Tick(),
+        CtrlX([QubitId(0), QubitId(2)]),
+        Tick(),
+        Comment("Or use the built-in gate:"),
         PrepareBell([QubitId(1), QubitId(3)]),
         Tick(),
         Comment("Measure qubits into classical registers"),
@@ -31,28 +35,101 @@ print(circuit)
 
 
 # %%
-from compilers import StandardToMatrix, H2Emulation
+from compilers.standard import compile
 
-compiler = StandardToMatrix()
-target = compiler.compile(circuit)
-
-print(target)
+t1 = compile(circuit)
+print(t1)
 
 
 # %%
-from qstack.emulators.pyQuil import Emulator
+from runtimes.standard.backends.pyQuil import Backend
 
-emulator = Emulator()
-emulator.eval(target, shots=10)
+backend = Backend()
+
+backend.start()
+for outcome in backend.eval(t1, shots=10):
+    print(outcome)
+
+
+# %%
+from compilers.standard.matrix.compiler import compile
+
+t2 = compile(t1)
+print(t2)
+
+
+# %%
+from runtimes.matrix.backends.pyQuil import Backend
+
+backend = Backend()
+
+backend.start()
+for outcome in backend.eval(t2, shots=10):
+    print(outcome)
+
+# %%
+print(backend.memory)
 
 # %%
 compiler = H2Emulation()
-target = compiler.compile(circuit)
+t1 = compiler.compile(circuit)
 
-print(target)
+print(t1)
 
 # %%
 emulator = Emulator()
-emulator.eval(target, shots=10)
+emulator.eval(t1, shots=10)
 
+# %%
+import numpy as np
+
+# %%
+G = np.array(
+    [
+        [1, 0, 1, 0, 1, 0, 1],
+        [0, 1, 1, 0, 0, 1, 1],
+        [0, 0, 0, 1, 1, 1, 1],
+        [1, 1, 1, 0, 0, 0, 0],
+    ]
+)
+
+a = np.array([[0, 0, 1, 1]])
+
+# a.transpose()
+# print(a.T)
+
+np.dot(a, G)
+
+# np.dot(G[0], G[0].T)
+# %%
+
+X = np.array(
+    [
+        [0, 1],
+        [1, 0],
+    ]
+)
+
+Z = np.array(
+    [
+        [1, 0],
+        [0, -1],
+    ]
+)
+
+np.dot(X, X)
+# %%
+np.dot(Z, X)
+
+# %%
+np.dot(X, Z)
+
+# %%
+Y = np.array([[0, -1j], [1j, 0]])
+
+np.dot(Y, Y)
+# %%
+np.dot(X, Y)
+# %%
+np.dot(Y, X)
 # %%

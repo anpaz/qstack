@@ -76,11 +76,27 @@ class Circuit:
     name: str
     instructions: list[Comment | Attribute | Tick | Instruction]
 
+    @property
+    def qubit_count(self):
+        return self.get_dimensions()[0]
+
+    @property
+    def register_count(self):
+        return self.get_dimensions()[1]
+
+    @property
+    def instructions_count(self):
+        return self.get_dimensions()[2]
+
+    @property
+    def steps(self):
+        return self.get_dimensions()[3]
+
     def get_metadata(self, key: str, default: str = None) -> Any:
         md = cache_field(self, "_metadata", lambda: circuit_metadata(self))
         return md.get(key, default)
 
-    def get_dimensions(self) -> tuple[int, int, int]:
+    def get_dimensions(self) -> tuple[int, int, int, int]:
         return cache_field(self, "_dimensions", lambda: circuit_dimensions(self))
 
     def __add__(self, other):
@@ -110,10 +126,11 @@ def circuit_metadata(circuit: Circuit) -> dict[str, str]:
     return result
 
 
-def circuit_dimensions(circuit: Circuit) -> tuple[int, int, int]:
+def circuit_dimensions(circuit: Circuit) -> tuple[int, int, int, int]:
     max_q = -1
     max_r = -1
     instr_count = 0
+    steps = 1
 
     for i in circuit.instructions:
         if isinstance(i, Instruction):
@@ -127,6 +144,8 @@ def circuit_dimensions(circuit: Circuit) -> tuple[int, int, int]:
                         max_q = t.value
                 else:
                     assert False, "Unknown target type."
+        if isinstance(i, Tick):
+            steps += 1
 
     q_count = circuit.get_metadata("qubit_count", max_q + 1)
     if q_count < max_q + 1:
@@ -136,4 +155,4 @@ def circuit_dimensions(circuit: Circuit) -> tuple[int, int, int]:
     if r_count < max_r + 1:
         logger.warning(f"qubit count in metadata ({r_count}) is less than registers in the circuit ({max_r + 1})")
 
-    return (q_count, r_count, instr_count)
+    return (q_count, r_count, instr_count, steps)

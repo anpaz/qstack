@@ -26,5 +26,6 @@ setup(
         # wip:
         "qiskit",
         "pytket",
+        "stim",
     ],
 )
