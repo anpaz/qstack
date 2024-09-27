@@ -1,0 +1,30 @@
+# ---------------
+# name: two bells
+# ---------------
+@coords  0 (0 0) 1 (1 0) 2 (2 0)
+@coords  $0 (0 1) $1 (1 1) $2 (2 1)
+@view 'wires'
+@version:1.0
+
+----
+# Prepare Bell Pairs
+|0⟩ 0
+|0⟩ 2
+
+----
+h 0
+
+----
+cx 0 2
+
+----
+mpp(Z, Z) $5 0 2
+
+----
+# Or use the built-in gate:
+
+----
+# Measure qubits into classical registers
+measure 0 $0             @p1
+measure 1 $1             @p1
+measure 2 $2             @p2

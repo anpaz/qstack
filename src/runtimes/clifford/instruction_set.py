@@ -1,7 +1,7 @@
 from qcir import QubitId, RegisterId
 from qstack.instruction_definition import InstructionDefinition
 
-Measure = InstructionDefinition(name="measure", targets=[QubitId, RegisterId], aliases=["mz"])
+MeasureZ = InstructionDefinition(name="measure", targets=[RegisterId, QubitId], aliases=["mz", "⟨+z|", "⟨z|"])
 
 PrepareZero = InstructionDefinition(name="|0⟩", targets=[QubitId], aliases=["|0>", "|+z⟩", "|+z>"])
 
@@ -30,3 +30,7 @@ SXAdj = InstructionDefinition(name="sx_adj", targets=[QubitId])
 SY = InstructionDefinition(name="sy", targets=[QubitId])
 
 SYAdj = InstructionDefinition(name="sy_adj", targets=[QubitId])
+
+ApplyPauli = InstructionDefinition(name="pp", targets=[QubitId, ...], parameters=[str, ...])
+
+MeasurePauli = InstructionDefinition(name="mpp", targets=[RegisterId, QubitId, ...], parameters=[str, ...])

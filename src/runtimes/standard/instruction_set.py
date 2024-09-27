@@ -1,29 +1,14 @@
 from qcir import QubitId, RegisterId
 from qstack.instruction_definition import InstructionDefinition
 
-# fmt: off
-PrepareZero = InstructionDefinition(
-    name="|0⟩",
-    targets=(QubitId,)
-)
+from runtimes.clifford.instruction_set import PrepareZero, H, MeasureZ, CX, MeasurePauli, ApplyPauli
 
-Hadamard = InstructionDefinition(
-    name="H",
-    targets=(QubitId,)
-)
+# Supported Clifford operations:
+# MeasureZ = MeasureZ
+# PrepareZero = PrepareZero
+Hadamard = H
+CtrlX = CX
+# MeasurePauli = MeasurePauli
 
-CtrlX = InstructionDefinition(
-    name="CX",
-    targets=(QubitId, QubitId)
-)
-
-PrepareBell = InstructionDefinition(
-    name="|bell⟩",
-    targets=(QubitId, QubitId)
-)
-
-MeasureZ = InstructionDefinition(
-    name="mz",
-    targets=(QubitId, RegisterId)
-)
-# fmt: on
+# Other instructions
+PrepareBell = InstructionDefinition(name="|bell⟩", targets=(QubitId, QubitId))

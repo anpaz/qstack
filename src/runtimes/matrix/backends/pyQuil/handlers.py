@@ -32,4 +32,4 @@ def handle_matrix2(inst: Instruction, context: Context):
 
 
 def handle_measure(inst: Instruction, context: Context):
-    context.program += MEASURE(inst.targets[0].value, context.readout[inst.targets[1].value])
+    context.program += MEASURE(inst.targets[1].value, context.readout[inst.targets[0].value])

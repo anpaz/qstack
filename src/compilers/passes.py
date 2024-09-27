@@ -3,15 +3,28 @@ from qcir.circuit import Circuit, Instruction
 from qstack import InstructionDefinition
 
 
+def type_check(values, expected_types):
+    if expected_types[-1] == Ellipsis:
+        if len(values) == len(expected_types) - 1:
+            expected_types = expected_types[:-1]
+        elif len(values) >= len(expected_types):
+            rest = [expected_types[-2]] * (len(values) - (len(expected_types) - 1))
+            expected_types = expected_types[:-1] + rest
+        else:
+            return False
+    for expected, value in zip(expected_types, values):
+        if not isinstance(value, expected):
+            return False
+    return True
+
+
 def _is_valid_instruction(idx: int, instruction: Instruction, definition: InstructionDefinition):
-    if list(definition.targets) != [type(t) for t in instruction.targets]:
+    if not type_check(instruction.targets, definition.targets):
         return f"[pos: {idx:04}]: Invalid targets for instruction {instruction.name}"
 
     if definition.parameters:
-        for expected, actual in zip(definition.parameters, instruction.parameters):
-            assert isinstance(
-                actual, expected
-            ), f"[pos: {idx:04}]: Expecting parameter of type {expected}, got {actual}"
+        if not type_check(instruction.parameters, definition.parameters):
+            return f"[pos: {idx:04}]: Invalid parameters for instruction {instruction.name}"
     else:
         if instruction.parameters:
             return f"[pos: {idx:04}]: Not expecting parameters for instruction {instruction.name}"
@@ -46,7 +59,6 @@ def verify_instructions(
                 if error_msg:
                     errors.append(error_msg)
                 else:
-
                     instructions.add(definition)
 
     error_msg = "\n".join(errors)

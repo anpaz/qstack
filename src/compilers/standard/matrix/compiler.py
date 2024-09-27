@@ -19,7 +19,7 @@ target_instruction_set = [
 
 
 handlers = {
-    gate.name: handler
+    name: handler
     for (gate, handler) in [
         (standard.MeasureZ, handlers.handle_mz),
         (standard.PrepareBell, handlers.handle_prepare_bell),
@@ -27,10 +27,8 @@ handlers = {
         (standard.Hadamard, handlers.handle_hadamard),
         (standard.CtrlX, handlers.handle_ctrlx),
     ]
+    for name in [gate.name] + list(gate.aliases or [])
 }
-
-
-assert len(handlers) == len(source_instruction_set), "handlers "
 
 
 def compile(kernel: QuantumKernel) -> QuantumKernel:

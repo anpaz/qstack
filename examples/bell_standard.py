@@ -21,13 +21,13 @@ circuit = Circuit(
         CtrlX([QubitId(0), QubitId(2)]),
         Tick(),
         Comment("Or use the built-in gate:"),
-        PrepareBell([QubitId(1), QubitId(3)]),
+        # PrepareBell([QubitId(1), QubitId(3)]),
         Tick(),
         Comment("Measure qubits into classical registers"),
-        MeasureZ([QubitId(0), RegisterId(0)], attributes=[Attribute("p1")]),
-        MeasureZ([QubitId(1), RegisterId(1)], attributes=[Attribute("p2")]),
-        MeasureZ([QubitId(2), RegisterId(2)], attributes=[Attribute("p1")]),
-        MeasureZ([QubitId(3), RegisterId(3)], attributes=[Attribute("p2")]),
+        MeasureZ([RegisterId(0), QubitId(0)], attributes=[Attribute("p1")]),
+        MeasureZ([RegisterId(3), QubitId(3)], attributes=[Attribute("p2")]),
+        MeasureZ([RegisterId(2), QubitId(1)], attributes=[Attribute("p2")]),
+        MeasureZ([RegisterId(1), QubitId(2)], attributes=[Attribute("p1")]),
     ],
 )
 
@@ -42,13 +42,17 @@ print(t1)
 
 
 # %%
+from runtimes.clifford.backends import Backend
+
+backend = Backend()
+backend.eval(t1).plot_histogram()
+
+
+# %%
 from runtimes.standard.backends.pyQuil import Backend
 
 backend = Backend()
-
-backend.start()
-for outcome in backend.eval(t1, shots=10):
-    print(outcome)
+backend.eval(t1).plot_histogram()
 
 
 # %%
@@ -57,18 +61,12 @@ from compilers.standard.matrix.compiler import compile
 t2 = compile(t1)
 print(t2)
 
-
 # %%
 from runtimes.matrix.backends.pyQuil import Backend
 
 backend = Backend()
+backend.eval(t2, shots=1000).plot_histogram()
 
-backend.start()
-for outcome in backend.eval(t2, shots=10):
-    print(outcome)
-
-# %%
-print(backend.memory)
 
 # %%
 compiler = H2Emulation()

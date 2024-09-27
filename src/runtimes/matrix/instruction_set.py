@@ -26,6 +26,6 @@ Matrix2 = InstructionDefinition(
 
 Measure = InstructionDefinition(
     name="measure",
-    targets=(QubitId, RegisterId)
+    targets=(RegisterId, QubitId)
 )
 # fmt: on

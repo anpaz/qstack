@@ -57,6 +57,14 @@ class Instruction:
     attributes: list[Attribute] | None = None
     comment: Comment | None = None
 
+    def patch(self, *, name: str | None = None, targets=None, parameters=None, attributes=None, comment=None):
+        new_name = name or self.name
+        new_targets = targets or self.targets
+        new_parameters = parameters or self.parameters
+        new_attributes = attributes or self.attributes
+        new_comment = comment or self.comment
+        return Instruction(new_name, new_targets, new_parameters, new_attributes, new_comment)
+
     def __repr__(self):
         value = f"{self.name}"
 
@@ -92,6 +100,17 @@ class Circuit:
     def steps(self):
         return self.get_dimensions()[3]
 
+    def patch(self, *, name: str | None = None, instructions=None):
+        new_name = name or self.name
+        new_instructions = instructions or self.instructions
+        return Circuit(name=new_name, instructions=new_instructions)
+
+    def save(self, filename: str | None = None):
+        if not filename:
+            filename = f"{self.name}.crc"
+        with open(filename, "w", encoding="utf-8") as file:
+            file.write(str(self))
+
     def get_metadata(self, key: str, default: str = None) -> Any:
         md = cache_field(self, "_metadata", lambda: circuit_metadata(self))
         return md.get(key, default)
@@ -107,9 +126,15 @@ class Circuit:
         return NotImplemented
 
     def __repr__(self):
+        coords = [
+            "@coords " + "".join([f" {i} ({i} 0)" for i in range(self.qubit_count)]),
+            "@coords " + "".join([f" ${i} ({i} 1)" for i in range(self.qubit_count)]),
+            "@view 'wires'",
+        ]
+
         name = f"name: {self.name}"
         line = "-" * len(name)
-        return f"# {line}\n" + f"# {name}\n" + f"# {line}\n" + "\n".join([str(i) for i in self.instructions])
+        return f"# {line}\n" + f"# {name}\n" + f"# {line}\n" + "\n".join(coords + [str(i) for i in self.instructions])
 
 
 def circuit_metadata(circuit: Circuit) -> dict[str, str]:
@@ -140,7 +165,7 @@ def circuit_dimensions(circuit: Circuit) -> tuple[int, int, int, int]:
                     if t.value > max_r:
                         max_r = t.value
                 elif isinstance(t, QubitId):
-                    if t.value > max_r:
+                    if t.value > max_q:
                         max_q = t.value
                 else:
                     assert False, "Unknown target type."
