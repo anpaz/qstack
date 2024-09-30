@@ -11,7 +11,7 @@ Matrix1 = InstructionDefinition(
         v_type, v_type,
     ),
     targets=(QubitId,),
-)
+ )
 
 Matrix2 = InstructionDefinition(
     name="matrix2",

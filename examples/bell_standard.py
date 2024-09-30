@@ -3,7 +3,7 @@ import init_logging
 
 # %%
 from qcir import *
-from runtimes.standard.instruction_set import *
+from qstack.layers.apps.instruction_set import *
 
 circuit = Circuit(
     name="two bells",
@@ -21,7 +21,7 @@ circuit = Circuit(
         CtrlX([QubitId(0), QubitId(2)]),
         Tick(),
         Comment("Or use the built-in gate:"),
-        # PrepareBell([QubitId(1), QubitId(3)]),
+        PrepareBell([QubitId(1), QubitId(3)]),
         Tick(),
         Comment("Measure qubits into classical registers"),
         MeasureZ([RegisterId(0), QubitId(0)], attributes=[Attribute("p1")]),
@@ -35,28 +35,28 @@ print(circuit)
 
 
 # %%
-from compilers.standard import compile
+from qstack.compilers.standard import compile
 
 t1 = compile(circuit)
 print(t1)
 
 
 # %%
-from runtimes.clifford.backends import Backend
+from qstack.layers.clifford.backends import Backend
 
 backend = Backend()
 backend.eval(t1).plot_histogram()
 
 
 # %%
-from runtimes.standard.backends.pyQuil import Backend
+from qstack.layers.standard.backends.pyQuil import Backend
 
 backend = Backend()
 backend.eval(t1).plot_histogram()
 
 
 # %%
-from compilers.standard.matrix.compiler import compile
+from qstack.compilers.standard.matrix.compiler import compile
 
 t2 = compile(t1)
 print(t2)

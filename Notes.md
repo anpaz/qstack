@@ -1,6 +1,29 @@
+Each layer needs:
+
+- an instruction set
+- a compiler
+- a backend
+
+The compiler
+
+- takes a Circuit or a Kernel.
+- checks the instruction set, if already in the instruction set it just returns the same circuit as a kernel (or the same kernel)
+- otherwise, it checks one by one its known compilers, if the compiler takes the circuit's instruction set it uses the corresponding compiler
+- backends should take a noise_model
+
+The backend
+
+Takes a Kernel and evaluates it
+
+TODO
+
+- add noise support for pyquil
+- layout and scheduling
+- pauli frame tracking
+
+###
 
 Using different layers of abstraction has been a critical pattern in computing. It's easy to forget that a computer basically controls a set of transistors and send them signals to turn them or on off. Instead, we define an architecture of the machine, and expose intructions to read and write into memory registers and perform some basic binary operations and expose this via an assembly language. But not even that, of course, practically nobody tries to write a sorting algorithm in assembly, instead we have higher level languages like C, which in turn can be very complicated and error prone, so we program in Python, and so on... It is then the role of the compiler to take a program in a higher level instruction set and compile it into the intructions of a lower level.
-
 
 The same principles apply to quantum programs. Quantum devices change the state of individual atoms/particles via pulses, however we don't program a quantum computer by specifying the pulses that must be applied, instead, it exposes a small set of instructions representing operations or gates that can be applied to a qubit (an observable representing a two dimensional property of a particle). Even more, the instructions that a device can implement depend on the physical implementation of the device itself (ions vs neutral atoms vs semiconductors), so instead of creating programs specific to the device quantum programmers use a standard set of unitaries to program a device, which then need to be decomposed into the actual instructions supported by the device.
 
@@ -10,18 +33,14 @@ Connectivity adds another layer of complexity to quantum programs. Even though i
 
 Quantum error correction adds yet another level of complexity that we need to abstract. Quantum computers are probabilistic in nature, and we model their instruction via matrices, that encode how the probabilities of measuring an observable change; but errors can often happen and as such using techniques similar to classical models in which the state of a single qubit is encoded into multiple qubits provide a mechanism to improve resiliance. This mechanism is added as another layer in the stack applied between the set of standard instructions and the instructions supported by the hardware.
 
-The goal is to create a software stack for quantum progrms that offers full visibility of the transformations that happen on each layer; we want the stack also to be completely flexible to allow us to mix and match layers. For example, test the same quantum program using different QEC code, or maybe the same QEC code with different backends, or maybe we want to test a program when running  with no error correction directly against different backends.
+The goal is to create a software stack for quantum progrms that offers full visibility of the transformations that happen on each layer; we want the stack also to be completely flexible to allow us to mix and match layers. For example, test the same quantum program using different QEC code, or maybe the same QEC code with different backends, or maybe we want to test a program when running with no error correction directly against different backends.
 
 Current quantum programming languages and their compilers are focused on NISQ devices, so they basically have 2 layers: a layer with standard gates and a hardware specific layer, with the following assumptions:
 
-* There is a 1-1 mapping of qubits, each qubit in the circuit corresponds to some qubit in hardare.
-* Any quantum instructions can be expressed in terms of a basis gate set corresponding to the instructions implemented by hardware.
+- There is a 1-1 mapping of qubits, each qubit in the circuit corresponds to some qubit in hardare.
+- Any quantum instructions can be expressed in terms of a basis gate set corresponding to the instructions implemented by hardware.
 
 This is problematic in the context of error correction. Logical qubits are grouped into blocks, and there is not a direct mapping from logical qubits to physical qubits. Instructions are applied at the block level, and previous instructions on the block affect how instructions are applied.
-
-
-
-
 
 Finally, all quantum programs are hybrid in nature, meaning, a quantum program must execute not only a list of quantum instructions on the quantum hardware, but they must take decisions and collect classical data resulting from the execution of such instructions. The problem is that quantum devices are not efficient at executing binary operations, so the execution of the classical instructions is typically delegated to a classical processor running together with the quantum processor. This has had the effect that all quantum programming languages and representations include both classical and quantum components that must be managed together.
 
@@ -29,16 +48,7 @@ All these constraints have created a very fraction ecosystem in which no truly Q
 
 With qstack we offer a new ISA in which we embrace the hybrid nature of quantum programs, but mark a clear seperation between the classical and quantum instructions; in fact, we focus solely on the quantum instruction set and just define a simple interface that defines the classical instruction set completely open. This creates a very simple, yet flexible quantum instruction set that can be used across all layers of the quantum stack, and that makes it straight forward to mix and match different instructions set, for different type of hardwares or for different quantum error correction schemes.
 
-
-
-
 # QCIR
-
-
-
-
-
-
 
 ## Abstract
 

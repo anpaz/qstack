@@ -1,6 +1,6 @@
 import qstack.backend
 
-from .stim.emulator import StimEmulator
+from .emulator import StimEmulator
 
 
 class Backend(qstack.backend.Backend):

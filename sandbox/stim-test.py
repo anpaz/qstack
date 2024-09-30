@@ -13,8 +13,7 @@ logger.addHandler(handler)
 
 # %%
 from qcir import *
-from runtimes.standard.instruction_set import *
-from runtimes.clifford.instruction_set import MeasurePauli, ApplyPauli
+from qstack.layers.clifford.instruction_set import *
 
 circuit = Circuit(
     name="two bells",
@@ -27,9 +26,9 @@ circuit = Circuit(
         PrepareZero([QubitId(0)]),
         PrepareZero([QubitId(2)]),
         Tick(),
-        Hadamard([QubitId(0)]),
+        H([QubitId(0)]),
         Tick(),
-        CtrlX([QubitId(0), QubitId(2)]),
+        CX([QubitId(0), QubitId(2)]),
         Tick(),
         ApplyPauli([QubitId(1), QubitId(3)], parameters=["X", "Y"]),
         Tick(),
@@ -37,7 +36,6 @@ circuit = Circuit(
         MeasurePauli([RegisterId(5), QubitId(0), QubitId(2)], parameters=["Z", "Z"]),
         Tick(),
         Comment("Or use the built-in gate:"),
-        # PrepareBell([QubitId(1), QubitId(3)]),
         Tick(),
         Comment("Measure qubits into classical registers"),
         MeasureZ([RegisterId(0), QubitId(0)], attributes=[Attribute("p1")]),
@@ -56,12 +54,12 @@ print(circuit)
 # utils.inject_random_pauli_noise(circuit)
 
 # %%
-from compilers.standard import compile
+from qstack.compilers.standard import compile
 
 t1 = compile(circuit)
 
-
-from runtimes.clifford.backends import Backend
+# %%
+from qstack.layers.clifford.backends import Backend
 
 backend = Backend()
 backend.eval(t1).plot_histogram()

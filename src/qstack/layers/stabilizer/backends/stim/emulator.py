@@ -1,13 +1,16 @@
+from dataclasses import dataclass
 from typing import Iterable
 
 from qcir.circuit import Circuit, Instruction
 from qstack.instruction_definition import InstructionDefinition
+from qstack.noise import NoiseModel
+import qstack.layers.stabilizer.instruction_set as clifford
 
 from .context import Context
 from . import handlers
 
+
 import logging
-import runtimes.clifford.instruction_set as clifford
 
 logger = logging.getLogger("qstack")
 
@@ -38,9 +41,15 @@ handlers = {
 
 
 class StimEmulator:
+    def __init__(self, noise: NoiseModel | None = None) -> None:
+        self.noise = noise
 
     def eval(self, circuit: Circuit, *, shots: int) -> Iterable[tuple[bool]]:
         context = Context()
+        if self.noise:
+            context.noise_1qubit_gate = self.noise.one_qubit_gate_error
+            context.noise_2qubit_gate = self.noise.two_qubit_gate_error
+            context.noise_measure = self.noise.measurement_error
 
         for inst in [i for i in circuit.instructions if isinstance(i, Instruction)]:
             if inst.name in handlers:

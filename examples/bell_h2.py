@@ -6,7 +6,7 @@ import init_logging
 import math
 from qcir import Circuit, Instruction, QubitId, Tick, Comment, RegisterId, Attribute
 
-from runtimes.h2.instruction_set import U1, RZ, ZZ, Measure, PrepareZero
+from qstack.layers.h2.instruction_set import U1, RZ, ZZ, Measure, PrepareZero
 
 
 circuit = Circuit(

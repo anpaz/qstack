@@ -1,0 +1,16 @@
+# ----------------
+# name: sample app
+# ----------------
+@coords  0 (0 0) 1 (1 0)
+@coords  $0 (0 1) $1 (1 1)
+@view 'wires'
+@version:1.0
+
+----
+|0⟩ 0
+|1⟩ 1
+
+----
+# Measure qubits into classical registers
+measure $0 0
+measure $1 1
