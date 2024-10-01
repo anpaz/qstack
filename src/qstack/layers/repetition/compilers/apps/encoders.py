@@ -38,26 +38,37 @@ def decode_syndrome(syndrome):
 
 
 def update_syndrome_value(value, syndrome, correction):
-    t = value
     for s, c in zip(syndrome, correction):
-        if s == c or c == "I":
+        if s == c or c == "I" or s == "I":
             pass
         else:
             value += 1
     return value % 2
 
 
+def multiply(left, right):
+    def check_one(l, r):
+        if l == "I":
+            return r
+        if r == "I":
+            return l
+        if l == r:
+            return "I"
+        assert False, f"Unexpected: {l}, {r}"
+
+    result = [check_one(l, r) for l, r in zip(left, right)]
+    return result
+
+
 def build_decoder(block: QubitId, registers: list[RegisterId], stabilizer):
     def decoder(memory: list[int], corrections):
-        syndrome = [memory[r.value] for r in registers]
-        # print(syndrome)
-
         last_correction = corrections[block]
-        new_syndrome = [update_syndrome_value(v, s, last_correction) for (v, s) in zip(syndrome, stabilizer)]
-        # print(new_syndrome)
+        syndrome = [memory[r.value] for r in registers]
 
+        new_syndrome = [update_syndrome_value(v, s, last_correction) for (v, s) in zip(syndrome, stabilizer)]
         new_correction = decode_syndrome(new_syndrome)
-        corrections[block] = new_correction
+
+        corrections[block] = multiply(new_correction, last_correction)
 
     return decoder
 

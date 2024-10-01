@@ -9,4 +9,4 @@ class NoiseModel:
 
 
 def simple_noise_model(error_rate: float):
-    return NoiseModel(0.0, 0.0, error_rate)
+    return NoiseModel(error_rate, error_rate, None)

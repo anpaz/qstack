@@ -27,7 +27,8 @@ circuit = Circuit(
 )
 
 print(circuit)
-circuit.save()
+# circuit.save()
+
 
 # %%
 from qstack.layers.apps.compiler import compile
@@ -58,7 +59,7 @@ backend.eval(t2).plot_histogram()
 from qstack.layers.apps.backend import Backend
 from qstack.noise import simple_noise_model
 
-noise_model = simple_noise_model(0.05)
+noise_model = simple_noise_model(0.1)
 backend = Backend(noise_model=noise_model)
 backend.eval(t1).plot_histogram()
 
@@ -83,10 +84,20 @@ backend.eval(t3).get_raw_histogram()
 from qstack.layers.cliffords.backend import Backend
 
 backend = Backend(noise_model=noise_model)
-backend.eval(t3).plot_histogram()
+result = backend.eval(t3)
+result.plot_histogram()
 
 
 # %%
-backend.eval(t3).get_raw_histogram()
+decoder = t3.decoder
+
+# %%
+v = (False, False, 0, 0, 1, 1, 1, 1, 0, 0)
+decoder(v), v
+
+# %%
+v = (False, False, 0, 0, 1, 0, 1, 0, 0, 1)
+decoder(v), v
+
 
 # %%
