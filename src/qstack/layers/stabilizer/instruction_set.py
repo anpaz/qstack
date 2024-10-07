@@ -1,6 +1,8 @@
 from qcir import QubitId, RegisterId
 from qstack.instruction_definition import InstructionDefinition
 
+from qstack.paulis import Pauli
+
 from qstack.layers.cliffords.instruction_set import MeasureZ, PrepareZero, H, CX, S, SAdj
 
 MeasureZ = MeasureZ
@@ -33,6 +35,6 @@ SY = InstructionDefinition(name="sy", targets=[QubitId])
 
 SYAdj = InstructionDefinition(name="sy_adj", targets=[QubitId])
 
-ApplyPauli = InstructionDefinition(name="pauli", targets=[QubitId, ...], parameters=[str, ...])
+ApplyPauli = InstructionDefinition(name="pauli", targets=[QubitId, ...], parameters=[Pauli, ...])
 
-MeasurePauli = InstructionDefinition(name="mpp", targets=[RegisterId, QubitId, ...], parameters=[str, ...])
+MeasurePauli = InstructionDefinition(name="mpp", targets=[RegisterId, QubitId, ...], parameters=[Pauli, ...])

@@ -1,7 +1,8 @@
-from collections import Counter
+from collections import Counter, OrderedDict
 from matplotlib import pyplot as plt
 
-from qstack.quantum_kernel import QuantumKernel
+from qcir.circuit import Circuit
+from qstack.gadget import Gadget
 
 
 class Outcome:
@@ -14,7 +15,10 @@ class Outcome:
 
     def get_histogram(self):
         if not self._histogram:
-            self._histogram = dict(Counter(self.data))
+            hist = Counter(self.data)
+            self._histogram = OrderedDict()
+            for key in sorted(hist.keys()):
+                self._histogram[key] = hist[key]
         return self._histogram
 
     def plot_histogram(self):
@@ -26,7 +30,10 @@ class Outcome:
 
     def get_raw_histogram(self):
         if not self._raw_histogram:
-            self._raw_histogram = dict(Counter(self.raw_data))
+            hist = dict(Counter(self.raw_data))
+            self._raw_histogram = OrderedDict()
+            for key in sorted(hist.keys()):
+                self._raw_histogram[key] = hist[key]
         return self._raw_histogram
 
 
@@ -37,11 +44,13 @@ class Backend:
     def start(self) -> int:
         return 0
 
-    def eval(self, kernel: QuantumKernel, *, shots: int | None = 1000) -> Outcome:
+    def eval(self, gadget: Gadget, *, shots: int | None = 1000) -> Outcome:
         def call_emulator():
-            outcomes = self.emulator.eval(kernel.circuit, shots=shots)
+            outcomes = self.emulator.eval(gadget.circuit, shots=shots)
             for raw_outcome in outcomes:
-                outcome = kernel.decoder(raw_outcome)
+                outcome = raw_outcome
+                if gadget.decoder:
+                    outcome = gadget.decoder(raw_outcome)
                 yield outcome, raw_outcome
 
         return Outcome(shots, list(call_emulator()))

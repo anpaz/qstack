@@ -2,7 +2,7 @@ import qstack.compilers.passes
 
 from qcir.circuit import Circuit
 from qstack.instruction_definition import InstructionDefinition
-from qstack.quantum_kernel import QuantumKernel
+from qstack.gadget import QuantumKernel
 
 from . import instruction_set
 

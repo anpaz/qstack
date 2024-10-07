@@ -12,14 +12,12 @@ logger = logging.getLogger("qstack")
 
 def handle_prepare_zero(inst: Instruction) -> Circuit:
     return Circuit(
-        "matrix:|0>",
         [PrepareZero(targets=inst.targets, attributes=inst.attributes)],
     )
 
 
 def handle_prepare_one(inst: Instruction) -> Circuit:
     return Circuit(
-        "matrix:|1>",
         [
             PrepareZero(targets=inst.targets, attributes=inst.attributes),
             Tick(),
@@ -30,7 +28,6 @@ def handle_prepare_one(inst: Instruction) -> Circuit:
 
 def handle_prepare_random(inst: Instruction) -> Circuit:
     return Circuit(
-        "matrix:|random>",
         [
             PrepareZero(targets=inst.targets, attributes=inst.attributes),
             Tick(),
@@ -41,7 +38,6 @@ def handle_prepare_random(inst: Instruction) -> Circuit:
 
 def handle_prepare_bell(inst: Instruction) -> Circuit:
     return Circuit(
-        "matrix:|bell>",
         [
             PrepareZero(targets=[inst.targets[0]], attributes=inst.attributes),
             PrepareZero(targets=[inst.targets[1]], attributes=inst.attributes),
@@ -55,7 +51,6 @@ def handle_prepare_bell(inst: Instruction) -> Circuit:
 
 def handle_measure(inst: Instruction) -> Circuit:
     return Circuit(
-        "matrix_mz",
         [
             MeasureZ(targets=inst.targets, attributes=inst.attributes),
         ],
@@ -78,7 +73,7 @@ def run(circuit: Circuit) -> Circuit:
     # Make sure the circuit in the kernel uses the right instruction set:
     # qstack.compilers.passes.verify_instructions(circuit, source_instruction_set)
 
-    target_circuit = Circuit(circuit.name, [])
+    target_circuit = Circuit([])
 
     for inst in [inst for inst in circuit.instructions if isinstance(inst, Instruction)]:
         handler = handlers[inst.name]

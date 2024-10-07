@@ -1,7 +1,6 @@
-
 from qcir.circuit import Attribute, Circuit, Instruction
 from qstack import Handler, InstructionDefinition
-from qstack.quantum_kernel import QuantumKernel
+from qstack.gadget import QuantumKernel
 
 
 class Context:

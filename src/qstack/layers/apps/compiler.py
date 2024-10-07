@@ -2,7 +2,7 @@ import qstack.compilers.passes
 
 from qcir.circuit import Circuit
 from qstack.instruction_definition import InstructionDefinition
-from qstack.quantum_kernel import QuantumKernel
+from qstack.gadget import Gadget
 
 from . import instruction_set
 
@@ -13,15 +13,7 @@ known_instructions = {
 }
 
 
-def compile(circuit: Circuit) -> QuantumKernel:
-    def no_decoder(memory: list[bool]):
-        return memory
+def compile(circuit: Circuit, *, name: str) -> Gadget:
+    qstack.compilers.passes.verify_instructions(circuit, known_instructions)
 
-    instructions = qstack.compilers.passes.verify_instructions(circuit, known_instructions)
-
-    return QuantumKernel(
-        name=circuit.name,
-        circuit=circuit,
-        instruction_set=instructions,
-        decoder=no_decoder,
-    )
+    return Gadget(name=name, circuit=circuit)

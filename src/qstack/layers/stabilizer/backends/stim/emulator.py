@@ -62,7 +62,7 @@ class StimEmulator:
         sampler = context.circuit.compile_sampler()
 
         def bitstring(outcome, context: Context):
-            result = [False] * circuit.register_count
+            result = [None] * circuit.register_count
             for idx, o in context.measurements_map.items():
                 result[idx] = int(outcome[o])
             return tuple(result)

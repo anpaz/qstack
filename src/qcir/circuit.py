@@ -38,7 +38,7 @@ class Attribute:
 
     def __repr__(self):
         if self.value:
-            return f"@{self.name}:{self.value}"
+            return f"@{self.name} {self.value}"
         else:
             return f"@{self.name}"
 
@@ -46,7 +46,7 @@ class Attribute:
 @dataclass(frozen=True)
 class Tick:
     def __repr__(self):
-        return "\n----"
+        return "----"
 
 
 @dataclass(frozen=True)
@@ -81,8 +81,7 @@ class Instruction:
 
 @dataclass(frozen=True)
 class Circuit:
-    name: str
-    instructions: list[Comment | Attribute | Tick | Instruction]
+    instructions: list[Comment | Tick | Instruction]
 
     @property
     def qubit_count(self):
@@ -100,41 +99,18 @@ class Circuit:
     def steps(self):
         return self.get_dimensions()[3]
 
-    def patch(self, *, name: str | None = None, instructions=None):
-        new_name = name or self.name
-        new_instructions = instructions or self.instructions
-        return Circuit(name=new_name, instructions=new_instructions)
-
-    def save(self, filename: str | None = None):
-        if not filename:
-            filename = f"{self.name}.crc"
-        with open(filename, "w", encoding="utf-8") as file:
-            file.write(str(self))
-
-    def get_metadata(self, key: str, default: str = None) -> Any:
-        md = cache_field(self, "_metadata", lambda: circuit_metadata(self))
-        return md.get(key, default)
-
     def get_dimensions(self) -> tuple[int, int, int, int]:
         return cache_field(self, "_dimensions", lambda: circuit_dimensions(self))
 
     def __add__(self, other):
         if isinstance(other, Circuit):
-            return Circuit(self.name, self.instructions + [Tick()] + other.instructions)
+            return Circuit(self.instructions + [Tick()] + other.instructions)
         elif other is None:
             return self
         return NotImplemented
 
     def __repr__(self):
-        coords = [
-            "@coords " + "".join([f" {i} ({i} 0)" for i in range(self.qubit_count)]),
-            "@coords " + "".join([f" ${i} ({i} 1)" for i in range(self.qubit_count)]),
-            "@view 'wires'",
-        ]
-
-        name = f"name: {self.name}"
-        line = "-" * len(name)
-        return f"# {line}\n" + f"# {name}\n" + f"# {line}\n" + "\n".join(coords + [str(i) for i in self.instructions])
+        return "\n".join([str(i) for i in self.instructions])
 
 
 def circuit_metadata(circuit: Circuit) -> dict[str, str]:
@@ -155,7 +131,7 @@ def circuit_dimensions(circuit: Circuit) -> tuple[int, int, int, int]:
     max_q = -1
     max_r = -1
     instr_count = 0
-    steps = 1
+    steps = 0
 
     for i in circuit.instructions:
         if isinstance(i, Instruction):
@@ -172,12 +148,8 @@ def circuit_dimensions(circuit: Circuit) -> tuple[int, int, int, int]:
         if isinstance(i, Tick):
             steps += 1
 
-    q_count = circuit.get_metadata("qubit_count", max_q + 1)
-    if q_count < max_q + 1:
-        logger.warning(f"qubit count in metadata ({q_count}) is less than qubits in the circuit ({max_q + 1})")
-
-    r_count = circuit.get_metadata("register_count", max_r + 1)
-    if r_count < max_r + 1:
-        logger.warning(f"qubit count in metadata ({r_count}) is less than registers in the circuit ({max_r + 1})")
+    steps = steps + 1
+    q_count = max_q + 1
+    r_count = max_r + 1
 
     return (q_count, r_count, instr_count, steps)

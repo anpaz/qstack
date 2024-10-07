@@ -1,5 +1,6 @@
 from qcir.circuit import Instruction
 from .context import Context
+from qstack.paulis import X, Y, Z, I
 
 
 def handle_prepare(inst: Instruction, context: Context):
@@ -32,28 +33,28 @@ def handle_apply_pauli(inst: Instruction, context: Context):
     for basis, target in zip(inst.parameters, inst.targets):
         if context.noise_1qubit_gate is not None:
             context.circuit.append("DEPOLARIZE1", targets=target.value, arg=context.noise_1qubit_gate)
-        context.circuit.append(basis, target.value)
+        context.circuit.append(str(abs(basis)), target.value)
 
 
 def handle_measure_pauli(inst: Instruction, context: Context):
     import stim
 
     def select_noise(basis):
-        if basis == "X":
+        if basis == X:
             return stim.target_z
-        elif basis == "Y":
+        elif basis == Y:
             return stim.target_z
-        elif basis == "Z":
+        elif basis == Z:
             return stim.target_x
         else:
             assert False, f"Invalid Pauli basis: {basis}"
 
     def select_target(basis):
-        if basis == "X":
+        if basis == X:
             return stim.target_x
-        elif basis == "Y":
+        elif basis == Y:
             return stim.target_y
-        elif basis == "Z":
+        elif basis == Z:
             return stim.target_z
         else:
             assert False, f"Invalid Pauli basis: {basis}"
@@ -72,7 +73,7 @@ def handle_measure_pauli(inst: Instruction, context: Context):
         [
             select_target(basis)(target.value)
             for (basis, target) in zip(inst.parameters, inst.targets[1:])
-            if basis != "I"
+            if basis != I
         ]
     )
     context.circuit.append("mpp", pauli)
