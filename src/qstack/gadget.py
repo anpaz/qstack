@@ -21,10 +21,10 @@ class Gadget:
     def __repr__(self):
         # for circuit visualization tool:
         coords = [
-            "@coords " + "".join([f" {i} ({i} 0)" for i in range(self.circuit.qubit_count)]),
-            "@coords " + "".join([f" ${i} ({i} 1)" for i in range(self.circuit.register_count)]),
+            # "@coords " + "".join([f" {i} ({i} 0)" for i in range(self.circuit.qubit_count)]),
+            # "@coords " + "".join([f" ${i} ({i} 1)" for i in range(self.circuit.register_count)]),
             "@decoder " + (self.decoder.__name__ if self.decoder else "none"),
-            "@view 'wires'",
+            # "@view 'wires'",
             "",
         ]
         name = f"name: {self.name}"
