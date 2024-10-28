@@ -127,13 +127,17 @@ def by_cx(stabilizer: list[Pauli], ctl: int, tgt: int):
 
 
 I = Pauli(0, False, False)
-
 X = Pauli(0, True, False)
 Y = Pauli(0, True, True)
 Z = Pauli(0, False, True)
 
-# %%
-a = Z * Y
-a * a
+# # %%
+# print("Z * Y:", Z * Y)
+# print("Z * Z:", Z * Z)
+# print("Y * Y:", Y * Y)
+# print("X * X:", X * X)
+# print("X * Z:", X * Z)
+# print("Z * X:", Z * X)
+# print("(X * Z) * (Z * X):", (X * Z) * (Z * X))
 
 # %%

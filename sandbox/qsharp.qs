@@ -104,78 +104,98 @@ function conjugate(stabilizers : Pauli[][], correction : Pauli[]) : (Pauli[][], 
     return (generator, sign);
 }
 
-operation Main() : Result[][] {
-    use b1 = Qubit[3];
-    use b2 = Qubit[3];
+// operation Main() : Result[][] {
+//     use b1 = Qubit[3];
+//     use b2 = Qubit[3];
 
-    let stabilizers = [
-        [PauliZ, PauliZ, PauliI],
-        [PauliZ, PauliI, PauliZ]
-    ];
-    let X_l = [PauliX, PauliX, PauliX];
-    let Z_l = [PauliZ, PauliI, PauliI];
+//     let stabilizers = [
+//         [PauliZ, PauliZ, PauliI],
+//         [PauliZ, PauliI, PauliZ]
+//     ];
+//     let X_l = [PauliX, PauliX, PauliX];
+//     let Z_l = [PauliZ, PauliI, PauliI];
 
-    let blocks = [b1, b2];
-    let correction = [PauliI, PauliI, PauliI];
+//     let blocks = [b1, b2];
+//     let correction = [PauliI, PauliI, PauliI];
 
-    // ApplyPauli(X_l, b1);
-    // X(b1[0]);
+//     // ApplyPauli(X_l, b1);
+//     // X(b1[0]);
 
-    // SyndromeExtraction(b1, stabilizers, ancillas);
-    let s1_1 = [
-        Measure(stabilizers[0], b1),
-        Measure(stabilizers[1], b1),
-    ];
-    let s2_1 = [
-        Measure(stabilizers[0], b2),
-        Measure(stabilizers[1], b2),
-    ];
-    let b1_correction = Decode(s1_1);
-    let b2_correction = Decode(s2_1);
-    // ApplyPauli(correction, b1);
+//     // SyndromeExtraction(b1, stabilizers, ancillas);
+//     let s1_1 = [
+//         Measure(stabilizers[0], b1),
+//         Measure(stabilizers[1], b1),
+//     ];
+//     let s2_1 = [
+//         Measure(stabilizers[0], b2),
+//         Measure(stabilizers[1], b2),
+//     ];
+//     let b1_correction = Decode(s1_1);
+//     let b2_correction = Decode(s2_1);
+//     // ApplyPauli(correction, b1);
 
-    // let (stabilizers, sign) = conjugate(stabilizers, correction);
+//     // let (stabilizers, sign) = conjugate(stabilizers, correction);
 
-    // let stabilizers = [
-    //     [PauliZ, PauliY, PauliI],
-    //     [PauliZ, PauliX, PauliZ]
-    // ];
-    // let X_l = [PauliX, PauliY, PauliX];
-    // let Z_l = [PauliZ, PauliX, PauliI];
+//     // let stabilizers = [
+//     //     [PauliZ, PauliY, PauliI],
+//     //     [PauliZ, PauliX, PauliZ]
+//     // ];
+//     // let X_l = [PauliX, PauliY, PauliX];
+//     // let Z_l = [PauliZ, PauliX, PauliI];
 
-    // // Apply H
-    // H(b1[0]);
-    // CX(b1[0], b1[1]);
-    // CX(b1[0], b1[2]);
-    let Z_l = [PauliX, PauliX, PauliX];
-    let X_l = [PauliZ, PauliI, PauliI];
-
-
-    X(b1[2]);
+//     // // Apply H
+//     // H(b1[0]);
+//     // CX(b1[0], b1[1]);
+//     // CX(b1[0], b1[2]);
+//     let Z_l = [PauliX, PauliX, PauliX];
+//     let X_l = [PauliZ, PauliI, PauliI];
 
 
-    // SyndromeExtraction(b1, stabilizers, ancillas);
-    let s2 = [
-        Measure(stabilizers[0], b1),
-        Measure(stabilizers[1], b1),
-    ];
-    let correction = Decode(s2);
-    ApplyPauli(correction, b1);
+//     X(b1[2]);
 
 
-    // X(b1[2]);
-    // X(b1[1]);
+//     // SyndromeExtraction(b1, stabilizers, ancillas);
+//     let s2 = [
+//         Measure(stabilizers[0], b1),
+//         Measure(stabilizers[1], b1),
+//     ];
+//     let correction = Decode(s2);
+//     ApplyPauli(correction, b1);
 
 
-    // ApplyPauli(correction, b1);
-    let v = [
-        Measure(Z_l, b1)
-    ];
+//     // X(b1[2]);
+//     // X(b1[1]);
 
-    for b in blocks {
-        MResetEachZ(b1);
-    }
 
-    Message($"correction {correction}");
-    return [s1, s2, v];
+//     // ApplyPauli(correction, b1);
+//     let v = [
+//         Measure(Z_l, b1)
+//     ];
+
+//     for b in blocks {
+//         MResetEachZ(b1);
+//     }
+
+//     Message($"correction {correction}");
+//     return [s1, s2, v];
+// }
+
+
+operation Main() : (Result, Result[]) {
+    use qubits = Qubit[3];
+
+    // ApplyToEach(X, qubits);
+
+    H(qubits[0]);
+    CX(qubits[0], qubits[1]);
+    CX(qubits[0], qubits[2]);
+
+    H(qubits[0]);
+    CX(qubits[0], qubits[1]);
+    CX(qubits[0], qubits[2]);
+
+    let m = Measure([PauliZ, PauliZ, PauliZ], qubits);
+    let all = MResetEachZ(qubits);
+
+    return (m, all);
 }

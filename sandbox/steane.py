@@ -1,6 +1,6 @@
 # %%
 from qcir.circuit import QubitId
-from qstack.stabilizers import Context, build_error_lookup
+from qstack.stabilizers import Context, build_lookup_table
 from qstack.paulis import *
 
 context = Context(14, 0)
@@ -29,7 +29,7 @@ for s in context.stabilizers:
     print("-----")
 # %%
 stabilizers = context.find_stabilizer_group(tgt_qubits)
-table = build_error_lookup(stabilizers)
+table = build_lookup_table(stabilizers)
 
 # %%
 syndrome = (0, 0, 1, 0, 0, 0)

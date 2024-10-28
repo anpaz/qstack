@@ -17,7 +17,7 @@ class Outcome:
         if not self._histogram:
             hist = Counter(self.data)
             self._histogram = OrderedDict()
-            for key in sorted(hist.keys()):
+            for key in sorted(hist.keys(), key=lambda x: tuple([str(i) for i in x if i])):
                 self._histogram[key] = hist[key]
         return self._histogram
 
