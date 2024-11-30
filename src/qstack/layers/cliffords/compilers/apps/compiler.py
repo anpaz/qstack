@@ -1,7 +1,7 @@
-from qstack.instruction_definition import InstructionDefinition
+from qstack.gadget_definition import GadgetDefinition
 import qstack.compilers.passes
 
-from qcir.circuit import Circuit, Instruction
+from qstack.circuit import Circuit, Instruction
 from qstack.gadget import Gadget
 
 import qstack.layers.apps.instruction_set as apps
@@ -10,11 +10,11 @@ import qstack.layers.cliffords.instruction_set as clifford
 from . import handlers
 
 source_instruction_set = {
-    getattr(apps, instr) for instr in dir(apps) if isinstance(getattr(apps, instr), InstructionDefinition)
+    getattr(apps, instr) for instr in dir(apps) if isinstance(getattr(apps, instr), GadgetDefinition)
 }
 
 target_instruction_set = [
-    getattr(clifford, instr) for instr in dir(clifford) if isinstance(getattr(clifford, instr), InstructionDefinition)
+    getattr(clifford, instr) for instr in dir(clifford) if isinstance(getattr(clifford, instr), GadgetDefinition)
 ]
 
 

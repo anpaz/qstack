@@ -1,14 +1,16 @@
 from dataclasses import dataclass
 from typing import Any, Callable, Set
 
-from qcir.circuit import Attribute, Circuit, Instruction, QubitId, RegisterId, Tick
-from .instruction_definition import InstructionDefinition
+from qstack.circuit import Attribute, Circuit, Instruction, QubitId, Tick
+from .gadget_definition import GadgetDefinition
 
 
 @dataclass(frozen=True)
 class Gadget:
     name: str
-    circuit: Circuit
+    targets: list[QubitId] | None
+    parameters: list[str | int | float | tuple | complex] | None = None
+    circuit: Circuit | None = None
     decoder: Callable[[list[bool]], list[bool] | None] | None = None
     metadata: dict[str, Any] | None = None
 

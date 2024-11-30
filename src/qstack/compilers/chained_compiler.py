@@ -1,7 +1,7 @@
 from typing import Sequence
 
-from qcir.circuit import Circuit
-from qstack import InstructionDefinition
+from qstack.circuit import Circuit
+from qstack import GadgetDefinition
 
 from .base_compiler import BaseCompiler
 
@@ -12,11 +12,11 @@ class ChainedCompiler:
         assert len(self.workers) > 0
 
     @property
-    def input_instruction_set(self) -> set[InstructionDefinition]:
+    def input_instruction_set(self) -> set[GadgetDefinition]:
         return self.workers[0].input_instruction_set
 
     @property
-    def output_instruction_set(self) -> set[InstructionDefinition]:
+    def output_instruction_set(self) -> set[GadgetDefinition]:
         return self.workers[-1].output_instruction_set
 
     def compile(self, source: Circuit) -> Circuit:

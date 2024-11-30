@@ -2,8 +2,8 @@ import numpy as np
 from pyquil.gates import MEASURE
 from pyquil.quil import DefGate
 
-from qcir.circuit import Instruction, QubitId, RegisterId
-from qstack import InstructionDefinition
+from qstack.circuit import Instruction, QubitId, RegisterId
+from qstack import GadgetDefinition
 from qstack.handler import Handler
 
 from .context import Context

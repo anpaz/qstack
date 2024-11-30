@@ -1,6 +1,6 @@
 from runtimes.h2 import instruction_set as instruction_set
-from qcir.circuit import Instruction
-from qstack import Handler, InstructionDefinition
+from qstack.circuit import Instruction
+from qstack import Handler, GadgetDefinition
 
 
 class PrepareZero(Handler):
@@ -8,7 +8,7 @@ class PrepareZero(Handler):
     def source(self):
         return instruction_set.PrepareZero
 
-    def uses(self) -> set[InstructionDefinition]:
+    def uses(self) -> set[GadgetDefinition]:
         return {}
 
     def handle(self, inst: Instruction, _):

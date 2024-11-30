@@ -2,7 +2,7 @@ import logging
 import qstack.layers.stabilizer.instruction_set as cliffords
 from qstack.gadget import Gadget
 from qstack.paulis import *
-from qcir.circuit import Circuit, Instruction, QubitId, RegisterId, Tick
+from qstack.circuit import Circuit, Instruction, QubitId, RegisterId, Tick
 from qstack.stabilizers import Context as StabilizerContext, gadget_with_error_correction, update_syndrome_value
 
 logger = logging.getLogger("qstack")

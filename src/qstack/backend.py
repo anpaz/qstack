@@ -1,7 +1,7 @@
 from collections import Counter, OrderedDict
 from matplotlib import pyplot as plt
 
-from qcir.circuit import Circuit
+from qstack.circuit import Circuit
 from qstack.gadget import Gadget
 
 

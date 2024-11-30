@@ -1,10 +1,10 @@
 from qcir import QubitId, RegisterId
-from qstack import InstructionDefinition
+from qstack import GadgetDefinition
 
 v_type = complex | float | int
 
 # fmt: off
-Matrix1 = InstructionDefinition(
+Matrix1 = GadgetDefinition(
     name="matrix1",
     parameters=(
         v_type, v_type,
@@ -13,7 +13,7 @@ Matrix1 = InstructionDefinition(
     targets=(QubitId,),
  )
 
-Matrix2 = InstructionDefinition(
+Matrix2 = GadgetDefinition(
     name="matrix2",
     parameters=(
         v_type, v_type, v_type, v_type,
@@ -24,7 +24,7 @@ Matrix2 = InstructionDefinition(
     targets=(QubitId, QubitId)
 )
 
-Measure = InstructionDefinition(
+Measure = GadgetDefinition(
     name="measure",
     targets=(RegisterId, QubitId)
 )

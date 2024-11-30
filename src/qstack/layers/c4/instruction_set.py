@@ -1,26 +1,26 @@
 from qcir import QubitId, RegisterId
-from qstack.instruction_definition import InstructionDefinition
+from qstack.gadget_definition import GadgetDefinition
 
-PrepareZeroZero = InstructionDefinition(name="|00⟩", targets=(QubitId,))
+PrepareZeroZero = GadgetDefinition(name="|00⟩", targets=(QubitId,))
 
-PreparePlusPlus = InstructionDefinition(name="|++⟩", targets=(QubitId,))
+PreparePlusPlus = GadgetDefinition(name="|++⟩", targets=(QubitId,))
 
-XI = InstructionDefinition(name="xi", targets=(QubitId,))
+XI = GadgetDefinition(name="xi", targets=(QubitId,))
 
-IX = InstructionDefinition(name="ix", targets=(QubitId,))
+IX = GadgetDefinition(name="ix", targets=(QubitId,))
 
-ZI = InstructionDefinition(name="zi", targets=(QubitId,))
+ZI = GadgetDefinition(name="zi", targets=(QubitId,))
 
-IZ = InstructionDefinition(name="iz", targets=(QubitId,))
+IZ = GadgetDefinition(name="iz", targets=(QubitId,))
 
-HH = InstructionDefinition(name="hh", targets=(QubitId,))
+HH = GadgetDefinition(name="hh", targets=(QubitId,))
 
-CX_01 = InstructionDefinition(name="cx_01", targets=(QubitId, QubitId))
+CX_01 = GadgetDefinition(name="cx_01", targets=(QubitId, QubitId))
 
-CX_10 = InstructionDefinition(name="cx_10", targets=(QubitId, QubitId))
+CX_10 = GadgetDefinition(name="cx_10", targets=(QubitId, QubitId))
 
-CX_11 = InstructionDefinition(name="cx", targets=(QubitId, QubitId))
+CX_11 = GadgetDefinition(name="cx", targets=(QubitId, QubitId))
 
-MeasureZZ = InstructionDefinition(name="⟨zz|", targets=(QubitId, RegisterId))
+MeasureZZ = GadgetDefinition(name="⟨zz|", targets=(QubitId, RegisterId))
 
-MeasureXX = InstructionDefinition(name="⟨xx|", targets=(QubitId, RegisterId))
+MeasureXX = GadgetDefinition(name="⟨xx|", targets=(QubitId, RegisterId))

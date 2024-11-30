@@ -1,5 +1,5 @@
-from qcir.circuit import Attribute, Circuit, Instruction
-from qstack import Handler, InstructionDefinition
+from qstack.circuit import Attribute, Circuit, Instruction
+from qstack import Handler, GadgetDefinition
 from qstack.gadget import QuantumKernel
 
 
@@ -12,11 +12,11 @@ class BaseCompiler:
         self.handlers = {handler.source.name: handler for handler in handlers}
 
     @property
-    def input_instruction_set(self) -> set[InstructionDefinition]:
+    def input_instruction_set(self) -> set[GadgetDefinition]:
         return {h.source for h in self.handlers.values()}
 
     @property
-    def output_instruction_set(self) -> set[InstructionDefinition]:
+    def output_instruction_set(self) -> set[GadgetDefinition]:
         result = set()
         for h in self.handlers.values():
             result = result.union(h.uses)
@@ -37,7 +37,7 @@ class BaseCompiler:
         return QuantumKernel(source.name, instructions, target.n)
 
 
-def is_valid_instruction(instruction: Instruction, definition: InstructionDefinition):
+def is_valid_instruction(instruction: Instruction, definition: GadgetDefinition):
     assert definition.targets == [type(t) for t in instruction.targets]
     if definition.parameters:
         assert definition.parameters == [type(t) for t in instruction.parameters]

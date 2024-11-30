@@ -3,7 +3,7 @@ import logging
 from pyquil import Program, get_qc
 from pyquil.api import MemoryMap
 
-from qcir.circuit import Circuit, Instruction
+from qstack.circuit import Circuit, Instruction
 
 from .context import Context
 from . import handlers

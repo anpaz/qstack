@@ -1,7 +1,7 @@
 import qstack.compilers.passes
 
-from qcir.circuit import Circuit
-from qstack.instruction_definition import InstructionDefinition
+from qstack.circuit import Circuit
+from qstack.gadget_definition import GadgetDefinition
 from qstack.gadget import QuantumKernel
 
 from . import instruction_set
@@ -9,7 +9,7 @@ from . import instruction_set
 known_instructions = {
     getattr(instruction_set, instr)
     for instr in dir(instruction_set)
-    if isinstance(getattr(instruction_set, instr), InstructionDefinition)
+    if isinstance(getattr(instruction_set, instr), GadgetDefinition)
 }
 
 

@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from typing import Iterable
 
-from qcir.circuit import Circuit, Instruction
-from qstack.instruction_definition import InstructionDefinition
+from qstack.circuit import Circuit, Instruction
+from qstack.gadget_definition import GadgetDefinition
 from qstack.noise import NoiseModel
 import qstack.layers.stabilizer.instruction_set as clifford
 

@@ -1,4 +1,4 @@
-from qcir.circuit import Instruction
+from qstack.circuit import Instruction
 from .context import Context
 from qstack.paulis import X, Y, Z, I
 

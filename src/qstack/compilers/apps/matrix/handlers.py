@@ -2,7 +2,7 @@ import math
 
 import qstack.layers.matrix.instruction_set as matrix
 
-from qcir.circuit import Circuit, Comment, Instruction
+from qstack.circuit import Circuit, Comment, Instruction
 
 
 def handle_prepare_zero(inst: Instruction) -> Circuit:

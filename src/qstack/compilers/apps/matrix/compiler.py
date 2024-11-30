@@ -1,7 +1,7 @@
-from qstack.instruction_definition import InstructionDefinition
+from qstack.gadget_definition import GadgetDefinition
 import compilers.passes
 
-from qcir.circuit import Circuit, Instruction
+from qstack.circuit import Circuit, Instruction
 from qstack.gadget import QuantumKernel
 
 import qstack.layers.apps.instruction_set as apps
@@ -10,11 +10,11 @@ import qstack.layers.matrix.instruction_set as matrix
 from . import handlers
 
 source_instruction_set = {
-    getattr(apps, instr) for instr in dir(apps) if isinstance(getattr(apps, instr), InstructionDefinition)
+    getattr(apps, instr) for instr in dir(apps) if isinstance(getattr(apps, instr), GadgetDefinition)
 }
 
 target_instruction_set = [
-    getattr(matrix, instr) for instr in dir(matrix) if isinstance(getattr(matrix, instr), InstructionDefinition)
+    getattr(matrix, instr) for instr in dir(matrix) if isinstance(getattr(matrix, instr), GadgetDefinition)
 ]
 
 

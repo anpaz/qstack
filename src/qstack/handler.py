@@ -3,18 +3,18 @@ from typing import Any, Set
 
 from qcir import Circuit, Instruction
 
-from .instruction_definition import InstructionDefinition
+from .gadget_definition import GadgetDefinition
 
 
 class Handler(ABC):
     @property
     @abstractmethod
-    def source(self) -> InstructionDefinition:
+    def source(self) -> GadgetDefinition:
         pass
 
     @property
     @abstractmethod
-    def uses(self) -> Set[InstructionDefinition]:
+    def uses(self) -> Set[GadgetDefinition]:
         pass
 
     @abstractmethod

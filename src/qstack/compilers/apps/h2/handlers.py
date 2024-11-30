@@ -2,8 +2,8 @@ import math
 
 from runtimes.h2 import instruction_set as instruction_set
 from runtimes.standard.instruction_set import instructions as standard
-from qcir.circuit import Circuit, Comment, Instruction, Tick
-from qstack import Handler, InstructionDefinition
+from qstack.circuit import Circuit, Comment, Instruction, Tick
+from qstack import Handler, GadgetDefinition
 
 
 class MeasureZ(Handler):
@@ -11,7 +11,7 @@ class MeasureZ(Handler):
     def source(self):
         return standard.MeasureZ
 
-    def uses(self) -> set[InstructionDefinition]:
+    def uses(self) -> set[GadgetDefinition]:
         return {
             instruction_set.Measure,
         }
@@ -30,7 +30,7 @@ class PrepareBell(Handler):
     def source(self):
         return standard.PrepareBell
 
-    def uses(self) -> set[InstructionDefinition]:
+    def uses(self) -> set[GadgetDefinition]:
         return {
             instruction_set.U1,
             instruction_set.RZ,
@@ -62,7 +62,7 @@ class PrepareZero(Handler):
     def source(self):
         return standard.PrepareZero
 
-    def uses(self) -> set[InstructionDefinition]:
+    def uses(self) -> set[GadgetDefinition]:
         return {}
 
     def handle(self, inst: Instruction, _):
@@ -77,7 +77,7 @@ class Hadamard(Handler):
     def source(self):
         return standard.Hadamard
 
-    def uses(self) -> set[InstructionDefinition]:
+    def uses(self) -> set[GadgetDefinition]:
         return {
             instruction_set.U1,
             instruction_set.RZ,
@@ -99,7 +99,7 @@ class CtrlX(Handler):
     def source(self):
         return standard.CtrlX
 
-    def uses(self) -> set[InstructionDefinition]:
+    def uses(self) -> set[GadgetDefinition]:
         return {
             instruction_set.U1,
             instruction_set.RZ,

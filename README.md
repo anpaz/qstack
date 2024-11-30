@@ -17,9 +17,20 @@ With qstack it is possible to create these layers in a way that can be mixed and
 
 # Gadgets
 
-The minimal unit of execution is a quantun gadget. A gadget is comprised by a quantum circuit -representing a list of instructions to run on a quantum backend- and a decoder -a classical program capable of interpreting the results reported by the quantum backend-.
+The minimal unit of execution is a quantun gadget. A gadget is comprised by one or more quantum circuits -representing a list of instructions to run on a quantum backend- with a corresponding decoder -a classical program capable of interpreting the results reported by the quantum backend-.
+
+There are two type of gadgets:
+
+1. Data gadgets: responsible for allocating, preparing and measuring a quantum register.
+
+2. Operation gadgets: responsible for updating the state of a quantum register.
 
 Gadget definitions are layer independent, i.e. we use the same datastructures to define an instance of a gadget. This is achieved by having all layers follow the same architecture and use a common interface to represent quantum circuits and decoders.
+
+## Data gadgets
+
+
+
 
 ## Quantum Circuits
 
@@ -36,14 +47,12 @@ A quantum circuit is specified as a list of instructions:
                     | parameter parameters
    targets        ::= target
                     | target targets
-   target         ::= qubit
-                    | $register
+   target         ::= *id*
    name           ::= *id*
-   qubit          ::= *id*
    register       ::= *id*
 ```
 
-Each operation is identified by a unique name; some operations take parameters (for example, the angle of a rotation); all operations take one or more target ids. An operation target can be the id of a quantum bit (aka a qubit) or the id of a classical bit (aka a register). In code, classical register ids are identified with a "$".
+Each operation is identified by a unique name; some operations take parameters (for example, the angle of a rotation); all operations take one or more target ids. An operation target is the id of a quantum bit (aka a qubit).
 
 The list of valid operations and their semantics are defined by each layer, as such, each gadget instance targets a specific layer.
 

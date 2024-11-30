@@ -1,7 +1,7 @@
-from qstack.instruction_definition import InstructionDefinition
+from qstack.gadget_definition import GadgetDefinition
 import qstack.compilers.passes
 
-from qcir.circuit import Circuit, Instruction, QubitId, RegisterId
+from qstack.circuit import Circuit, Instruction, QubitId, RegisterId
 import qstack.paulis
 from qstack.gadget import Gadget
 
@@ -17,7 +17,7 @@ logger = logging.getLogger("qstack")
 
 
 source_instruction_set = {
-    getattr(apps, instr) for instr in dir(apps) if isinstance(getattr(apps, instr), InstructionDefinition)
+    getattr(apps, instr) for instr in dir(apps) if isinstance(getattr(apps, instr), GadgetDefinition)
 }
 
 

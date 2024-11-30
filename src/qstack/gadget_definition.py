@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 
-from qcir.circuit import Attribute, Comment, Instruction, QubitId, RegisterId
+from qstack.circuit import Attribute, Comment, Instruction, QubitId
 
 
 @dataclass(frozen=True)
-class InstructionDefinition:
+class GadgetDefinition:
     name: str
     targets: tuple
     parameters: tuple | None = None
@@ -12,7 +12,7 @@ class InstructionDefinition:
 
     def __call__(
         self,
-        targets: list[QubitId | RegisterId] | None,
+        targets: list[QubitId] | None,
         parameters: list[str | int | float | tuple | complex] | None = None,
         attributes: list[Attribute] | None = None,
         comment: Comment | None = None,

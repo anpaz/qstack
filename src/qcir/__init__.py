@@ -1,6 +1,5 @@
-from .circuit import (  # noqa: F401
+from ..qstack.circuit import (  # noqa: F401
     QubitId,
-    RegisterId,
     Comment,
     Attribute,
     Instruction,

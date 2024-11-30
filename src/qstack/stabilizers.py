@@ -1,5 +1,5 @@
 # %%
-from qcir.circuit import Circuit, Instruction, QubitId, RegisterId, Tick
+from qstack.circuit import Circuit, Instruction, QubitId, RegisterId, Tick
 from qstack.gadget import Gadget
 from qstack.paulis import *
 import qstack.layers.stabilizer.instruction_set as cliffords

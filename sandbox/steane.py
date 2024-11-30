@@ -1,5 +1,5 @@
 # %%
-from qcir.circuit import QubitId
+from qstack.circuit import QubitId
 from qstack.stabilizers import Context, build_lookup_table
 from qstack.paulis import *
 

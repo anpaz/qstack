@@ -1,6 +1,6 @@
 from typing import Set
-from qcir.circuit import Circuit, Instruction
-from qstack import InstructionDefinition
+from qstack.circuit import Circuit, Instruction
+from qstack import GadgetDefinition
 
 
 def type_check(values, expected_types):
@@ -18,7 +18,7 @@ def type_check(values, expected_types):
     return True
 
 
-def _is_valid_instruction(idx: int, instruction: Instruction, definition: InstructionDefinition):
+def _is_valid_instruction(idx: int, instruction: Instruction, definition: GadgetDefinition):
     if not type_check(instruction.targets, definition.targets):
         return f"[pos: {idx:04}]: Invalid targets for instruction {instruction.name}"
 
@@ -32,9 +32,7 @@ def _is_valid_instruction(idx: int, instruction: Instruction, definition: Instru
     return None
 
 
-def verify_instructions(
-    circuit: Circuit, valid_instructions: Set[InstructionDefinition]
-) -> Set[InstructionDefinition]:
+def verify_instructions(circuit: Circuit, valid_instructions: Set[GadgetDefinition]) -> Set[GadgetDefinition]:
     """
     Verifies that all instructions in the circuit are in valid_instructions and
     correctly follow their syntax.

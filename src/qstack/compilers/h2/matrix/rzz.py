@@ -2,8 +2,8 @@ import cmath
 
 from runtimes.h2 import instruction_set as instruction_set
 from runtimes.matrix.instruction_set import instructions as matrix
-from qcir.circuit import Circuit, Comment, Instruction
-from qstack import Handler, InstructionDefinition
+from qstack.circuit import Circuit, Comment, Instruction
+from qstack import Handler, GadgetDefinition
 
 
 class RZZ(Handler):
@@ -11,7 +11,7 @@ class RZZ(Handler):
     def source(self):
         return instruction_set.RZZ
 
-    def uses(self) -> set[InstructionDefinition]:
+    def uses(self) -> set[GadgetDefinition]:
         return {
             matrix.Matrix2,
         }

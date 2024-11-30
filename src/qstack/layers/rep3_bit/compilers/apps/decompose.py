@@ -3,7 +3,7 @@ import math
 import qstack.layers.apps.instruction_set as apps
 from qstack.layers.stabilizer.instruction_set import *
 
-from qcir.circuit import Circuit, Comment, Instruction, Tick
+from qstack.circuit import Circuit, Comment, Instruction, Tick
 
 import logging
 

@@ -1,7 +1,7 @@
 from runtimes.h2 import instruction_set as instruction_set
 from runtimes.matrix.instruction_set import instructions as matrix
-from qcir.circuit import Circuit, Instruction
-from qstack import Handler, InstructionDefinition
+from qstack.circuit import Circuit, Instruction
+from qstack import Handler, GadgetDefinition
 
 
 class Measure(Handler):
@@ -9,7 +9,7 @@ class Measure(Handler):
     def source(self):
         return instruction_set.Measure
 
-    def uses(self) -> set[InstructionDefinition]:
+    def uses(self) -> set[GadgetDefinition]:
         return {
             matrix.Measure,
         }
