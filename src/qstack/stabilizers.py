@@ -85,39 +85,6 @@ def update_syndrome_bit(bit: int, syndrome: dict[QubitId, Pauli], accumulated_er
     return bit % 2
 
 
-# class StabilizerContext(GadgetContext):
-#     stabilizers: list[dict[QubitId, Pauli]] = []
-#     distance = 1
-#     tables = {}
-
-#     # def new_register(self) -> RegisterId:
-#     #     result = RegisterId(self.register_count)
-#     #     self.register_count += 1
-#     #     return result
-
-#     def allocate(self, *targets: QubitId):
-#         result = super().allocate(*targets)
-#         result.stabilizers = self.stabilizers.copy()
-#         result.distance = self.distance
-
-#         return result
-
-#     def __add__(self, other):
-#         assert isinstance(other, StabilizerContext), f"Only context + context implemented."
-
-#         result = super().__add__(self, other)
-#         result.stabilizers = self.stabilizers | other.stabilizers
-#         result.distance = self.distance
-
-#         return result
-
-#     def find_stabilizer_group(self, qubits: list[QubitId]) -> list[dict[QubitId, Pauli]]:
-#         return [stabilizer for stabilizer in self.stabilizers if any(q in stabilizer for q in qubits)]
-
-#     def add_stabilizer(self, stabilizer: list[Pauli], qubits: list[QubitId]):
-#         self.stabilizers.add({q: p for (q, p) in zip(qubits, stabilizer)})
-
-
 def SyndromExtraction(
     qubits: list[QubitId], stabilizers: dict[QubitId, Pauli], distance: int = 3, abort: bool = False
 ):
@@ -148,23 +115,9 @@ def SyndromExtraction(
         corrections = context.get("corrections", {})
         last_error = {q: corrections.get(q, I) for q in qubits}
 
-        # if any([c == None for c in last_error]):
-        #     for i, q in enumerate(qubits):
-        #         corrections[q.value] = None
-        #     return
-
         new_syndrome = tuple(
             [update_syndrome_bit(bit, stabilizer, last_error) for (bit, stabilizer) in zip(syndrome, stabilizers)]
         )
-
-        # if abort:
-        #     trivial_syndrome = tuple([0] * len(registers))
-        #     if new_syndrome == trivial_syndrome:
-        #         return
-        #     else:
-        #         for i, q in enumerate(qubits):
-        #             corrections[q.value] = None
-        #         return
 
         lookup_table = get_lookup_table(stabilizers=stabilizers, distance=distance)
         if new_syndrome in lookup_table:

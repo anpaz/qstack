@@ -68,27 +68,27 @@ results.plot_histogram()
 
 
 # %%
-import qstack.layers.rep3_bit.gadgets as gadgets
+import qstack.layers.rep3_bit.gadgets as rep3
 
 # %%
-prep0 = gadgets.PrepareZero("q0")
+prep0 = rep3.PrepareZero("q0")
 print(prep0)
 
 # %%
-prep1 = gadgets.PrepareZero("q1")
+prep1 = rep3.PrepareZero("q1")
 print(prep1)
 
 
 # %%
-x1 = gadgets.X("q1")
+x1 = rep3.X("q1")
 print(x1)
 
 # %%
-m0 = gadgets.MeasureZ("q0")
+m0 = rep3.MeasureZ("q0")
 print(m0)
 
 # %%
-m1 = gadgets.MeasureZ("q1")
+m1 = rep3.MeasureZ("q1")
 print(m1)
 
 # %%
@@ -124,11 +124,11 @@ print(bit, context)
 
 
 # %%
-backend.eval(program, shots=1000).plot_histogram()
+backend.eval(encoded, shots=1000).plot_histogram()
 
 # %%
 noisy_backend = StateVectorBackend(noise="noise.json")
-results = noisy_backend.eval(program, shots=1000)
+results = noisy_backend.eval(encoded, shots=1000)
 results.plot_histogram()
 
 

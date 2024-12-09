@@ -34,9 +34,6 @@ def MeasureZ(target) -> Gadget:
     def measure_decoder(bits: tuple[int], context):
         corrections = context.get("corrections", {})
         last_error = {q: corrections.get(q, I) for q in qubits}
-        # if any([c == None for c in last_error]):
-        #     memory[encoded_register.value] = "?"
-        # else:z
         stabilizer = stabilizer_for([Z, I, I], qubits)
         updated_value = update_syndrome_bit(bits[0], stabilizer, last_error)
 
