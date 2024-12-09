@@ -2,136 +2,134 @@
 import init_logging
 
 # %%
-from qcir import *
-from qstack.layers.apps.instruction_set import *
+from qstack.layers.apps.gadgets import *
 
-error_rate = 0.01
+start = Start("hello world")
+print(start)
 
-circuit = Circuit(
-    [
-        # PrepareZero([QubitId(0)]),
-        # PrepareOne([QubitId(1)]),
-        PrepareRandom([QubitId(2)]),
-        PrepareBell([QubitId(3), QubitId(4)]),
-        Tick(),
-        Comment("Measure qubits into classical registers"),
-        # Measure([RegisterId(0), QubitId(0)]),
-        # Measure([RegisterId(1), QubitId(1)]),
-        Measure([RegisterId(0), QubitId(2)]),
-        Measure([RegisterId(1), QubitId(4)]),
-        Measure([RegisterId(2), QubitId(4)]),
-    ]
+# %%
+zero = PrepareZero("q0")
+print(zero)
+
+# %%
+one = PrepareOne("q1")
+print(one)
+
+
+# %%
+random = PrepareRandom("q2")
+print(random)
+
+
+# %%
+m0 = MeasureZ("q0")
+print(m0)
+
+# %%
+m1 = MeasureZ("q1")
+print(m1)
+
+# %%
+m2 = MeasureZ("q2")
+print(m1)
+
+# %%
+program = start | zero
+print(program)
+
+# %%
+program |= one
+print(program)
+
+
+# %%
+program |= m0
+program |= m1
+
+print(program)
+
+
+# %%
+from qstack.backend import StateVectorBackend
+
+backend = StateVectorBackend()
+backend.single_shot(program)
+
+# %%
+backend.eval(program).plot_histogram()
+
+
+# %%
+from qstack.backend import StateVectorBackend
+
+noisy_backend = StateVectorBackend(noise="noise.json")
+results = noisy_backend.eval(program, shots=1000)
+results.plot_histogram()
+
+
+# %%
+import qstack.layers.rep3_bit.gadgets as gadgets
+
+# %%
+prep0 = gadgets.PrepareZero("q0")
+print(prep0)
+
+# %%
+prep1 = gadgets.PrepareZero("q1")
+print(prep1)
+
+
+# %%
+x1 = gadgets.X("q1")
+print(x1)
+
+# %%
+m0 = gadgets.MeasureZ("q0")
+print(m0)
+
+# %%
+m1 = gadgets.MeasureZ("q1")
+print(m1)
+
+# %%
+print(program)
+
+
+# %%
+from qstack.gadget import Gadget
+
+encoded = Gadget(
+    name="Hello World (encoded)",
+    prepare=[prep0, prep1],
+    compute=[x1],
+    measure=[m0, m1],
 )
-
-print(circuit)
-
-
-# %%
-from qstack.layers.apps.compiler import compile
-
-t1 = compile(circuit, name="basic example")
-print(t1)
-
-# # %%
-# from qstack.layers.apps.backend import Backend
-
-# backend = Backend()
-# backend.eval(t1).plot_histogram()
-
-# # %%
-# from qstack.layers.cliffords.compilers.apps.compiler import compile
-
-# t2 = compile(t1)
-# print(t2)
-
-# # %%
-# from qstack.layers.cliffords.backend import Backend
-
-# backend = Backend()
-# backend.eval(t2).plot_histogram()
-
-
-# # %%
-# from qstack.layers.apps.backend import Backend
-# from qstack.noise import simple_noise_model
-
-# noise_model = simple_noise_model(error_rate)
-# backend = Backend(noise_model=noise_model)
-# results = backend.eval(t1)
-# results.plot_histogram()
-
-
-# # %%
-# results.get_histogram()
+print(encoded)
 
 
 # %%
-from qstack.layers.rep3_bit.compilers.apps.compiler import compile
+from qstack.backend import StateVectorBackend
 
-t3 = compile(t1)
-print(t3)
-
-
-# %%
-from qstack.layers.cliffords.backend import Backend
-
-backend = Backend()
-result = backend.eval(t3)
-result.plot_histogram()
+backend = StateVectorBackend()
+backend.single_shot(encoded)
 
 
 # %%
-hist = result.get_raw_histogram()
-for i in list(hist.items())[:40]:
-    print(i)
+bit, context = noisy_backend.single_shot(encoded)
+while bit == (0, 1):
+    bit, context = noisy_backend.single_shot(encoded)
+    # print('.')
 
-# %%
-hist = result.get_histogram()
-for i in list(hist.items())[:40]:
-    print(i)
+print(bit, context)
 
 
 # %%
-from qstack.layers.cliffords.backend import Backend
-from qstack.noise import simple_noise_model
-
-noise_model = simple_noise_model(error_rate)
-backend = Backend(noise_model=noise_model)
-result = backend.eval(t3)
-result.plot_histogram()
-
-# # %%
-# result.get_histogram()
-
+backend.eval(program, shots=1000).plot_histogram()
 
 # %%
-from qstack.layers.steane.compilers.apps.compiler import compile
+noisy_backend = StateVectorBackend(noise="noise.json")
+results = noisy_backend.eval(program, shots=1000)
+results.plot_histogram()
 
-t4 = compile(t1)
-# print(t4)
-
-# %%
-from qstack.layers.cliffords.backend import Backend
-
-backend = Backend()
-result = backend.eval(t4)
-result.plot_histogram()
-
-
-# %%
-hist = result.get_raw_histogram()
-for i in list(hist.items())[:40]:
-    print(i)
-
-
-# %%
-from qstack.layers.cliffords.backend import Backend
-from qstack.noise import simple_noise_model
-
-noise_model = simple_noise_model(error_rate)
-backend = Backend(noise_model=noise_model)
-result = backend.eval(t4)
-result.plot_histogram()
-# result.get_raw_histogram()
 
 # %%

@@ -1,39 +1,141 @@
-from dataclasses import dataclass
-from typing import Any, Callable, Set
+from dataclasses import dataclass, field
+from typing import Any, Callable
 
-from qstack.circuit import Attribute, Circuit, Instruction, QubitId, Tick
-from .gadget_definition import GadgetDefinition
+
+@dataclass(frozen=True)
+class Comment:
+    value: str
+
+    def __repr__(self):
+        return f"# {self.value}"
+
+
+@dataclass(frozen=True)
+class QubitId:
+    value: int | str
+
+    @staticmethod
+    def wrap(id):
+        if isinstance(id, QubitId):
+            return id
+        return QubitId(id)
+
+    def __repr__(self):
+        return str(self.value)
+
+
+@dataclass(frozen=True)
+class Instruction:
+    name: str
+    targets: tuple[QubitId]
+    parameters: tuple | None = None
+
+    def __str__(self):
+        value = f"{self.name}"
+
+        if self.parameters:
+            value += "(" + ", ".join([str(t) for t in self.parameters]) + ")"
+        if self.targets:
+            value += " " + " ".join([str(t) for t in self.targets])
+        # if self.attributes:
+        #     value += (" " * max(25 - len(value), 5)) + ", ".join([str(t) for t in self.attributes])
+        # if self.comment:
+        #     value += (" " * max(37 - len(value), 5)) + str(self.comment)
+        return value
+
+
+@dataclass(frozen=True)
+class Tick(Instruction):
+    def __init__(super):
+        super.__init__(name="----", targets=None)
+
+
+@dataclass(frozen=True)
+class GadgetContext:
+    allocations: dict[QubitId, int] = field(default_factory=dict)
+    next_id: int = 0
+
+    def allocate(self, *targets: QubitId):
+        new_qubits = {}
+        id = self.next_id
+        for q in targets:
+            assert q not in self.allocations, f"Qubit {q} is already allocated"
+            new_qubits[q] = id
+            id += 1
+        return self.__class__(allocations=self.allocations | new_qubits, next_id=id)
+
+    def __add__(self, other):
+        assert isinstance(other, GadgetContext), f"Only context + context implemented."
+
+        shared = self.allocations.keys() & other.allocations.keys()
+        assert len(shared) == 0, f"These qubits were prepared in both contexts: {shared}"
+
+        return self.allocate(*other.allocations.keys())
 
 
 @dataclass(frozen=True)
 class Gadget:
-    name: str
-    targets: list[QubitId] | None
-    parameters: list[str | int | float | tuple | complex] | None = None
-    circuit: Circuit | None = None
-    decoder: Callable[[list[bool]], list[bool] | None] | None = None
-    metadata: dict[str, Any] | None = None
+    name: str = "n/a"
+    # context: GadgetContext = GadgetContext()
+    prepare: tuple[Instruction] | None = None
+    compute: tuple[Instruction] | None = None
+    measure: tuple[Instruction] | None = None
+    decode: Callable[[tuple[bool]], tuple[bool] | None] | None = None
 
-    def save(self, filename: str | None = None):
-        if not filename:
-            filename = f"{self.name}.crc"
-        with open(filename, "w", encoding="utf-8") as file:
-            file.write(str(self))
+    def check(self):
+        # TODO: verify the new Gadget is valid:
+        # to be valid:
+        #   * all target qubits should be allocated
+        #   * each qubit can be prepared only once.
+        #   * each qubit can be measured only once (?)
+        # def check_unique_measures():
+        #     all_targets = []
+        #     for instr in self.measure:
+        #         all_targets.extend(instr.targets)  # Collect all targets from each object
+        #     # Check for duplicates by comparing the length of the set and the list
+        #     return len(all_targets) == len(set(all_targets))
+
+        # assert check_unique_measures(), "Some qubits measured more than once."
+        return self
 
     def __repr__(self):
-        # for circuit visualization tool:
-        coords = [
-            # "@coords " + "".join([f" {i} ({i} 0)" for i in range(self.circuit.qubit_count)]),
-            # "@coords " + "".join([f" ${i} ({i} 1)" for i in range(self.circuit.register_count)]),
-            "@decoder " + (self.decoder.__name__ if self.decoder else "none"),
-            # "@view 'wires'",
-            "",
-        ]
-        name = f"name: {self.name}"
-        line = "-" * len(name)
-        header = f"# {line}\n" + f"# {name}\n" + f"# {line}\n"
-        md = self.metadata or []
-        attributes = "\n".join([str(m) for m in md] + coords)
-        body = str(self.circuit)
+        def print_list(circuit):
+            if circuit:
+                return "\n   " + "\n   ".join([str(i) for i in circuit])
+            else:
+                return "n/a"
 
-        return "\n".join([header, attributes, body])
+        return f"""
+===============================================
+name: {self.name}
+===============================================
+prepare: {print_list(self.prepare)}
+compute: {print_list(self.compute)}
+measure: {print_list(self.measure)}
+"""
+
+    def __or__(self, other):
+        def add_lists(a, b):
+            a = list(a) if a else []
+            b = list(b) if b else []
+            return a + b
+
+        def decoder(bits, context):
+            bits1 = tuple()
+            bits2 = tuple()
+            if self.decode:
+                length = sum(len(m.targets) for m in self.measure) if self.measure else 0
+                bits1, context = self.decode(bits[:length], context)
+            if other.decode:
+                length = sum(len(m.targets) for m in other.measure) if other.measure else 0
+                bits2, context = other.decode(bits[-length:], context)
+            return bits1 + bits2, context
+
+        assert isinstance(other, Gadget), f"Only gadget | gadget implemented."
+
+        prep = add_lists(self.prepare, other.prepare)
+        comp = add_lists(self.compute, other.compute)
+        meas = add_lists(self.measure, other.measure)
+        # context = self.context + other.context
+        dec = decoder if (self.decode or other.decode) else None
+        return Gadget(name=self.name, prepare=prep, compute=comp, measure=meas, decode=dec).check()

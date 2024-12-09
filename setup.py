@@ -22,10 +22,12 @@ setup(
     install_requires=[
         # List your project dependencies here, e.g.
         "numpy",
-        "pyquil",
+        # "pyquil",
         # wip:
-        "qiskit",
-        "pytket",
-        "stim",
+        # "qiskit",
+        # "pytket",
+        # "stim",
+        "qsharp",
+        "matplotlib",
     ],
 )

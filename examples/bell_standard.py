@@ -3,7 +3,7 @@ import init_logging
 
 # %%
 from qcir import *
-from qstack.layers.apps.instruction_set import *
+from qstack.layers.apps.gadgets import *
 
 circuit = Circuit(
     name="two bells",
