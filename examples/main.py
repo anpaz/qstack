@@ -17,7 +17,7 @@ print(one)
 
 
 # %%
-random = PrepareRandom("q2")
+random = PrepareRandom("r")
 print(random)
 
 
@@ -29,9 +29,6 @@ print(m0)
 m1 = MeasureZ("q1")
 print(m1)
 
-# %%
-m2 = MeasureZ("q2")
-print(m1)
 
 # %%
 program = start | zero
@@ -113,8 +110,11 @@ from qstack.backend import StateVectorBackend
 backend = StateVectorBackend()
 backend.single_shot(encoded)
 
+# %%
+backend.eval(encoded, shots=1000).plot_histogram()
 
 # %%
+noisy_backend = StateVectorBackend(noise="noise.json")
 bit, context = noisy_backend.single_shot(encoded)
 while bit == (0, 1):
     bit, context = noisy_backend.single_shot(encoded)
@@ -122,12 +122,7 @@ while bit == (0, 1):
 
 print(bit, context)
 
-
 # %%
-backend.eval(encoded, shots=1000).plot_histogram()
-
-# %%
-noisy_backend = StateVectorBackend(noise="noise.json")
 results = noisy_backend.eval(encoded, shots=1000)
 results.plot_histogram()
 
