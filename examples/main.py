@@ -1,5 +1,5 @@
 # %%
-import init_logging
+# import init_logging
 
 # %%
 from qstack.layers.apps.gadgets import *
@@ -95,6 +95,8 @@ print(program)
 # %%
 from qstack.gadget import Gadget
 
+# TODO:
+# encoded = encode(program, rep3)
 encoded = Gadget(
     name="Hello World (encoded)",
     prepare=[prep0, prep1],
