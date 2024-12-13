@@ -90,7 +90,7 @@ def SyndromExtraction(
 ):
     ancillas = [QubitId(f"ancilla.{idx}") for idx in range(len(stabilizers))]
 
-    prepare = [Instruction(name="|0⟩", targets=[a]) for a in ancillas]
+    prepare = [Instruction(name="reset", targets=[a]) for a in ancillas]
 
     compute = (
         [Instruction(name="h", targets=[a]) for a in ancillas]

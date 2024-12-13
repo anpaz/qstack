@@ -6,6 +6,11 @@ from qsharp.noisy_simulator import StateVectorSimulator, Operation, Instrument
 from qstack.noise import noiseless_model, NoiseModel
 
 
+import logging
+
+logger = logging.getLogger("qstack")
+
+
 class StateVectorEmulator:
 
     def __init__(self, num_qubits: int, noise_model: NoiseModel | str | None = None) -> None:
@@ -33,6 +38,7 @@ class StateVectorEmulator:
         self.sim = StateVectorSimulator(num_qubits, seed=random.randint(0, 1000))
 
     def eval(self, instruction: Instruction):
+        logger.debug(f"eval: {instruction}")
         name = instruction.name
         qubits = [int(t.value) for t in instruction.targets]
         if name in self.operations:
@@ -44,6 +50,7 @@ class StateVectorEmulator:
         if name in self.measurements:
             noisy_instrument = self.measurements[name]
             outcome = self.sim.sample_instrument(noisy_instrument, qubits)
-            return (outcome.bit_count() % 2,)
+            logger.debug(f"outcome: {outcome}")
+            return (outcome,)
 
         assert False, f"Instruction {name} is not supported."

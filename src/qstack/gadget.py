@@ -46,8 +46,8 @@ class Instruction:
 
 @dataclass(frozen=True)
 class Tick(Instruction):
-    def __init__(super):
-        super.__init__(name="----", targets=None)
+    def __init__(self):
+        super().__init__(name="----", targets=None)
 
 
 @dataclass(frozen=True)
@@ -76,6 +76,8 @@ class GadgetContext:
 @dataclass(frozen=True)
 class Gadget:
     name: str = "n/a"
+    level: int = 0
+
     # context: GadgetContext = GadgetContext()
     prepare: tuple[Instruction] | None = None
     compute: tuple[Instruction] | None = None
@@ -98,21 +100,39 @@ class Gadget:
         # assert check_unique_measures(), "Some qubits measured more than once."
         return self
 
-    def __repr__(self):
-        def print_list(circuit):
+    def __str__(self):
+        def print_list(circuit, needs_tick):
             if circuit:
-                return "\n   " + "\n   ".join([str(i) for i in circuit])
+                result = "\n"
+                if needs_tick:
+                    result += "------------------------\n"
+                result += "\n".join([str(i) for i in circuit])
+                needs_tick = True
+                return result
             else:
-                return "n/a"
+                return ""
 
-        return f"""
-===============================================
-name: {self.name}
-===============================================
-prepare: {print_list(self.prepare)}
-compute: {print_list(self.compute)}
-measure: {print_list(self.measure)}
-"""
+        if self.level > 0:
+            result = ""
+            for g in self.prepare + self.compute + self.measure:
+                instr = str(g)
+                if instr:
+                    result += instr
+            if self.decode:
+                result += f"\n=========== decoder (level:{self.level}) ==========="
+            # else:
+            #     result += f"\n------------------------"
+            return result
+
+        else:
+            result = ""
+            for circuit in [self.prepare, self.compute, self.measure]:
+                result += print_list(circuit, len(result) > 0)
+            if self.decode:
+                result += f"\n=========== decoder (level:{self.level}) ==========="
+            # else:
+            #     result += f"\n------------------------"
+            return result
 
     def __or__(self, other):
         def add_lists(a, b):

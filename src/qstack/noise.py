@@ -328,17 +328,17 @@ def noiseless_model() -> NoiseModel:
     noise_model.add_instrument("mz", [(mz_matrix_0, "noise_1q", "0"), (mz_matrix_1, "noise_1q", "1")])
     # Maybe add: mx
 
-    mzz_matrices = [
-        np.array([[1 if i == j else 0 for i in range(4)] for j in range(4)], dtype=complex) for x in range(4)
-    ]
-    noise_model.add_instrument(
-        "mzz", [(mzz_matrices[i], "noise_2q", str(f"{i:02b}".count("1") % 2)) for i in range(4)]
-    )
+    # mzz_matrices = [
+    #     np.array([[1 if i == j else 0 for i in range(4)] for j in range(4)], dtype=complex) for x in range(4)
+    # ]
+    # noise_model.add_instrument(
+    #     "mzz", [(mzz_matrices[i], "noise_2q", str(f"{i:02b}".count("1") % 2)) for i in range(4)]
+    # )
 
-    mzzz_matrices = [
-        np.array([[1 if i == j else 0 for i in range(8)] for j in range(8)], dtype=complex) for x in range(8)
-    ]
-    noise_model.add_instrument("mzzz", [(mzzz_matrices[i], "noise_3q", str(i)) for i in range(8)])
+    # mzzz_matrices = [
+    #     np.array([[1 if i == j else 0 for i in range(8)] for j in range(8)], dtype=complex) for x in range(8)
+    # ]
+    # noise_model.add_instrument("mzzz", [(mzzz_matrices[i], "noise_3q", str(i)) for i in range(8)])
 
     # Add the reset operation
     noise_model.add_gate("|0⟩", i_matrix, "noise_reset")
@@ -346,6 +346,6 @@ def noiseless_model() -> NoiseModel:
 
     # Add the model
     noise_model.add_noise_model(
-        ["i", "x", "y", "z", "h", "s", "t", "s_adj", "t_adj", "cx", "cz", "mz", "mzz", "mzzz", "|0⟩", "reset"]
+        ["i", "x", "y", "z", "h", "s", "t", "s_adj", "t_adj", "cx", "cz", "mz", "|0⟩", "reset"]
     )
     return noise_model

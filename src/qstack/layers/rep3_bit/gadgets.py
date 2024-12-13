@@ -1,5 +1,5 @@
 import logging
-from qstack.gadget import Gadget, Instruction, QubitId, GadgetContext
+from qstack.gadget import Gadget, Instruction, QubitId, Tick
 from qstack.paulis import *
 from qstack.stabilizers import SyndromExtraction, update_syndrome_bit, stabilizer_for
 
@@ -10,7 +10,7 @@ def PrepareZero(target) -> Gadget:
     target = QubitId.wrap(target)
     qubits = [QubitId(f"{target.value}.{idx}") for idx in range(3)]
 
-    prep = Gadget(name="|0⟩", prepare=[Instruction(name="|0⟩", targets=[q]) for q in qubits])
+    prep = Gadget(name="reset", prepare=[Instruction(name="reset", targets=[q]) for q in qubits])
     return prep
 
 
@@ -24,6 +24,37 @@ def X(target) -> Gadget:
 
     compute = Gadget(name="x", compute=[Instruction(name="x", targets=[q]) for q in qubits])
     correct = SyndromExtraction(qubits=qubits, stabilizers=stabilizers)
+    return compute | correct
+
+
+def H(target) -> Gadget:
+    target = QubitId.wrap(target)
+    qubits = [QubitId(f"{target.value}.{idx}") for idx in range(3)]
+    stabilizers = [
+        stabilizer_for([Z, Z, I], qubits),
+        stabilizer_for([Z, I, Z], qubits),
+    ]
+
+    compute = Gadget(name="h", compute=[Instruction(name="h", targets=[q]) for q in qubits])
+    correct = SyndromExtraction(qubits=qubits, stabilizers=stabilizers)
+    return compute | correct
+
+
+def CX(control, target) -> Gadget:
+    control = QubitId.wrap(control)
+    target = QubitId.wrap(target)
+    q_ctl = [QubitId(f"{control.value}.{idx}") for idx in range(3)]
+    q_tgt = [QubitId(f"{target.value}.{idx}") for idx in range(3)]
+    q_all = q_ctl + q_tgt
+    stabilizers = [
+        stabilizer_for([Z, Z, I, I, I, I], q_all),
+        stabilizer_for([Z, I, Z, I, I, I], q_all),
+        stabilizer_for([I, I, I, Z, Z, I], q_all),
+        stabilizer_for([I, I, I, Z, I, Z], q_all),
+    ]
+
+    compute = Gadget(name="cx", compute=[Instruction(name="cx", targets=[c, t]) for (c, t) in zip(q_ctl, q_tgt)])
+    correct = SyndromExtraction(qubits=q_all, stabilizers=stabilizers)
     return compute | correct
 
 

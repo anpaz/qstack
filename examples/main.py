@@ -4,44 +4,17 @@
 # %%
 from qstack.layers.apps.gadgets import *
 
-start = Start("hello world")
-print(start)
+program = Start("hello world")
 
-# %%
-zero = PrepareZero("q0")
-print(zero)
+program |= PrepareZero("q0")
+program |= PrepareOne("q1")
+program |= PrepareRandom("q2")
 
-# %%
-one = PrepareOne("q1")
-print(one)
+program |= Entangle("q2", "q1")
 
-
-# %%
-random = PrepareRandom("r")
-print(random)
-
-
-# %%
-m0 = MeasureZ("q0")
-print(m0)
-
-# %%
-m1 = MeasureZ("q1")
-print(m1)
-
-
-# %%
-program = start | zero
-print(program)
-
-# %%
-program |= one
-print(program)
-
-
-# %%
-program |= m0
-program |= m1
+program |= Measure("q0")
+program |= Measure("q1")
+program |= Measure("q2")
 
 print(program)
 
@@ -53,7 +26,7 @@ backend = StateVectorBackend()
 backend.single_shot(program)
 
 # %%
-backend.eval(program).plot_histogram()
+backend.eval(program, shots=100).plot_histogram()
 
 
 # %%
@@ -67,29 +40,16 @@ results.plot_histogram()
 # %%
 import qstack.layers.rep3_bit.gadgets as rep3
 
-# %%
 prep0 = rep3.PrepareZero("q0")
-print(prep0)
-
-# %%
 prep1 = rep3.PrepareZero("q1")
-print(prep1)
-
-
-# %%
-x1 = rep3.X("q1")
-print(x1)
-
-# %%
+prep2 = rep3.PrepareZero("q2")
+h = rep3.X("q2")
+cx = rep3.CX("q2", "q1")
 m0 = rep3.MeasureZ("q0")
-print(m0)
-
-# %%
 m1 = rep3.MeasureZ("q1")
-print(m1)
+m2 = rep3.MeasureZ("q2")
 
-# %%
-print(program)
+# print(program)
 
 
 # %%
@@ -99,9 +59,10 @@ from qstack.gadget import Gadget
 # encoded = encode(program, rep3)
 encoded = Gadget(
     name="Hello World (encoded)",
-    prepare=[prep0, prep1],
-    compute=[x1],
-    measure=[m0, m1],
+    level=1,
+    prepare=[prep0, prep1, prep2],
+    compute=[h, cx],
+    measure=[m0, m1, m2],
 )
 print(encoded)
 
@@ -109,11 +70,13 @@ print(encoded)
 # %%
 from qstack.backend import StateVectorBackend
 
-backend = StateVectorBackend()
+backend = StateVectorBackend(num_qubits=15)
 backend.single_shot(encoded)
 
 # %%
-backend.eval(encoded, shots=1000).plot_histogram()
+
+# %%
+backend.eval(encoded, shots=100).plot_histogram()
 
 # %%
 noisy_backend = StateVectorBackend(noise="noise.json")

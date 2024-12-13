@@ -16,7 +16,7 @@ def Start(name):
 def PrepareZero(target):
     target = QubitId.wrap(target)
     # context = new_context_with(target)
-    return Gadget(name="|0⟩", prepare=(Instruction(name="|0⟩", targets=[target]),))
+    return Gadget(name="reset", prepare=(Instruction(name="reset", targets=[target]),))
 
 
 def X(target):
@@ -35,7 +35,16 @@ def H(target):
     )
 
 
-def MeasureZ(target):
+def CX(ctl, target):
+    ctl = QubitId.wrap(ctl)
+    target = QubitId.wrap(target)
+    return Gadget(
+        name="cx",
+        compute=(Instruction(name="cx", targets=[ctl, target]),),
+    )
+
+
+def Measure(target):
     target = QubitId.wrap(target)
 
     def passthrough_decoder(bits, context):
@@ -57,3 +66,7 @@ def PrepareOne(target):
 
 def PrepareRandom(target):
     return PrepareZero(target) | H(target)
+
+
+def Entangle(ctl, target):
+    return CX(ctl, target)
