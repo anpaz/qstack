@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable
 
 
@@ -84,6 +84,9 @@ class Gadget:
     measure: tuple[Instruction] | None = None
     decode: Callable[[tuple[bool]], tuple[bool] | None] | None = None
 
+    def patch(self, **kwargs):
+        return replace(self, **kwargs)
+
     def check(self):
         # TODO: verify the new Gadget is valid:
         # to be valid:
@@ -112,9 +115,13 @@ class Gadget:
             else:
                 return ""
 
+        prepare = self.prepare or []
+        compute = self.compute or []
+        measure = self.measure or []
+
         if self.level > 0:
             result = ""
-            for g in self.prepare + self.compute + self.measure:
+            for g in prepare + compute + measure:
                 instr = str(g)
                 if instr:
                     result += instr
@@ -126,7 +133,7 @@ class Gadget:
 
         else:
             result = ""
-            for circuit in [self.prepare, self.compute, self.measure]:
+            for circuit in [prepare, compute, measure]:
                 result += print_list(circuit, len(result) > 0)
             if self.decode:
                 result += f"\n=========== decoder (level:{self.level}) ==========="

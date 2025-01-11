@@ -58,6 +58,24 @@ def CX(control, target) -> Gadget:
     return compute | correct
 
 
+def CZ(control, target) -> Gadget:
+    control = QubitId.wrap(control)
+    target = QubitId.wrap(target)
+    q_ctl = [QubitId(f"{control.value}.{idx}") for idx in range(3)]
+    q_tgt = [QubitId(f"{target.value}.{idx}") for idx in range(3)]
+    q_all = q_ctl + q_tgt
+    stabilizers = [
+        stabilizer_for([Z, Z, I, I, I, I], q_all),
+        stabilizer_for([Z, I, Z, I, I, I], q_all),
+        stabilizer_for([I, I, I, Z, Z, I], q_all),
+        stabilizer_for([I, I, I, Z, I, Z], q_all),
+    ]
+
+    compute = Gadget(name="cz", compute=[Instruction(name="cz", targets=[c, t]) for (c, t) in zip(q_ctl, q_tgt)])
+    correct = SyndromExtraction(qubits=q_all, stabilizers=stabilizers)
+    return compute | correct
+
+
 def MeasureZ(target) -> Gadget:
     target = QubitId.wrap(target)
     qubits = [QubitId(f"{target.value}.{idx}") for idx in range(3)]
@@ -71,6 +89,23 @@ def MeasureZ(target) -> Gadget:
         return (updated_value,), context
 
     return Gadget(name="mz", measure=[Instruction(name="mz", targets=[q]) for q in qubits], decode=measure_decoder)
+
+
+def encode(instruction: Instruction) -> Gadget:
+    if instruction.name == "reset":
+        return PrepareZero(instruction.targets[0])
+    if instruction.name == "x":
+        return X(instruction.targets[0])
+    if instruction.name == "h":
+        return H(instruction.targets[0])
+    if instruction.name == "cx":
+        return CX(instruction.targets[0], instruction.targets[1])
+    if instruction.name == "cz":
+        return CZ(instruction.targets[0], instruction.targets[1])
+    if instruction.name == "mz":
+        return MeasureZ(instruction.targets[0])
+    else:
+        raise ValueError(f"Unknown instruction: {instruction}")
 
 
 # def x(inst: Instruction, context: Context) -> Circuit:

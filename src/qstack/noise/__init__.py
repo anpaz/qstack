@@ -1,7 +1,10 @@
 import os
 import json
+import logging
 import numpy as np
 from numpy import ndarray
+
+logger = logging.getLogger("scout")
 
 
 class NoiseModel:
@@ -103,14 +106,13 @@ class NoiseModel:
 
     def find_and_load_model(self, model_name: str):
         # Try to find model in the config folder
-        model_config_path = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "noise_models", model_name + ".json")
-        )
+        model_config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), model_name + ".json"))
         if os.path.exists(model_config_path):
             self.load_config(model_config_path)
             model = self.noise_models.get("")
             if model is not None:
                 self.default_model = ""
+                logger.info(f"Using default noise model from file '{model_config_path}'")
                 return
 
         if os.path.exists(model_name):
@@ -118,6 +120,7 @@ class NoiseModel:
             model = self.noise_models.get("")
             if model is not None:
                 self.default_model = ""
+                logger.info(f"Using default noise model from file '{model_name}'")
                 return
 
         raise RuntimeError(f"Cannot find noise model '{model_name}'")
@@ -209,7 +212,14 @@ class NoiseModel:
             return [U]
         else:
             # Apply unitary transformation to each Kraus operator
-            return [E @ U for E in kraus_ops]
+            if callable(U):
+
+                def noisyU(*args):
+                    return [E @ U(*args) for E in kraus_ops]
+
+                return noisyU
+            else:
+                return [E @ U for E in kraus_ops]
 
     @staticmethod
     def reverse_unitary_from_kraus(unitary: np.ndarray, combined_kraus_ops: list[np.ndarray]):
@@ -226,10 +236,10 @@ class NumpyMatrixEncoder(json.JSONEncoder):
     Use this class during JSON serialization to convert any NumPy arrays to a JSON representation
     """
 
-    def default(self, o):
-        if isinstance(o, np.ndarray):
-            return [np.array2string(row, separator=",", max_line_width=1000000) for row in o]
-        return super().default(o)
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return [np.array2string(row, separator=",", max_line_width=1000000) for row in obj]
+        return super().default(obj)
 
 
 def json_array_to_numpy_complex_matrix(json_arr):
@@ -242,6 +252,21 @@ def json_array_to_numpy_complex_matrix(json_arr):
     return np.array(evalMatrix, dtype=np.complex128)
 
 
+def json_array_to_numpy_complex_matrix_maker(json_arr, parameters: list[str]):
+    """
+    Utility to convert a JSON string array to a function that generates NumPy matrices.
+    Each strings should represent a row of complex python expressions and be of the form.
+    The parameters used in the expressions should be listed in the parameters list."
+    """
+    import cmath
+
+    array_expr = f"[{','.join(json_arr)}]"
+    src = f"lambda {','.join(parameters)}: np.array({array_expr}, dtype=np.complex128)"
+    env = {"np": np, "exp": cmath.exp, "sin": cmath.sin, "cos": cmath.cos}
+    numpy_complex_matrix_maker = eval(src, env)
+    return numpy_complex_matrix_maker
+
+
 # TODO: Update to the new schema or convert after read
 def load_matrices_from_json(dct: dict):
     """
@@ -249,9 +274,17 @@ def load_matrices_from_json(dct: dict):
     """
     if "gates" in dct:
         for gName in dct["gates"]:
-            (opMatrix, noise) = dct["gates"][gName]
-            npArray = json_array_to_numpy_complex_matrix(opMatrix)
-            dct["gates"][gName] = (npArray, noise)
+            gate = dct["gates"][gName]
+            parameters = None
+            if len(gate) == 3:
+                (opMatrix, noise, parameters) = gate
+                if parameters:
+                    npArrayMaker = json_array_to_numpy_complex_matrix_maker(opMatrix, parameters)
+                    dct["gates"][gName] = (npArrayMaker, noise)
+            if not parameters or len(gate) == 2:
+                (opMatrix, noise) = gate
+                npArray = json_array_to_numpy_complex_matrix(opMatrix)
+                dct["gates"][gName] = (npArray, noise)
 
     if "instruments" in dct:
         for iName in dct["instruments"]:
@@ -273,79 +306,3 @@ def load_matrices_from_json(dct: dict):
             dct["krausOperators"][krausOp] = newMatrices
 
     return dct
-
-
-def noiseless_model() -> NoiseModel:
-    noise_model = NoiseModel()
-
-    # Add the default (noiseless) Kraus operators
-    noise_model.add_kraus_operator("noise_1q", [np.eye(2, dtype=np.complex128)])
-    noise_model.add_kraus_operator("noise_2q", [np.eye(4, dtype=np.complex128)])
-    noise_model.add_kraus_operator("noise_3q", [np.eye(8, dtype=np.complex128)])
-
-    # Below is equivalent to 100% amplitude damping noise, i.e. set qubit to 0 state
-    noise_model.add_kraus_operator("noise_reset", [np.array([[1 + 0j, 0], [0, 0]]), np.array([[0 + 0j, 1], [0, 0]])])
-
-    i_matrix = np.eye(2, dtype=np.complex128)
-    x_matrix = np.array([[0 + 0j, 1], [1, 0]])
-    y_matrix = np.array([[0 + 0j, -1j], [1j, 0]])
-    z_matrix = np.array([[1 + 0j, 0], [0, -1]])
-
-    h_matrix = np.array([[1 + 0j, 1], [1, -1]]) / np.sqrt(2)
-    s_matrix = np.sqrt(z_matrix)
-    t_matrix = np.sqrt(s_matrix)
-
-    s_adj_matrix = np.conjugate(s_matrix.T)
-    t_adj_matrix = np.conjugate(t_matrix.T)
-
-    cx_matrix = np.array([[1 + 0j, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1], [0, 0, 1, 0]])
-    cz_matrix = np.array([[1 + 0j, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, -1]])
-
-    # Add the default unitary operations
-    noise_model.add_gate("i", i_matrix, "noise_1q")
-    noise_model.add_gate("x", x_matrix, "noise_1q")
-    noise_model.add_gate("y", y_matrix, "noise_1q")
-    noise_model.add_gate("z", z_matrix, "noise_1q")
-    noise_model.add_gate("h", h_matrix, "noise_1q")
-    noise_model.add_gate("s", s_matrix, "noise_1q")
-    noise_model.add_gate("t", t_matrix, "noise_1q")
-    noise_model.add_gate("s_adj", s_adj_matrix, "noise_1q")
-    noise_model.add_gate("t_adj", t_adj_matrix, "noise_1q")
-    noise_model.add_gate("cx", cx_matrix, "noise_2q")
-    noise_model.add_gate("cz", cz_matrix, "noise_2q")
-    # Maybe add: rx, ry, rz, and cxx to round out the set (how to parameterize?)
-
-    # Add the measurement 'instruments'
-    mz_matrix_0 = np.array([[1 + 0j, 0], [0, 0]])
-    mz_matrix_1 = np.array([[0 + 0j, 0], [0, 1]])
-    noise_model.add_instrument("mz", [(mz_matrix_0, "noise_1q", "0"), (mz_matrix_1, "noise_1q", "1")])
-    # Maybe add: mx
-
-    # Add the measurement 'instruments'
-
-    mz_matrix_0 = np.array([[1 + 0j, 0], [0, 0]])
-    mz_matrix_1 = np.array([[0 + 0j, 0], [0, 1]])
-    noise_model.add_instrument("mz", [(mz_matrix_0, "noise_1q", "0"), (mz_matrix_1, "noise_1q", "1")])
-    # Maybe add: mx
-
-    # mzz_matrices = [
-    #     np.array([[1 if i == j else 0 for i in range(4)] for j in range(4)], dtype=complex) for x in range(4)
-    # ]
-    # noise_model.add_instrument(
-    #     "mzz", [(mzz_matrices[i], "noise_2q", str(f"{i:02b}".count("1") % 2)) for i in range(4)]
-    # )
-
-    # mzzz_matrices = [
-    #     np.array([[1 if i == j else 0 for i in range(8)] for j in range(8)], dtype=complex) for x in range(8)
-    # ]
-    # noise_model.add_instrument("mzzz", [(mzzz_matrices[i], "noise_3q", str(i)) for i in range(8)])
-
-    # Add the reset operation
-    noise_model.add_gate("|0⟩", i_matrix, "noise_reset")
-    noise_model.add_gate("reset", i_matrix, "noise_reset")
-
-    # Add the model
-    noise_model.add_noise_model(
-        ["i", "x", "y", "z", "h", "s", "t", "s_adj", "t_adj", "cx", "cz", "mz", "|0⟩", "reset"]
-    )
-    return noise_model

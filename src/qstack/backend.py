@@ -89,7 +89,7 @@ class Backend:
         self.emulator = emulator
 
     def single_shot(self, gadget: Gadget):
-        self.emulator.reset()
+        self.emulator.restart()
         return eval_gadget_with(gadget, self.emulator, context={})
 
     def eval(self, gadget: Gadget, *, shots: int | None = 1000) -> Outcome:
