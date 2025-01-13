@@ -1,6 +1,6 @@
 # %%
 from typing import Callable
-from qstack.gadget import Gadget, QubitId, Instruction, GadgetContext
+from qstack.gadget import Gadget, QubitId, Instruction
 from qstack.paulis import *
 
 import logging

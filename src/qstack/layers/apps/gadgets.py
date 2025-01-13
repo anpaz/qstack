@@ -1,9 +1,5 @@
 from dataclasses import dataclass
-from qstack.gadget import Instruction, QubitId, Gadget, GadgetContext
-
-
-def new_context_with(id):
-    return GadgetContext().allocate(id)
+from qstack.gadget import Instruction, QubitId, Gadget
 
 
 ############################################
@@ -47,13 +43,9 @@ def CX(ctl, target):
 def Measure(target):
     target = QubitId.wrap(target)
 
-    def passthrough_decoder(bits, context):
-        return (bits, context)
-
     return Gadget(
         name="mz",
         measure=(Instruction(name="mz", targets=[target], parameters=None),),
-        decode=passthrough_decoder,
     )
 
 

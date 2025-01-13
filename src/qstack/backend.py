@@ -5,9 +5,10 @@ from matplotlib import pyplot as plt
 from qstack.gadget import Gadget, Instruction, QubitId
 from qstack.emulators.statevector.emulator import StateVectorEmulator
 from qstack.noise import NoiseModel
+from qstack.qpu import QPU
 
 
-def eval_gadget_with(gadget: Gadget, emulator, context):
+def eval_gadget_with(gadget: Gadget, qpu: QPU, context):
     def allocate(targets: list[QubitId]):
         allocations = context.get("allocations", {})
         next_id = context.get("next_id", 0)
@@ -33,13 +34,13 @@ def eval_gadget_with(gadget: Gadget, emulator, context):
 
     def eval_one(instr: Instruction, ctx, is_prepare=False, is_measure=False):
         if isinstance(instr, Gadget):
-            return eval_gadget_with(gadget=instr, emulator=emulator, context=ctx)
+            return eval_gadget_with(gadget=instr, qpu=qpu, context=ctx)
         else:
             targets = instr.targets
             if is_prepare:
                 allocate(targets)
             instr = bind(instr)
-            raw_outcome = emulator.eval(instr)
+            raw_outcome = qpu.eval(instr)
             if is_measure:
                 deallocate(targets)
             return raw_outcome, ctx
@@ -85,12 +86,12 @@ class Outcome:
 
 
 class Backend:
-    def __init__(self, emulator, qubit_count=30) -> None:
-        self.emulator = emulator
+    def __init__(self, qpu: QPU, qubit_count=30) -> None:
+        self.qpu = qpu
 
     def single_shot(self, gadget: Gadget):
-        self.emulator.restart()
-        return eval_gadget_with(gadget, self.emulator, context={})
+        self.qpu.restart()
+        return eval_gadget_with(gadget, self.qpu, context={})
 
     def eval(self, gadget: Gadget, *, shots: int | None = 1000) -> Outcome:
         return Outcome([self.single_shot(gadget) for _ in range(shots)])

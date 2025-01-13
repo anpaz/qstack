@@ -51,29 +51,6 @@ class Tick(Instruction):
 
 
 @dataclass(frozen=True)
-class GadgetContext:
-    allocations: dict[QubitId, int] = field(default_factory=dict)
-    next_id: int = 0
-
-    def allocate(self, *targets: QubitId):
-        new_qubits = {}
-        id = self.next_id
-        for q in targets:
-            assert q not in self.allocations, f"Qubit {q} is already allocated"
-            new_qubits[q] = id
-            id += 1
-        return self.__class__(allocations=self.allocations | new_qubits, next_id=id)
-
-    def __add__(self, other):
-        assert isinstance(other, GadgetContext), f"Only context + context implemented."
-
-        shared = self.allocations.keys() & other.allocations.keys()
-        assert len(shared) == 0, f"These qubits were prepared in both contexts: {shared}"
-
-        return self.allocate(*other.allocations.keys())
-
-
-@dataclass(frozen=True)
 class Gadget:
     name: str = "n/a"
     level: int = 0

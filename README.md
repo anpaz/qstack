@@ -1,4 +1,141 @@
-# qstack
+# Designing a Software Stack for Quantum Programs with Error Correction
+
+Quantum processors differ fundamentally from classical computers. They leverage particles governed by quantum mechanics to perform computations using principles like superposition, entanglement, and interference. These properties allow quantum processors to perform certain tasks far more efficiently than classical computers. However, this efficiency comes at a cost: quantum computations are prone to extremely high error rates, which make long-running computations infeasible.
+
+Error correction techniques, analogous to those used in long-distance communication, can mitigate this problem. The objective is to enable long-running quantum calculations by transparently integrating an error correction layer that reduces the error rate sufficiently to avoid computational failures.
+
+# Key Challenges:
+
+1. **Classical Computation in Error Correction:**  
+   Error correction inherently involves **classical computation** —it requires real-time measurements and corrections based on classical logic. Designing a software stack that transparently incorporates this quantum error correction (qec) layer without introducing a fully hybrid language is a significant challenge. The stack must bridge the gap between quantum and classical processing seamlessly.
+
+2. **Hardware and Code Dependence:**  
+   Quantum processors typically offer a small, hardware-specific set of universal instructions from which all other operations can be derived. These instruction sets vary across hardware platforms, reflecting differences in the underlying quantum technologies. Similarly, quantum error correction codes define their own universal sets of instructions, which differ between codes. This diversity complicates the development of a universal software stack.
+
+# The `qstack` approach:
+
+With `qstack`, we propose a generic mechanism to define a layer of quantum processing. `qstack` introduces clear boundaries to support two key types of composition:
+
+- **Horizontal Composition:** Enables the integration of quantum instructions, even when implemented using fault-tolerant circuits with real-time error correction.
+- **Vertical Composition:** Allows layering to build concatenated error correction codes.
+
+qstack is designed to be **platform-agnostic** and **qec code-agnostic**, providing flexibility to adapt to diverse hardware platforms and error correction strategies. This design ensures the stack can support scalable quantum computations while remaining transparent to the user.
+
+## The QPU
+
+At the lowest level of the stack is the Quantum Processing Unit (QPU). In `qstack`, the QPU is required to implement two methods:
+
+- **`restart()`**: Resets the machine to a well-defined state, initializing all qubits.
+- **`eval(instruction: Instruction) -> tuple[result]`**: Executes a single quantum instruction and returns its outcome.
+
+## Instruction
+
+An instruction represents a single quantum operation and consists of:
+
+- **name**: Specifies the operation to perform.
+- **targets**: A list of qubit IDs the instruction applies to.
+- **parameters**: A list of parameters associated with the instruction.
+
+## The Qubit Lifecycle
+
+```mermaid
+flowchart TD
+    A(prepare) --> B(compute \*) --> C(measure)
+```
+
+Qubits follow a defined lifecycle with three instruction types:
+
+- **prepare**: Allocates and initializes a qubit with the specified id.
+- **compute**: Modifies the state of one or more qubits.
+- **measure**: Reads the value of a qubit and deallocates it.
+
+### Rules of Qubit Usage:
+
+- Each qubit is uniquely identified by an id.
+- A qubit must be used in a **prepare** instruction exactly once.
+- Once prepared, a qubit can undergo one or more **compute** instructions.
+- A qubit must eventually be used in a single **measure** instruction, after which it is deallocated and can be reused by repeating the cycle.
+
+## Evaluating instructions
+
+Each QPU define its own list of instructions, but it must support at least one prepare (typically `reset`) and one measure (typically `mz`) instruction.
+
+To evaluate instructions, the QPU must evaluate one instruction at a time. Validations that each qubit follows its lifecycle are made at the framework level.
+
+# Gadgets
+
+In `qstack`, gadgets are the minimal unit of execution.
+
+```
+   gadget         ::= prepare compute measure decoder
+   prepare        ::= instructions
+   compute        ::= instructions
+   measure        ::= instructions
+   instructions   ::= None
+                    | instruction
+                    | instruction instructions
+   instruction    ::= gadget
+                    | operation targets
+   operation      ::= name
+                    | name(parameters)
+   parameters     ::= parameter
+                    | parameter, parameters
+   targets        ::= target
+                    | target targets
+   target         ::= *id*
+   name           ::= *id*
+   parameter      ::= int | float | str
+   decoder        ::= None
+                    | tuple[int] -> tuple[int]
+```
+
+Each gadget consists of three sets of instructions (**prepare**, **compute**, **measure**) and a **decoder**. At runtime, the instructions are executed in the following order:
+
+1. **Prepare**: All prepare instructions are executed first to initialize qubits.
+2. **Compute**: All compute instructions are executed to modify qubit states.
+3. **Measure**: All measure instructions are executed to extract qubit values.
+
+### Decoder
+
+A decoder is an arbitrary classical function that processes the gadget's measurement outcomes. It takes a tuple of all measurements defined in the gadget and outputs a new tuple representing the gadget's final result. If a gadget does not have a decoder, the raw measurement outcomes are passed through as the gadget's output.
+
+### Example: Bell Experiment Gadget
+
+The following gadget prepares two qubits in a Bell state and returns their measurement outcomes:
+
+```
+gadget: bell experiment
+- prepare:
+  reset 0
+  reset 1
+- compute:
+  h 0
+  cx 0 1
+- measure:
+  mz 0
+  mz 1
+```
+
+In this example:
+
+- **Prepare**: Resets qubits 0 and 1 to a known state.
+- **Compute**: Applies a Hadamard gate (`h`) to qubit 0 and a controlled-X gate (`cx`) from qubit 0 to qubit 1.
+- **Measure**: Measures qubits 0 and 1 in the Z basis (`mz`).
+
+# Layers and Encoding
+
+In `qstack`, each **layer** defines its own instruction set by specifying a collection of gadgets.
+
+### Encoding a Program
+
+A program can be encoded into a layer by replacing all its instructions with corresponding gadgets. The layer is responsible for:
+
+1. **Mapping Instructions to Gadgets**: Each instruction in the program must be translated into one or more gadgets defined by the layer.
+2. **Execution Compatibility**: Ensuring the program's behavior is preserved through the mapping and execution process.
+
+This mechanism allows for flexible abstraction and the integration of additional functionality, such as error correction or hardware-specific optimizations, without modifying the original program.
+
+# OLD: qstack
 
 qstack provides a flexible framework for developing multi-layer applications. Its main focus is fault-tolerant quantum software stacks.
 
@@ -28,9 +165,6 @@ There are two type of gadgets:
 Gadget definitions are layer independent, i.e. we use the same datastructures to define an instance of a gadget. This is achieved by having all layers follow the same architecture and use a common interface to represent quantum circuits and decoders.
 
 ## Data gadgets
-
-
-
 
 ## Quantum Circuits
 
