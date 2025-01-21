@@ -50,7 +50,7 @@ Each block follows a three-stage lifecycle:
 
 ```mermaid
 flowchart LR
-    A(prepare) --> B($\text{compute}^*$) --> C(measure)
+    A(prepare) --> B(compute^*) --> C(measure)
 ```
 
 An instruction is defined by an **action**, a unitary matrix representing the effect of the instruction, and a **stage**, an attribute representing the stage in the target blocks' lifecycle:
