@@ -73,7 +73,7 @@ entangle  q1 q0
 
 # Layers
 
-A layer represents an abstraction for a JIT quantum compiler. A layer defines an **input and an output instruction sets**. Its main task is to take instructions in the input instruction set, and generate **gadgets** defined in terms of the output instruction set.
+A layer represents an abstraction for a JIT quantum compiler. A layer defines an **input and an output instruction sets**. Its main task is to take instructions from the input instruction set, and generate **gadgets** defined in terms of the output instruction set.
 
 ## Types of layers
 
@@ -99,8 +99,8 @@ Where `---` indicates boundaries between gadgets.
 
 ### Decomposition layer
 
-A decomposition layer accepts instructions in an input instruction set, and generates gadgets
-implemented in terms of an output instruction set. For example, the outcome of program (1)
+A decomposition layer accepts instructions from an input instruction set, and generates gadgets
+implemented in terms of a different output instruction set. For example, the outcome of program (1)
 after being evaluates by a clifford-gates decomposing layer would be:
 
 ```
@@ -114,11 +114,11 @@ cx      q1 q0
 
 ### Error correction layer
 
-An error correction layer accepts instructions from an input instruction set, defined by a list
+An error correction layer accepts the list
 of encoded instruction supported by an error correction code, and generates gadgets
-implemented in terms of a specific output instruction set, typically a set of clifford
-instructions. For example, the outcome of program (1)
-after being evaluated by a error correction layer based on a repetition code would be something like:
+implemented in terms of an output instruction set, typically the set of clifford
+instructions. For example, the outcome of evaluating program (1)
+with an error correction layer based on the repetition code would be similar to:
 
 ```
 |+z⟩    q0.0
@@ -163,7 +163,7 @@ A layer implements the following methods:
 
 # Gadgets
 
-A gadget represents the minimum unit of execution of quantum instructions in a quantum processor. It is comprised of:
+A gadget represents a unit of execution of quantum instructions in a quantum processor. It is comprised of:
 
 1. **instructions**: a list of instructions to be evaluated by a layer
 2. **continuation**: an optional method that given the list of outcomes from its instructions returns a new gadget.
@@ -175,7 +175,7 @@ Instructions are evaluated in the context of a quantum stack. A stack is compris
 A stack is said to be valid if for all layers in the stack, each instruction in the ouput instruction set is an instruction of the input instrction set of the next layer in the stack.
 
 <!-- prettier-ignore -->
-$ L_{n}.\text{O} \subset L_{n+1}.\text{I} $
+$L_{n}.\text{O} \subset L_{n+1}.\text{I}$
 
 # Encoding quantum programs
 
@@ -189,7 +189,7 @@ A quantum program is said to be well formed if for every block used in the progr
 
 # Evaluating quantum programs:
 
-A stack executes a list of instructions and report their measurements by recursively evaluating them on each layer as follows:
+A stack evaluates a list of instructions and report their measurements by recursively evaluating them on each layer as follows:
 
 1. It identifies all prepare instructions and call `allocate` on the current layer with the correspond block_ids.
 2. It calls evaluate on the current layer.
@@ -228,5 +228,5 @@ def eval_gadget(gadget, stack):
   else:
     outcomes = eval_instructions(gadget.instructions, stack)
     cont_gadget = gadget.continuation(outcomes)
-    eval_gadget(cont_gadget)
+    eval_gadget(cont_gadget, stack)
 ```
