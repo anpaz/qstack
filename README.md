@@ -49,7 +49,7 @@ The computational space of a quantum processor is partitioned into **blocks**, w
 Each block follows a three-stage lifecycle:
 
 ```mermaid
-flowchart TD
+flowchart LR
     A(prepare) --> B($\text{compute}^*$) --> C(measure)
 ```
 
