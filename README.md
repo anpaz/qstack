@@ -6,10 +6,10 @@ Error correction techniques, analogous to those used in long-distance communicat
 
 # Key Challenges:
 
-1. **Classical Computation in Error Correction:**  
+1. **Classical Computation in Error Correction:**
    Error correction inherently involves **classical computation** (ref) —it requires real-time measurements and corrections based on classical logic. Designing a software stack that transparently incorporates this quantum error correction (qec) layer without introducing a fully hybrid language is a significant challenge. The stack must bridge the gap between quantum and classical processing seamlessly.
 
-2. **Hardware and Code Dependence:**  
+2. **Hardware and Code Dependence:**
    Quantum processors typically offer a small, hardware-specific set of universal instructions from which all other operations can be derived. These instruction sets vary across hardware platforms, reflecting differences in the underlying quantum technologies. Similarly, quantum error correction codes define their own universal sets of instructions, which differ between codes. This diversity complicates the development of a universal software stack.
 
 # The `qstack` approach:
@@ -31,8 +31,14 @@ Quantum programs are defined by a list of **instructions** to be evaluated by on
 - **`targets`**: A list of block IDs the instruction applies to.
 
 ```
-   program        ::= instructions
-   instructions   ::= None
+   program        ::= kernels
+   kernels        ::= kernel
+                    | kernel '---' kernels
+   kernel         ::= alloc compute meas
+                    | compute
+   alloc          ::= allocate: targets
+   meas           ::= measure
+   compute        ::= kernels
                     | instruction
                     | instruction '\n' instructions
    instruction    ::= operation  targets
@@ -50,7 +56,7 @@ Each block follows a three-stage lifecycle:
 
 ```mermaid
 flowchart LR
-    A(prepare) --> B(compute^*) --> C(measure)
+    A(allocate) --> B(compute^*) --> C(measure)
 ```
 
 An instruction is defined by an **action**, a unitary matrix representing the effect of the instruction, and a **stage**, an attribute representing the stage in the target blocks' lifecycle:
@@ -62,14 +68,11 @@ An instruction is defined by an **action**, a unitary matrix representing the ef
 An example of a basic quantum program that prepares and measures a bell state:
 
 ```
-|zero⟩    q0
-|random⟩  q1
-entangle  q1 q0
-⟨measure| q0
-⟨measure| q1
+allocate: q0 q1
+  flip_coin q0
+  entangle  q0 q1
+measure
 ```
-
-> Notice how prepare instructions are decorated with a ket `| ⟩` and measure instuctions with a bra `⟨ |`.
 
 # Layers
 
@@ -86,16 +89,12 @@ of gates that can be executed in parallel. For example, the outcome of (1)
 after being evaluates by an scheduling layer would be:
 
 ```
-|zero⟩    q0
-|random⟩  q1
----
-entangle  q1 q0
----
-⟨measure| q0
-⟨measure| q1
+allocate: q0 q1
+  flip_coin q0
+  ---
+  entangle q0 q1
+measure
 ```
-
-Where `---` indicates boundaries between gadgets.
 
 ### Decomposition layer
 
@@ -104,12 +103,10 @@ implemented in terms of a different output instruction set. For example, the out
 after being evaluates by a clifford-gates decomposing layer would be:
 
 ```
-|+z⟩    q0
-|+z⟩    q1
-h       q1
-cx      q1 q0
-⟨z|     q0
-⟨z|     q1
+allocate: q0 q1
+  h q0
+  cx q0 q1
+measure
 ```
 
 ### Error correction layer
@@ -121,23 +118,27 @@ instructions. For example, the outcome of evaluating program (1)
 with an error correction layer based on the repetition code would be similar to:
 
 ```
-|+z⟩    q0.0
-|+z⟩    q0.1
-|+z⟩    q0.2
----
-|+z⟩    q1.0
-|+z⟩    q1.1
-|+z⟩    q1.1
----
-...
----
-⟨z|     q0.0
-⟨z|     q0.2
-⟨z|     q0.2
----
-⟨z|     q1.0
-⟨z|     q1.2
-⟨z|     q1.2
+allocate: q0.0 q0.1 q0.2 q1.0 q1.1 q1.2
+  allocate: a0 a1
+    cx q0.0 a0
+    cx q0.1 a1
+    cx q0.1 a0
+    cx q0.2 a1
+  measure
+  ---
+  allocate: a0 a1
+    cx q1.0 a0
+    cx q1.1 a1
+    cx q1.1 a0
+    cx q1.2 a1
+  measure
+  ---
+  h q0.0
+  h q0.1
+  h q0.2
+  ---
+  ...
+measure
 ```
 
 ### Noise layer
@@ -163,10 +164,10 @@ A layer implements the following methods:
 
 # Gadgets
 
-A gadget represents a unit of execution of quantum instructions in a quantum processor. It is comprised of:
+A gadget represents a unit of hybrid execution in a quantum processor. It is comprised of:
 
-1. **instructions**: a list of instructions to be evaluated by a layer
-2. **continuation**: an optional method that given the list of outcomes from its instructions returns a new gadget.
+1. **kernel**: a kernel to be evaluated by a layer
+2. **continuation**: an optional method that given the list of outcomes from the kernel's measurements, returns a new gadget.
 
 # Stack
 
@@ -202,31 +203,26 @@ A stack evaluates a list of instructions and report their measurements by recurs
 5. Returns the outcomes from `measure`
 
 ```python
-def eval_instructions(instructions, stack):
+def eval_kernel(kernel, stack):
   layer = stack.layers[0]
 
-  if len(instructions) == 0:
-    return None
+  if kernel.blocks:
+    layer.allocate(kernel.blocks)
+
+  for gadget in layer.eval(instructions):
+    eval_gadget(gadget, stack.layers[1:])
+
+  if kernel.blocks:
+    return layer.measure(kernel.blocks)
   else:
-    for instruction in instructions:
-      if instruction.stage == 'prepare':
-        stack.allocate(instruction.targets)
-
-    for gadget in layer.eval(instructions):
-      eval_gadget(gadget, stack.layers[1:])
-
-    outcomes = []
-    for instruction in instructions:
-      if instruction.stage == 'measure':
-        outcomes += stack.measure(instruction.targets)
-    return outcomes
+    return None
 
 
 def eval_gadget(gadget, stack):
   if gadget is None :
     return
   else:
-    outcomes = eval_instructions(gadget.instructions, stack)
+    outcomes = eval_kernel(gadget.kernel, stack)
     cont_gadget = gadget.continuation(outcomes)
     eval_gadget(cont_gadget, stack)
 ```
