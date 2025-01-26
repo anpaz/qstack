@@ -22,92 +22,249 @@ With `qstack`, we propose a generic mechanism to define a layer of quantum compi
 
 qstack is designed to be **platform-agnostic** and **qec code-agnostic**, providing flexibility to adapt to diverse hardware platforms and error correction strategies. This design ensures the stack can support scalable quantum computations while remaining transparent to the user.
 
-# Quantum Programs and Instructions
+# Ideas
 
-Quantum programs are defined by a list of **instructions** to be evaluated by one or more **layers** of a **quantum stack**. Each instruction represents a single quantum operation, consisting of:
+- Pure quantum language.
+- Compilers can focus on quantum elements
+- Clear boundaries of execution steps.
 
-- **`op_id`**: The operation to perform.
-- **`parameters`**: An optional list of parameters for the operation.
-- **`targets`**: A list of block IDs the instruction applies to.
+# Programs and Kernels
 
-```
-   program        ::= kernels
-   kernels        ::= kernel
-                    | kernel '---' kernels
-   kernel         ::= alloc compute meas
-                    | compute
-   alloc          ::= allocate: targets
-   meas           ::= measure
-   compute        ::= kernels
-                    | instruction
-                    | instruction '\n' instructions
-   instruction    ::= operation  targets
-   operation      ::= op_id
-                    | op_id(parameters)
-   parameters     ::= parameter
-                    | parameter, parameters
-   parameter      ::= int | float | str
-   targets        ::= block_id
-                    | block_id targets
-```
-
-The computational space of a quantum processor is partitioned into **blocks**, with instructions applied at the block level.
-Each block follows a three-stage lifecycle:
-
-```mermaid
-flowchart LR
-    A(allocate) --> B(compute^*) --> C(measure)
-```
-
-An instruction is defined by an **action**, a unitary matrix representing the effect of the instruction, and a **stage**, an attribute representing the stage in the target blocks' lifecycle:
-
-- **prepare**: blocks in the instruction are newly allocated and initialized to a well-known state _before_ they are processed by the instruction; they will remain allocated after the instruction.
-- **compute**: blocks have been previously prepared and are in an unknown state; they will remain allocated after the instruction.
-- **measure**: blocks have been previously prepared and are in an unknown state; they will be measured and deallocated _after_ the instruction.
-
-An example of a basic quantum program that prepares and measures a bell state:
+A quantum program is comprised of a list of kernels. A kernel represents a unit of computation consisting of:
 
 ```
-allocate: q0 q1
-  flip_coin q0
-  entangle  q0 q1
+program     :== kernels
+kernels     :== kernel | kernels
+kernel      :== allocate target: compute measure
+              | compute
+compute   	:== *None*
+              | instruction
+              | instruction compute
+              | kernel
+instruction :== op targets
+op          :== *id*
+target      :== *id*
+```
+
+The simplest kernel that always returns the value `0` would be:
+
+```
+allocate q1:
 measure
 ```
 
-# Layers
-
-A layer represents an abstraction for a JIT quantum compiler. A layer defines an **input and an output instruction sets**. Its main task is to take instructions from the input instruction set, and generate **gadgets** defined in terms of the output instruction set.
-
-## Types of layers
-
-There can be many type of layers.
-
-### Scheduling layer
-
-A scheduling layer uses the same input and output instruction set, but divides execution in terms
-of gates that can be executed in parallel. For example, the outcome of (1)
-after being evaluates by an scheduling layer would be:
+A kernel with a `flip` instruction would always return `1`:
 
 ```
-allocate: q0 q1
-  flip_coin q0
-  ---
-  entangle q0 q1
+allocate q1:
+  flip q1
 measure
 ```
 
-### Decomposition layer
+# Kernel Semantics
 
-A decomposition layer accepts instructions from an input instruction set, and generates gadgets
-implemented in terms of a different output instruction set. For example, the outcome of program (1)
-after being evaluates by a clifford-gates decomposing layer would be:
+Kernels follow classic quantum programs semantics.
+
+A kernel's `allocate` initializes a single qubit, represented with a quantum state. This state is a 2-dimensional vector indicating the amplitude probabilities for measuring `0` or `1`. The qubit is always initialized in the state `[1, 0]`, corresponding to a 100% probability of measuring `0`.
+
+Instructions inside a kernel modify the state by applying a unitary matrix. These operations transform the quantum state while preserving the total probability.
+
+A kernel `measure` deallocates the associated qubit and returns either `0` or `1`, based on the respective probabilities defined by the state amplitudes.
+
+A kernel can embed other kernels. Each time a qubit is allocated, the state size doubles, representing the probability of measuring the tensor product of the existing space with `0` and `1`. Other qubits remains in scope, allowing operations to be applied across all allocated qubits.
 
 ```
-allocate: q0 q1
-  h q0
-  cx q0 q1
+allocate q1:
+  allocate q2:
+  measure
 measure
 ```
+
+Instructions are applied to the entire state. If an instruction specifies a single qubit, it is understood as the Kronecker product of the one-qubit operation with the Identity operator applied to the remaining qubits. This ensures the operation affects only the specified qubit while leaving the rest of the computational state unchanged.
+
+A `measure` collapses the state of the entire system. The state is projected onto one of two subspaces corresponding to the outcome (`0` or `1`) of the last computational space added to the system. The outcome depends on the state, with probabilities determined by the amplitudes of the basis states. The resulting state is renormalized to ensure the total probability remains 1, modifying the amplitudes of all basis states in the system accordingly.
+
+Measurements are collected at runtime and stored in a FILO stack. The outcome of the program are the measurements in the stack.
+
+A simple program that prepares and measures a bell-state could be represented as:
+
+```
+allocate q1:
+  allocate q2:
+    mix q1
+    entangle q1 q2
+  measure
+measure
+```
+
+It is a common pattern to initialize and measure together multiple computations spaces, so we provide syntactic sugar for this. This is an equivalent bell-state preparation:
+
+```
+allocate q1 q2:
+  mix q1
+  entangle q1 q2
+measure
+```
+
+# Hybrid kernels
+
+Programs can incorporate classical computation after a kernel's measurement. This enhances our grammar with:
+
+```
+kernel        :== allocate target: compute measure >> classical_instruction
+```
+
+Classical instructions are invoked by consuming measurements from the measurement stack using the `>>` operator. The `>>` operator pops measurements from the stack and pass them to a classical instruction for execution. Once popped the measurement is not available for consumption anymore.
+
+There are two types of classical instructions:
+
+- continuations: return a new kernel, which is immediately evaluated.
+- decoders: return a new measurement, which is pushed into the stack.
+
+Notice that in neither case the classical instruction has the ability to modify the quantum state. All communication between the QPU and the CPU happen via measurements in the stack.
+
+## Continuations
+
+A continuation is a classical method that given a list measurements returns a new kernel. It enables different execution paths based on measurement outcomes.
+
+Take for example the code for the Teleport protocol:
+
+```
+allocate target:
+  allocate source shared:
+    # prepare source in some random state
+    random x
+
+    # entangle shared and target
+    h shared
+    cx shared target
+
+    # deentangle shared and source
+    cx source shared
+    h source
+  measure
+  >> teleport.fix(target)
+measure
+```
+
+`teleport.fix` is a classical function defined in the `teleport` layer. A continuation consumes a fixed number of measurements from the stack and produces a new kernel. In this context, `fix` could be defined in Python as:
+
+```
+def fix(target, m0, m1):
+    instructions = []
+    if m1 == 1:
+        instructions.append(Instruction('z', target))
+    if m0 == 1:
+        instructions.append(Instruction('x', target))
+    return instructions
+```
+
+At runtime, if the outcome of the measurements is (0,1) `fix` returns:
+
+```
+z target
+```
+
+however, if the outcome is (1,1) `fix` returns:
+
+```
+z target
+x target
+```
+
+The returned kernel is immediately evaluated before the next kernel starts.
+
+### Loops
+
+Notice a continuation can return another kernel that calls itself, enabling loops. For example, given this program:
+
+```
+allocate a:
+measure
+>> sample.loop
+```
+
+and a `loop` function like:
+
+```python
+def loop(m0):
+  if m0 == 0:
+    return Allocate('a', Instruction('h', 'a')).Continue(loop)
+  else:
+    return None
+```
+
+Notice how the program will keep running until the measurement of the qubit returns 1.
+
+## Decoders
+
+A decoder is a classical method that, given a list of measurements, returns a new measurement.
+
+Take for example a simple majority bit vote encoding:
+
+```
+allocate q1 q2 q3:
+measure
+>> majority.vote
+```
+
+`majority.vote` is a classical function defined in the `majority` layer. Similar to a `continuation`, a decoder consumes measurements from the stack but produces a new outcome. In this context, `vote` would be defined as:
+
+```python
+def vote(m1, m2, m2):
+    if sum([m1, m2, m3]) > 2
+        return 1
+    else:
+        return 0
+```
+
+`>>` consumes 3 outcomes from the stack and pass them to `vote`. `vote` returns a single value `0` which is pushed into the stack, which is the only item left in the stack when the program completes, as such, the outcome of the program would then be just `0`.
+
+The stack makes it possible to chain decoders. This is how majoriy vote would work with 3 blocks of 3 qubits:
+
+```
+allocate q1 q2 q3:
+  allocate q3 q4 q5:
+  measure >> majority.vote
+  allocate q3 q4 q5:
+  measure >> majority.vote
+measure >> majority.vote
+>> majority.vote
+```
+
+The outcome of this program would still be just `0`.
+
+# Layers, Compilers & Stacks
+
+A **layer** defines an **instruction set** available to a program, including both quantum and classical instructions.
+
+A **compiler** transforms a program from one layer to another. It converts quantum instructions while preserving their semantics and retains classical instruction invocations with the same parameters. It may add new classical instructions as needed.
+
+A **stack** is an ordered list of layers and compilers, where the top and bottom elements are always layers, and a compiler exists between each pair of layers.
+
+A program is associated with a stack. All quantum instructions must belong to the bottom layer, while classical instructions can originate from any layer and are always prefixed by the layer they belong to. The actual stack is specified via a `@stack` attribute:
+
+```
+@stack: cliffords
+
+allocate: q1 q2
+  h q1
+  cx q1 q2
+measure
+```
+
+# Executing programs
+
+At runtime, quantum instructions in the kernel are evaluated by a QPU capable of processing the instructions of the bottom layer.
+
+Classical instructions are evaluated as follows:
+
+1. **Continuations**: Invoked to produce a new kernel, which is compiled in real time by the stack into the lowest-level layer. Once compiled, the resulting kernel is evaluated by the QPU.
+2. **Decoders**: Invoked to generate a new measurement, which is pushed onto the measurement stack.
+
+---
+
+# old stuff...
 
 ### Error correction layer
 
