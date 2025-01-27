@@ -1,0 +1,19 @@
+from dataclasses import dataclass
+from .ast import Kernel, ContinuationKernel, DecoderKernel
+from .stack import Stack
+
+
+@dataclass(frozen=True)
+class Program:
+    kernels: tuple[Kernel]
+    stack: Stack
+
+    @property
+    def depth(self):
+        return max(k.depth for k in self.kernels)
+
+    def __str__(self):
+        attributes = ["@stack: " + str(self.stack)]
+        kernels = [k.print() for k in self.kernels]
+
+        return "\n".join(attributes + ["---"] + kernels)

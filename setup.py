@@ -20,14 +20,13 @@ setup(
     ],
     python_requires=">=3.9",
     install_requires=[
-        # List your project dependencies here, e.g.
         "numpy",
-        # "pyquil",
+        "matplotlib",
+        "qsharp",
         # wip:
+        # "pyquil",
         # "qiskit",
         # "pytket",
         # "stim",
-        "qsharp",
-        "matplotlib",
     ],
 )
