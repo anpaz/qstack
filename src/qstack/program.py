@@ -5,8 +5,8 @@ from .stack import Stack
 
 @dataclass(frozen=True)
 class Program:
-    kernels: tuple[Kernel]
     stack: Stack
+    kernels: tuple[Kernel]
 
     @property
     def depth(self):

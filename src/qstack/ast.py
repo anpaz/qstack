@@ -46,6 +46,18 @@ class Kernel:
     def depth(self):
         pass
 
+    @staticmethod
+    def allocate(*targets: str, compute=list[Instruction]) -> "Kernel":
+        return QuantumKernel(targets=[QubitId.wrap(q) for q in targets], instructions=compute)
+
+    @staticmethod
+    def continue_with(continuation: "ContinuationKernel"):
+        return continuation
+
+    @staticmethod
+    def decode_with(decode: "DecoderKernel"):
+        return decode
+
 
 @dataclass(frozen=True)
 class ContinuationKernel:
@@ -56,8 +68,12 @@ class ContinuationKernel:
     def depth(self):
         return 0
 
+    def print(self, indent: int = 0) -> str:
+        pre = " " * indent
+        return pre + ">> " + self.name
+
     def __str__(self):
-        return ">> " + self.name
+        return self.print()
 
 
 @dataclass(frozen=True)
@@ -69,8 +85,12 @@ class DecoderKernel:
     def depth(self):
         return 0
 
+    def print(self, indent: int = 0) -> str:
+        pre = " " * indent
+        return pre + ">> " + self.name
+
     def __str__(self):
-        return ">> " + self.name
+        return self.print()
 
 
 @dataclass(frozen=True)
@@ -86,7 +106,7 @@ class QuantumKernel:
         else:
             return len(self.targets) + max(k.depth for k in sub_kernels)
 
-    def print(self, indent: int = 0):
+    def print(self, indent: int = 0) -> str:
         pre = " " * indent
         result = pre + "allocate " + " ".join(str(q) for q in self.targets) + ":\n"
         for i in self.instructions:
@@ -95,14 +115,5 @@ class QuantumKernel:
 
         return result
 
-    @staticmethod
-    def allocate(*targets: str, compute=list[Instruction]):
-        return QuantumKernel(targets=[QubitId.wrap(q) for q in targets], instructions=compute)
-
-    @staticmethod
-    def continue_with(continuation: ContinuationKernel):
-        return continuation
-
-    @staticmethod
-    def decode_with(decode: DecoderKernel):
-        return decode
+    def __str__(self):
+        return self.print()

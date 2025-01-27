@@ -33,17 +33,16 @@ qstack is designed to be **platform-agnostic** and **qec code-agnostic**, provid
 A quantum program is comprised of a list of kernels. A kernel represents a unit of computation consisting of:
 
 ```
-program     :== kernels
-kernels     :== kernel | kernels
-kernel      :== allocate target: compute measure
-              | compute
-compute   	:== *None*
-              | instruction
-              | instruction compute
-              | kernel
+program       :== kernels
+kernels       :== kernel | kernels
+kernel        :== target instructions
+instructions  :== *None*
+                | instruction
+                | instruction instructions
+                | kernel
 instruction :== op targets
 op          :== *id*
-target      :== *id*
+target      :== *id* | None
 ```
 
 The simplest kernel that always returns the value `0` would be:

@@ -13,7 +13,7 @@ def _fix(m0: Outcome, m1: Outcome) -> Kernel:
 
 
 Fix = ContinuationDefinition(
-    name="fix",
+    name="Apps.fix",
     callback=_fix,
 )
 
