@@ -1,15 +1,17 @@
 from .layer import Layer
-from .ast import Instruction
+from .ast import Instruction, QubitId
 
 
 class QPU:
 
-    @property
-    def layer(self) -> Layer:
+    def restart(self, num_qubits: int):
         pass
 
-    def restart(self, num_qubits: int | None = None):
+    def allocate(self, target: QubitId) -> int:
         pass
 
     def eval(self, instruction: Instruction):
+        pass
+
+    def measure(self):
         pass

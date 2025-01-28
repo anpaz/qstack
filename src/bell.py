@@ -1,6 +1,23 @@
 # %%
-from qstack import Program, Stack, Kernel
 from qstack.layers.apps import *
+
+
+# %%
+from qstack.ast import QubitId
+from qstack.emulator import StateVectorEmulator
+
+qpu = StateVectorEmulator.from_layer(layer)
+
+qpu.restart(4)
+qpu.allocate(QubitId("q1"))
+qpu.allocate(QubitId("q2"))
+qpu.eval(Mix("q1"))
+qpu.eval(Entangle("q1", "q2"))
+print(qpu.measure(), qpu.measure())
+
+
+# %%
+from qstack import Program, Stack, Kernel
 
 stack = Stack.create(layer)
 

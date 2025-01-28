@@ -17,4 +17,4 @@ Fix = ContinuationDefinition(
     callback=_fix,
 )
 
-layer = Layer(name="Apps", instructions=set([Mix, Entangle]))
+layer = Layer(name="Apps", instructions=set([Mix, Entangle]), decoders=None, continuations=set([Fix]))

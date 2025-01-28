@@ -111,3 +111,5 @@ class DecoderDefinition:
 class Layer:
     name: str
     instructions: Set[InstructionDefinition]
+    decoders: Set[DecoderDefinition]
+    continuations: Set[ContinuationDefinition]
