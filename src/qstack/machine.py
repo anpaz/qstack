@@ -1,7 +1,7 @@
 import inspect
 from collections import Counter, OrderedDict
 
-from .processors import QPU, CPU
+from .processors import QPU, CPU, flush
 from .program import Program
 from .ast import Kernel
 
@@ -59,12 +59,6 @@ class QuantumMachine:
 
         for kernel in program.kernels:
             self.eval_kernel(kernel)
-
-        def flush():
-            o = self.cpu.consume()
-            while o is not None:
-                yield o
-                o = self.cpu.consume()
 
         return tuple(flush())
 

@@ -70,12 +70,6 @@ class ClassicInstructionDefinition:
         self,
         **parameters: ParameterValue,
     ):
-        # check_types(targets, self.targets)
-
-        if not parameters:
-            assert not self.parameters
-        # else:
-        # assert self.parameters, f"Instruction {self.name} is not expecting parameters."
         # TODO: check_types(parameters, self.parameters)
 
         return ClassicInstruction(

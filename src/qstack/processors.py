@@ -31,3 +31,10 @@ class CPU:
 
     def eval(self, instruction: ClassicInstruction) -> Kernel:
         pass
+
+
+def flush(cpu: QPU):
+    o = cpu.consume()
+    while o is not None:
+        yield o
+        o = cpu.consume()

@@ -10,7 +10,7 @@ from .layer import Layer, ClassicInstructionDefinition
 @dataclass(frozen=True)
 class CallbackInfo:
     callback: Callable
-    outcomes_n: int
+    outcomes_length: int
     parameters: tuple[str]
 
     @staticmethod
@@ -21,7 +21,7 @@ class CallbackInfo:
         )
         parameters_names = [p.name for p in signature.parameters.values() if p.kind == inspect.Parameter.KEYWORD_ONLY]
 
-        return CallbackInfo(callback=func, outcomes_n=outcomes_length, parameters=parameters_names)
+        return CallbackInfo(callback=func, outcomes_length=outcomes_length, parameters=parameters_names)
 
 
 class ClassicProcessor(CPU):
@@ -43,10 +43,18 @@ class ClassicProcessor(CPU):
         assert name in self.operations, f"Invalid classic instruction {instruction.name}."
         info = self.operations[name]
 
-        targets = [self.consume() for _ in range(info.outcomes_n)]
+        targets = [self.consume() for _ in range(info.outcomes_length)]
         parameters = {name: instruction.parameters[name] for name in info.parameters}
 
-        return info.callback(*targets, **parameters)
+        result = info.callback(*targets, **parameters)
+        if isinstance(result, int):
+            self.collect(result)
+        elif isinstance(result, Kernel):
+            return result
+        elif result is None:
+            return None
+        else:
+            raise ValueError(f"Invalid result {result}")
 
 
 def from_layer(layer: Layer) -> ClassicProcessor:
