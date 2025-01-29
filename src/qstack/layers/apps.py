@@ -1,20 +1,22 @@
-from ..layer import Layer, InstructionDefinition, ContinuationDefinition
+from ..layer import Layer, QuantumInstructionDefinition, ClassicInstructionDefinition
 from ..ast import Outcome, Kernel
 
-Mix = InstructionDefinition(name="mix", targets=["q1"], matrix=[[0.7071, 0.7071], [0.7071, -0.7071]])
+Flip = QuantumInstructionDefinition(name="flip", targets=["q1"], matrix=[[0, 1], [1, 0]])
 
-Entangle = InstructionDefinition(
+Mix = QuantumInstructionDefinition(name="mix", targets=["q1"], matrix=[[0.7071, 0.7071], [0.7071, -0.7071]])
+
+Entangle = QuantumInstructionDefinition(
     name="entangle", targets=["q1", "q2"], matrix=[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1], [0, 0, 1, 0]]
 )
 
 
 def _fix(m0: Outcome, m1: Outcome) -> Kernel:
-    return None
+    return Kernel.empty()
 
 
-Fix = ContinuationDefinition(
+Fix = ClassicInstructionDefinition(
     name="Apps.fix",
     callback=_fix,
 )
 
-layer = Layer(name="Apps", instructions=set([Mix, Entangle]), decoders=None, continuations=set([Fix]))
+layer = Layer(name="Apps", quantum_instructions=set([Flip, Mix, Entangle]), classic_instructions=set([Fix]))

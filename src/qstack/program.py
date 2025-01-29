@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from .ast import Kernel, ContinuationKernel, DecoderKernel
+from .ast import Kernel
 from .stack import Stack
 
 

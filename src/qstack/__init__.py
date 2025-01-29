@@ -1,4 +1,5 @@
 from .ast import Kernel
 from .program import Program
 from .stack import Stack
-from .qpu import QPU
+from .processors import QPU
+from .machine import QuantumMachine

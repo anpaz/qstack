@@ -1,12 +1,9 @@
 # %%
 from qstack.layers.apps import *
-
-
-# %%
 from qstack.ast import QubitId
-from qstack.emulator import StateVectorEmulator
+import qstack.emulator
 
-qpu = StateVectorEmulator.from_layer(layer)
+qpu = qstack.emulator.from_layer(layer)
 
 qpu.restart(4)
 qpu.allocate(QubitId("q1"))
@@ -31,8 +28,8 @@ program = Program(
                 Mix("q1"),
                 Entangle("q1", "q2"),
             ],
+            continue_with=Fix(),
         ),
-        Kernel.continue_with(Fix()),
     ],
 )
 
@@ -40,10 +37,15 @@ program = Program(
 print(program)
 
 # %%
-program.depth
+from qstack import QuantumMachine
+import qstack.classic_processor
+
+cpu = qstack.classic_processor.from_layer(layer)
+engine = QuantumMachine(qpu=qpu, cpu=cpu)
 
 # %%
-for k in program.kernels:
-    print(k)
+engine.single_shot(program)
 
+# %%
+engine.eval(program).plot_histogram()
 # %%
