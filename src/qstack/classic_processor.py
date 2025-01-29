@@ -38,7 +38,7 @@ class ClassicProcessor(CPU):
         if len(self.measurements) > 0:
             return self.measurements.pop()
 
-    def eval(self, instruction: ClassicInstruction) -> Kernel:
+    def eval(self, instruction: ClassicInstruction) -> Kernel | None:
         name = instruction.name.lower()
         assert name in self.operations, f"Invalid classic instruction {instruction.name}."
         info = self.operations[name]
@@ -47,6 +47,7 @@ class ClassicProcessor(CPU):
         parameters = {name: instruction.parameters[name] for name in info.parameters}
 
         result = info.callback(*targets, **parameters)
+
         if isinstance(result, int):
             self.collect(result)
         elif isinstance(result, Kernel):

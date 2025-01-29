@@ -110,7 +110,7 @@ class Kernel:
 
     @staticmethod
     def allocate(
-        *targets: str, compute=list[QuantumInstruction], continue_with: Optional[ClassicInstruction] = None
+        *targets: str, compute: list[QuantumInstruction], continue_with: Optional[ClassicInstruction] = None
     ) -> "Kernel":
         return Kernel(
             targets=tuple([QubitId.wrap(q) for q in targets]), instructions=tuple(compute), callback=continue_with
