@@ -1,9 +1,15 @@
 from ..layer import Layer, QuantumInstructionDefinition, ClassicInstructionDefinition
-from ..ast import Outcome, Kernel
+from ..ast import Outcome, Kernel, QubitId
 
 
-def fix(m0: Outcome, m1: Outcome) -> Kernel:
-    return Kernel.empty()
+def fix(m0: Outcome, m1: Outcome, *, q: QubitId) -> Kernel:
+    if m0 == m1:
+        return Kernel(
+            targets=[],
+            instructions=[
+                Flip(q),
+            ],
+        )
 
 
 Flip = QuantumInstructionDefinition(name="flip", targets=["q1"], matrix=[[0, 1], [1, 0]])

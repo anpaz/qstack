@@ -12,7 +12,6 @@ logger = logging.getLogger("qstack")
 
 
 class StateVectorEmulator(QPU):
-
     def __init__(self, instructions: Set[QuantumInstructionDefinition]):
         super().__init__()
 

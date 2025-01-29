@@ -22,13 +22,19 @@ program = Program(
     stack=stack,
     kernels=[
         Kernel.allocate(
-            "q1",
-            "q2",
+            "result",
             compute=[
-                Mix("q1"),
-                Entangle("q1", "q2"),
+                Kernel.allocate(
+                    "q1",
+                    "q2",
+                    compute=[
+                        # Flip("q2"),
+                        Mix("q1"),
+                        Entangle("q1", "q2"),
+                    ],
+                    continue_with=Fix(q=QubitId("result")),
+                )
             ],
-            continue_with=Fix(),
         ),
     ],
 )

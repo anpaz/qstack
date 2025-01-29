@@ -64,7 +64,7 @@ class QuantumInstructionDefinition:
 class ClassicInstructionDefinition:
     name: str
     callback: Callable[[list[Outcome]], Kernel]
-    parameters: tuple[ParameterDefinition] = tuple()
+    # parameters: tuple[ParameterDefinition] = tuple()
 
     def __call__(
         self,
@@ -72,11 +72,11 @@ class ClassicInstructionDefinition:
     ):
         # check_types(targets, self.targets)
 
-        if parameters:
-            assert self.parameters, f"Instruction {self.name} is not expecting parameters."
-            # check_types(parameters, self.parameters)
-        else:
+        if not parameters:
             assert not self.parameters
+        # else:
+        # assert self.parameters, f"Instruction {self.name} is not expecting parameters."
+        # TODO: check_types(parameters, self.parameters)
 
         return ClassicInstruction(
             name=self.name, callback=f"{self.callback.__module__}.{self.callback.__qualname__}", parameters=parameters
@@ -84,21 +84,7 @@ class ClassicInstructionDefinition:
 
     @staticmethod
     def from_callback(callback: Callable[[list[Outcome]], Kernel]):
-        import inspect
-
-        signature = inspect.signature(callback)
-        parameters = []
-
-        for name, param in signature.parameters.items():
-            if param.kind == inspect.Parameter.KEYWORD_ONLY:
-                param_type = param.annotation
-                assert param_type in (int, float, complex, str), f"Unsupported parameter type {param_type} ({name})"
-                required = param.default is inspect.Parameter.empty
-                parameters.append(
-                    ParameterDefinition(name=name, type=param_type, required=required, default=param.default)
-                )
-
-        return ClassicInstructionDefinition(name=callback.__name__, callback=callback, parameters=tuple(parameters))
+        return ClassicInstructionDefinition(name=callback.__name__, callback=callback)
 
 
 @dataclass(frozen=True)

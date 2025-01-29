@@ -28,7 +28,12 @@ class QuantumInstruction:
 
     def print(self, indent=0):
         pre = " " * indent
-        return pre + str(self)
+        result = pre + str(self)
+        if self.parameters:
+            args = ",".join([f"{k}={v}" for k, v in self.parameters.items()])
+            return result + f"({args})"
+        else:
+            return result
 
     def __str__(self):
         value = f"{self.name}"
@@ -52,7 +57,12 @@ class ClassicInstruction:
 
     def print(self, indent: int = 0) -> str:
         pre = " " * indent
-        return pre + ">> " + self.name
+        result = pre + ">> " + self.name
+        if self.parameters:
+            args = ",".join([f"{k}={v}" for k, v in self.parameters.items()])
+            return result + f"({args})"
+        else:
+            return result
 
     def __str__(self):
         return self.print()
@@ -62,7 +72,7 @@ class ClassicInstruction:
 class Kernel:
     targets: tuple[QubitId]
     instructions: tuple[QuantumInstruction]
-    callback: ClassicInstruction | None
+    callback: ClassicInstruction | None = None
 
     @property
     def depth(self):
