@@ -82,9 +82,36 @@ class ClassicInstructionDefinition:
             name=self.name, callback=f"{self.callback.__module__}.{self.callback.__qualname__}", parameters=parameters
         )
 
+    @staticmethod
+    def from_callback(callback: Callable[[list[Outcome]], Kernel]):
+        import inspect
+
+        signature = inspect.signature(callback)
+        parameters = []
+
+        for name, param in signature.parameters.items():
+            if param.kind == inspect.Parameter.KEYWORD_ONLY:
+                param_type = param.annotation
+                assert param_type in (int, float, complex, str), f"Unsupported parameter type {param_type} ({name})"
+                required = param.default is inspect.Parameter.empty
+                parameters.append(
+                    ParameterDefinition(name=name, type=param_type, required=required, default=param.default)
+                )
+
+        return ClassicInstructionDefinition(name=callback.__name__, callback=callback, parameters=tuple(parameters))
+
 
 @dataclass(frozen=True)
 class Layer:
     name: str
     quantum_instructions: Set[QuantumInstructionDefinition]
     classic_instructions: Set[ClassicInstructionDefinition]
+
+    def extend_with(
+        self, classic: Set[ClassicInstructionDefinition] | None, quantum: Set[QuantumInstructionDefinition] | None
+    ):
+        return Layer(
+            name=f"{self.name}.extended",
+            quantum_instructions=self.quantum_instructions.union(quantum or set()),
+            classic_instructions=self.classic_instructions.union(classic or set()),
+        )
