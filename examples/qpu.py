@@ -1,5 +1,5 @@
 # %%
-from qstack.layers.apps import *
+from qstack.layers.toy import *
 from qstack.ast import QubitId
 import qstack.emulator
 

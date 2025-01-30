@@ -16,4 +16,4 @@ class Program:
         attributes = ["@stack: " + str(self.stack)]
         kernels = [str(k) for k in self.kernels]
 
-        return "\n".join(attributes + ["---"] + kernels)
+        return "\n".join(attributes + [""] + kernels)

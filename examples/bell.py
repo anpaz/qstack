@@ -1,5 +1,5 @@
 # %%
-from qstack.layers.apps import *
+from qstack.layers.toy import *
 from qstack import Program, Stack, Kernel
 
 stack = Stack.create(layer)
