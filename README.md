@@ -24,13 +24,13 @@ qstack is designed to be **platform-agnostic** and **qec code-agnostic**, provid
 
 # Ideas
 
-- Pure quantum language.
-- Compilers can focus on quantum elements
-- Clear boundaries of execution steps.
+- Pure quantum language with support for classical integration.
+- Clear and simple boundaries between classical and quantum execution.
+- Dynamic layers define both classical and quantum instructions.
 
 # Programs and Kernels
 
-A quantum program is comprised of a list of kernels. A kernel represents a unit of computation consisting of:
+A quantum program is comprised of a list of kernels. A kernel represents a unit of quantum computation consisting of:
 
 ```grammar
 program       :== kernels
@@ -45,7 +45,7 @@ op          :== *id*
 target      :== qubit_id | None
 ```
 
-A kernel allocates a target qubit id and initializes it in the `|0⟩` state, applies some quantum instructions on it, and measures it.
+A kernel allocates the target qubit id and initializes it in the `|0⟩` state, applies some quantum instructions, and measures it.
 
 The simplest kernel that always returns the value `0` would be:
 
@@ -110,7 +110,7 @@ allocate q1 q2:
 measure
 ```
 
-In certain scenarios it is also necessary to define kernels that do not need to allocate and measure a new target. This can be useful, for example, to indicate time-steps:
+In certain scenarios it is necessary to define kernels that do not need to allocate and measure a new target. This can be useful, for example, to indicate time-steps:
 
 ```qstack
 allocate q1 q2:
@@ -133,15 +133,15 @@ measure
 
 # Hybrid kernels
 
-A kernel can incorporate classical computation after its measurement. For this, we enhances our grammar as follows:
+A kernel can incorporate classical computation after its measurement. For this, we enhance qstack grammar as follows:
 
 ```grammar
-kernel                :== target: instructions classical_instruction
-classical_instruction :== None
-                        | callback
+kernel                  :== target: instructions classical_instruction
+classical_instruction   :== None
+                          | callback
 ```
 
-We indicate the existance of a classical instruction in the program in a kernel using `>>`.
+We indicate the invocation of a classical instruction in the program using `>>`.
 
 Take for example the following program implementing the Teleport protocol:
 
@@ -186,14 +186,6 @@ A decoder is a classical method that, given a list of measurement outcomes, retu
 
 Take for example a simple majority bit vote encoding:
 
-```
-allocate q1 q2 q3:
-measure
->> vote
-```
-
-`majority.vote` is a classical function defined in the `majority` layer. As with other classical instructions, it consumes measurements from the stack but produces a new outcome which in turn is pushed back into the measurement stack. In this context, `vote` would be defined as:
-
 ```python
 def vote(m1, m2, m2):
     if sum([m1, m2, m3]) > 2
@@ -202,7 +194,15 @@ def vote(m1, m2, m2):
         return 0
 ```
 
-The stack makes it possible to chain classical functions. This is how majoriy vote would work with 3 blocks of 3 qubits:
+As with other classical instructions, it consumes measurements from the stack but produces a new outcome which in turn is pushed back into the measurement stack. It can be used in a quantum program as other classical functions:
+
+```
+allocate q1 q2 q3:
+measure
+>> vote
+```
+
+The measurement stack makes it possible to chain classical functions. This is how majoriy vote would work with 3 blocks of 3 qubits:
 
 ```
 allocate q1 q2 q3:
@@ -219,7 +219,7 @@ The outcome of this program would still be just `0`.
 
 ### Repeat-until-success
 
-This is a common pattern where a quantum instruction is repeated until the measurement of some ancilla qubit returns a specific value:
+This is a common quantum pattern where a quantum instruction is repeated until the measurement of some ancilla qubit returns a specific value:
 
 ```qstack
 allocate a:
@@ -245,11 +245,11 @@ A **layer** defines the **instruction set** available to a program, including bo
 
 ```grammar
 layer                   :== quantum_instructions; classic_instructions
-quantum_instructions    :== instruction_definition
-                          | instruction_definition quantum_instructions
+quantum_instructions    :== quantum_definition
+                          | quantum_definition quantum_instructions
 classic_instructions    :== classic_definition
                           | classic_definition classic_instructions
-instruction_definition  :== op target_length matrix
+quantum_definition      :== op target_length matrix
 classic_definition      :== op callback
 target_length           :== int
 callback                :== (outcomes) -> (kernel | outcome | None)
@@ -296,7 +296,7 @@ measure
 
 A **quantum machine** is a device capable of evaluating quantum programs. It consists of two processing units:
 
-- **quantum processing unit (qpu)**: to process quantum instructions
+- **quantum processing unit (qpu)**: to process quantum instructions:
 
 ```grammar
 qpu       :== restart allocate eval measure
@@ -306,7 +306,7 @@ eval      :== (instruction) -> ()
 measure   :== () -> Outcome
 ```
 
-- **classical processing unit (cpu)**: to process classical instructions
+- **classical processing unit (cpu)**: to process classical instructions:
 
 ```grammar
 cpu       :== restart collect eval consume
@@ -319,13 +319,13 @@ consume   :== () -> (Outcome)
 To evaluate a single shot of a program:
 
 1. The quantum machine calls `restart` on both cpu and qpu.
-2. It evaluates the order each one of the kernels as follows:
+2. It evaluates in order each one of the kernels as follows:
    1. it allocates the target qubit
-   2. it iterates through each instruction
-      2.1 for quantum instructions, it delegates evaluates to the qpu
-      2.2 for embedded kernels, it recursively evaluates the kernel
-   3. it measures the allocated qubit
-   4. if the kernel has a classical callback, it delegates evaluation to the cpu.
+   2. it iterates through each instruction:
+      2.1 if a quantum instructions, it delegates evaluates to the qpu
+      2.2 if an embedded kernel, it recursively evaluates the kernel
+   3. it measures the target qubit
+   4. if the kernel has a classical instruction, it delegates its evaluation to the cpu.
       4.1 if the evaluation returns a kernel, it evaluates the kernel.
 
 ---
