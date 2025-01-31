@@ -27,6 +27,7 @@ qstack is designed to be **platform-agnostic** and **qec code-agnostic**, provid
 - Pure quantum language with support for classical integration.
 - Clear and simple boundaries between classical and quantum execution.
 - Dynamic layers define both classical and quantum instructions.
+- Clear seperation of concerns and responsibilities between cpu and qpu
 
 # Programs and Kernels
 
@@ -259,7 +260,9 @@ outcomes                :== None
 outcome                 :== 1 | 0
 ```
 
-From the grammar, the semantics of all quantum instructions is defined from its matrix. On the other hand, classical instructions have a classical callback method that given one or more outcomes, it returns either a kernel, another outcome, or nothing.
+As part of the definition of a quantum instruction it must include its matrix that define its semantics. This enables the automatic creation of a classical emulator and validation tools for the layer.
+
+On the other hand, classical instructions are defined by classical callback method that given a list of outcomes, it returns either a kernel, another outcome, or nothing.
 
 A **compiler** transforms a program from one layer to another. It converts quantum instructions while preserving their semantics and retains classical instruction invocations with the same parameters. It may add new classical instructions as needed.
 
@@ -277,11 +280,9 @@ A **quantum program** is comprised of a stack and a list of kernels:
 
 ```grammar
 program         :== stack; kernels
-kernels         :== kernel
-                  | kernel | kernels
 ```
 
-All quantum instructions in the program must belong to the base layer, while classical instructions can originate from any layer. The stack is specified in a program via a `@stack` attribute:
+All quantum instructions in the program belong to the base layer, while classical instructions can originate from any layer. The stack is specified in a program via a `@stack` attribute:
 
 ```
 @stack: cliffords
