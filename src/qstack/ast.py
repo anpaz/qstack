@@ -92,7 +92,7 @@ class Kernel:
                 result += i.print(indent + 1) + "\n"
             result += pre + "measure"
         else:
-            result += "\n".join([i.print(indent) for i in self.instructions])
+            result += "\n".join([pre + "---"] + [i.print(indent) for i in self.instructions])
 
         if self.callback:
             if result:

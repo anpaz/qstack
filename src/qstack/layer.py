@@ -88,7 +88,9 @@ class Layer:
     classic_instructions: Set[ClassicInstructionDefinition]
 
     def extend_with(
-        self, classic: Set[ClassicInstructionDefinition] | None, quantum: Set[QuantumInstructionDefinition] | None
+        self,
+        classic: Set[ClassicInstructionDefinition] | None = None,
+        quantum: Set[QuantumInstructionDefinition] | None = None,
     ):
         return Layer(
             name=f"{self.name}.extended",

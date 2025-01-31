@@ -148,15 +148,16 @@ Take for example the following program implementing the Teleport protocol:
 
 ```qstack
 allocate target:
-  allocate source shared: # prepare source in some random state
+  allocate shared source:
+    # prepare source in some random state
     ---
-    >> prepare(q=x)
+    >> prepare(q=source)
 
     # entangle shared and target
     h shared
     cx shared target
 
-    # deentangle shared and source
+    # deentangle source and shared
     cx source shared
     h source
   measure
@@ -167,16 +168,18 @@ measure
 `prepare` and `fix` are classical functions. A classical function can return a new kernel for evaluation. In this case, `prepare` returns a kernel that rotates the qubit by a random angle, and `fix` applies the correction needed for the state to be correctly teleported to the target qubit. They both takes a single parameter, `q`, indicating the qubit to apply the operation to:
 
 ```python
-def prepare(*, q:QubitId):
-    return Kernel(target=[], instructions=[Instruction('rz', target, angle=random.next())])
+op = random.choice([X, H])
 
-def fix(m0:Outcome, m1:Outcome, *, q:QubitId):
+def prepare(*, q: QubitId):
+    return Kernel(targets=[], instructions=[op(q)])
+
+def fix(m0: Outcome, m1: Outcome, *, q: QubitId):
     instructions = []
     if m1 == 1:
-        instructions.append(Instruction('z', target))
+        instructions.append(Z(q))
     if m0 == 1:
-        instructions.append(Instruction('x', target))
-    return Kernel(target=[], instructions=instructions)
+        instructions.append(X(q))
+    return Kernel(targets=[], instructions=instructions)
 ```
 
 `fix` also takes two measurement outcomes. Notice these do not need to be specified in the program. These outcomes will automatically be consumed from the measurement stack.

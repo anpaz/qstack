@@ -60,7 +60,7 @@ class QuantumMachine:
         for kernel in program.kernels:
             self.eval_kernel(kernel)
 
-        return tuple(flush())
+        return tuple(flush(self.cpu))
 
     def eval(self, program: Program, *, shots: int | None = 1000) -> Results:
         return Results([self.single_shot(program) for _ in range(shots)])
