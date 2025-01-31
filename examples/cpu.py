@@ -30,6 +30,7 @@ cpu = qstack.classic_processor.ClassicProcessor(instructions={Vote, QFlip})
 # %%
 cpu.restart()
 
+# final outcome
 cpu.collect(0)
 
 cpu.collect(1)
@@ -42,8 +43,9 @@ cpu.collect(0)
 cpu.collect(0)
 cpu.eval(Vote())
 
+# consume last two votes:
 print(cpu.eval(QFlip(q=QubitId("q1"))))
 print(cpu.eval(QFlip(q=QubitId("q2"))))
 
-print(list(flush(cpu)))
+print(tuple(flush(cpu)))
 # %%

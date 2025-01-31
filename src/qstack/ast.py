@@ -1,4 +1,4 @@
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Callable, Optional
 
 type Outcome = tuple[int]

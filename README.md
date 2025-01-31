@@ -34,16 +34,16 @@ qstack is designed to be **platform-agnostic** and **qec code-agnostic**, provid
 A quantum program is comprised of a list of kernels. A kernel represents a unit of quantum computation consisting of:
 
 ```grammar
-program       :== kernels
-kernels       :== kernel | kernels
-kernel        :== target: instructions
-instructions  :== *None*
-                | instruction
-                | instruction instructions
-                | kernel
-instruction :== op targets
-op          :== *id*
-target      :== qubit_id | None
+program             :== kernels
+kernels             :== kernel
+                      | kernel kernels
+kernel              :== target: instructions
+instructions        :== instruction instructions | *None*
+instruction         :== quantum_instruction
+                      | kernel
+quantum_instruction :== op targets
+op                  :== *id*
+target              :== qubit_id | *None*
 ```
 
 A kernel allocates the target qubit id and initializes it in the `|0⟩` state, applies some quantum instructions, and measures it.
@@ -134,12 +134,12 @@ measure
 
 # Hybrid kernels
 
-A kernel can incorporate classical computation after its measurement. For this, we enhance qstack grammar as follows:
+A kernel can incorporate classical computation after its measurement. For this, we enhance qstack's grammar as follows:
 
 ```grammar
 kernel                  :== target: instructions classical_instruction
-classical_instruction   :== None
-                          | callback
+classical_instruction   :== *None*
+                          | op
 ```
 
 We indicate the invocation of a classical instruction in the program using `>>`.
@@ -165,7 +165,7 @@ allocate target:
 measure
 ```
 
-`prepare` and `fix` are classical functions. A classical function can return a new kernel for evaluation. In this case, `prepare` returns a kernel that rotates the qubit by a random angle, and `fix` applies the correction needed for the state to be correctly teleported to the target qubit. They both takes a single parameter, `q`, indicating the qubit to apply the operation to:
+`prepare` and `fix` are classical functions. A classical function returns a new kernel for evaluation. In this case, `prepare` returns a kernel that rotates the qubit by a random angle, and `fix` applies the correction needed for the state to be correctly teleported to the target qubit. They both takes a single parameter, `q`, indicating the qubit to apply the operation to:
 
 ```python
 op = random.choice([X, H])
@@ -198,7 +198,7 @@ def vote(m1, m2, m2):
         return 0
 ```
 
-As with other classical instructions, it consumes measurements from the stack but produces a new outcome which in turn is pushed back into the measurement stack. It can be used in a quantum program as other classical functions:
+As with other classical instructions, it consumes measurements from the stack but produces a new outcome which in turn is pushed back into the measurement stack by the cpu. The cpu then returns an empty Kernel as the result of the evaluation. A decoder can be used in a quantum program as other classical functions:
 
 ```
 allocate q1 q2 q3:
@@ -206,17 +206,19 @@ measure
 >> vote
 ```
 
-The measurement stack makes it possible to chain classical functions. This is how majoriy vote would work with 3 blocks of 3 qubits:
+The outcome of this program will be 0: the first three measurments were consumed by `vote` invocation, whose return value is then pushed back to the measurements stack and becomes the only result left in the stack when the program completes.
+
+The measurement stack makes it possible to chain classical functions. This is how majority vote would work with 3 blocks of 3 qubits:
 
 ```
 allocate q1 q2 q3:
-measure >> majority.vote
+measure >> vote
 allocate q1 q2 q3:
-measure >> majority.vote
+measure >> vote
 allocate q1 q2 q3:
-measure >> majority.vote
+measure >> vote
 ---
->> majority.vote
+>> vote
 ```
 
 The outcome of this program would still be just `0`.
@@ -236,9 +238,7 @@ and a `loop` function like:
 ```python
 def loop(m0):
   if m0 == 0:
-    return Kernel(target=['a'], instructions=[Instruction('h', 'a')], callback=loop
-  else:
-    return None
+    return Kernel.allocate('a', compute=[H('a')], callback=Loop())
 ```
 
 This program will keep running until the measurement of the qubit returns 1.
@@ -279,13 +279,13 @@ layer_node      :== layer
 compiler_node   :== compiler layer_node
 ```
 
-A **quantum program** is comprised of a stack and a list of kernels:
+A **quantum program** is comprised of a stack and a list of kernels. We enhance qstack grammar to incorporate this:
 
 ```grammar
 program         :== stack; kernels
 ```
 
-All quantum instructions in the program belong to the base layer, while classical instructions can originate from any layer. The stack is specified in a program via a `@stack` attribute:
+All quantum instructions in the program belong to the base layer, while classical instructions can originate from any layer. The stack is specified in the syntax via a `@stack` attribute:
 
 ```
 @stack: cliffords
@@ -306,7 +306,7 @@ A **quantum machine** is a device capable of evaluating quantum programs. It con
 qpu       :== restart allocate eval measure
 restart   :== () -> ()
 allocate  :== (qubit_id) -> ()
-eval      :== (instruction) -> ()
+eval      :== (quantum_instruction) -> ()
 measure   :== () -> (outcome)
 ```
 
@@ -316,7 +316,7 @@ measure   :== () -> (outcome)
 cpu       :== restart collect eval consume
 restart   :== () -> ()
 collect   :== (outcome) -> ()
-eval      :== (classical_instruction) -> (kernel | outcome | None)
+eval      :== (classical_instruction) -> (kernel)
 consume   :== () -> (outcome)
 ```
 
@@ -330,7 +330,7 @@ To evaluate a single shot of a program:
       2. if an embedded kernel, it recursively evaluates the kernel
    3. it measures the target qubit in the qpu
    4. if the kernel has a classical instruction, it delegates its evaluation to the cpu.
-      1. if the evaluation returns a kernel, it recursively evaluates the kernel.
+      1.it then recursively evaluates the kernel returned from the cpu evaluation.
 
 ---
 

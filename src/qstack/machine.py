@@ -50,8 +50,7 @@ class QuantumMachine:
 
         if kernel.callback:
             continuation = self.cpu.eval(kernel.callback)
-            if continuation:
-                self.eval_kernel(continuation)
+            self.eval_kernel(continuation)
 
     def single_shot(self, program: Program):
         self.qpu.restart(num_qubits=program.depth)

@@ -48,12 +48,13 @@ class ClassicProcessor(CPU):
 
         result = info.callback(*targets, **parameters)
 
-        if isinstance(result, int):
-            self.collect(result)
-        elif isinstance(result, Kernel):
+        if isinstance(result, Kernel):
             return result
+        elif isinstance(result, int):
+            self.collect(result)
+            return Kernel.empty()
         elif result is None:
-            return None
+            return Kernel.empty()
         else:
             raise ValueError(f"Invalid result {result}")
 
