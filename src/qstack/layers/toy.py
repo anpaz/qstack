@@ -1,4 +1,7 @@
-from ..layer import Layer, QuantumDefinition, ClassicDefinition, Outcome
+import math
+
+from ..layer import Layer, ParameterDefinition, QuantumDefinition, ClassicDefinition, Outcome, Matrix
+from ..ast import ParameterValue
 
 
 def vote(m1: Outcome, m2: Outcome, m3: Outcome) -> Outcome:
@@ -9,16 +12,26 @@ def vote(m1: Outcome, m2: Outcome, m3: Outcome) -> Outcome:
         return 0
 
 
+def skew(p: float) -> Matrix:
+    theta = 2 * math.asin(math.sqrt(p))
+    c = math.cos(theta / 2)
+    s = math.sin(theta / 2)
+    return [[c, -1j * s], [-1j * s, c]]
+
+
 ## Classic Instructions
 Vote = ClassicDefinition.from_callback(vote)
 
+
 ## Quantum Instructions
-Flip = QuantumDefinition(name="flip", targets=["q1"], matrix=[[0, 1], [1, 0]])
+Flip = QuantumDefinition.from_matrix(name="flip", targets=1, matrix=[[0, 1], [1, 0]])
 
-Mix = QuantumDefinition(name="mix", targets=["q1"], matrix=[[0.7071, 0.7071], [0.7071, -0.7071]])
+Mix = QuantumDefinition.from_matrix(name="mix", targets=1, matrix=[[0.7071, 0.7071], [0.7071, -0.7071]])
 
-Entangle = QuantumDefinition(
-    name="entangle", targets=["q1", "q2"], matrix=[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1], [0, 0, 1, 0]]
+Skew = QuantumDefinition.with_parameters(name="skew", targets=1, factory=skew)
+
+Entangle = QuantumDefinition.from_matrix(
+    name="entangle", targets=2, matrix=[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1], [0, 0, 1, 0]]
 )
 
-layer = Layer(name="toy", quantum_definitions=set([Flip, Mix, Entangle]), classic_definitions=set([Vote]))
+layer = Layer(name="toy", quantum_definitions=set([Flip, Mix, Skew, Entangle]), classic_definitions=set([Vote]))

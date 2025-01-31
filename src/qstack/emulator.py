@@ -19,15 +19,17 @@ class StateVectorEmulator(QPU):
 
         # Create a combined noise operator for each gate
         for inst in instructions:
-            if len(inst.parameters) > 0:
+            if inst.matrix is None:
+                assert inst.factory is not None, f"Invalid instruction {inst.name}"
+                capture = inst
 
-                def operation_maker(*args) -> Operation:
-                    return Operation([inst.action(*args)])
+                def operation_maker(**args) -> Operation:
+                    return Operation([capture.factory(**args)])
 
                 operations[inst.name.lower()] = operation_maker
             else:
                 logger.debug(f"Found gate {inst.name}: {inst.matrix}")
-                operations[inst.name.lower()] = Operation([inst.action()])
+                operations[inst.name.lower()] = Operation([inst.matrix])
         self.operations = operations
 
         # Create instruments.
@@ -65,7 +67,7 @@ class StateVectorEmulator(QPU):
         assert gate_name in self.operations, f"Invalid instruction {instruction.name}"
         operation = self.operations.get(gate_name)
         if callable(operation):
-            self.sim.apply_operation(operation(*instruction.parameters), qubits)
+            self.sim.apply_operation(operation(**instruction.parameters), qubits)
         else:
             self.sim.apply_operation(operation, qubits)
             return None

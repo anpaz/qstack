@@ -22,39 +22,29 @@ class ParameterDefinition:
 
 
 @dataclass(frozen=True)
-class TargetDefinition(ParameterDefinition):
-    def __init__(self, name: str, required: bool = True):
-        super().__init__(name=name, required=required, type=QubitId)
-
-
-@dataclass(frozen=True)
 class QuantumDefinition:
     name: str
-    targets: tuple[TargetDefinition]
+    targets_length: int
     matrix: Matrix | None
-    parameters: tuple[ParameterDefinition] = tuple()
+    factory: Callable[[list[ParameterValue]], Matrix] | None = None
 
     def __call__(
         self,
         *targets: str | QubitId,
         **parameters: ParameterValue,
     ):
+        # TODO: check_types(targets, self.targets)
+
         qubit_ids = [QubitId.wrap(q) for q in targets]
-        # check_types(targets, self.targets)
-
-        if parameters:
-            assert self.parameters, f"Instruction {self.name} is not expecting parameters."
-            # check_types(parameters, self.parameters)
-        else:
-            assert not self.parameters
-
         return QuantumInstruction(name=self.name, targets=qubit_ids, parameters=parameters)
 
-    def action(self, **parameters: ParameterValue) -> Matrix:
-        if len(self.parameters) == 0:
-            assert self.matrix is not None, f"Instruction {self.name} has no matix nor parameters defined"
-            return self.matrix
-        assert False, f"Instruction {self.name} accepts parameters. It must implement the `action` method."
+    @staticmethod
+    def from_matrix(name: str, targets: int, matrix: Matrix):
+        return QuantumDefinition(name=name, targets_length=targets, matrix=matrix, factory=None)
+
+    @staticmethod
+    def with_parameters(name: str, targets: int, factory: Callable[[list[ParameterValue]], Matrix]):
+        return QuantumDefinition(name=factory.__name__, targets_length=targets, matrix=None, factory=factory)
 
     def __hash__(self):
         return hash(self.name)

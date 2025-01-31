@@ -28,21 +28,19 @@ class QuantumInstruction:
 
     def print(self, indent=0):
         pre = " " * indent
-        result = pre + str(self)
+        result = pre + self.name
+
         if self.parameters:
             args = ",".join([f"{k}={v}" for k, v in self.parameters.items()])
-            return result + f"({args})"
-        else:
-            return result
+            result += f"({args})"
+
+        if self.targets:
+            result += " " + " ".join([str(t) for t in self.targets])
+
+        return result
 
     def __str__(self):
-        value = f"{self.name}"
-
-        if self.parameters:
-            value += "(" + ", ".join([str(t) for t in self.parameters]) + ")"
-        if self.targets:
-            value += " " + " ".join([str(t) for t in self.targets])
-        return value
+        return self.print()
 
 
 @dataclass(frozen=True)
