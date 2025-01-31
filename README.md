@@ -301,33 +301,33 @@ A **quantum machine** is a device capable of evaluating quantum programs. It con
 
 ```grammar
 qpu       :== restart allocate eval measure
-restart   :==  () -> ()
-allocate  :== (QubitId) -> ()
+restart   :== () -> ()
+allocate  :== (qubit_id) -> ()
 eval      :== (instruction) -> ()
-measure   :== () -> Outcome
+measure   :== () -> (outcome)
 ```
 
 - **classical processing unit (cpu)**: to process classical instructions:
 
 ```grammar
 cpu       :== restart collect eval consume
-restart   :==  () -> ()
-collect   :== (Outcome) -> ()
-eval      :== (classical_instruction) -> (Kernel | Outcome | None)
-consume   :== () -> (Outcome)
+restart   :== () -> ()
+collect   :== (outcome) -> ()
+eval      :== (classical_instruction) -> (kernel | outcome | None)
+consume   :== () -> (outcome)
 ```
 
 To evaluate a single shot of a program:
 
 1. The quantum machine calls `restart` on both cpu and qpu.
 2. It evaluates in order each one of the kernels as follows:
-   1. it allocates the target qubit
+   1. it allocates the target qubit in the qpu
    2. it iterates through each instruction:
-      2.1 if a quantum instructions, it delegates evaluates to the qpu
-      2.2 if an embedded kernel, it recursively evaluates the kernel
-   3. it measures the target qubit
+      1. if a quantum instructions, it delegates evaluates to the qpu
+      2. if an embedded kernel, it recursively evaluates the kernel
+   3. it measures the target qubit in the qpu
    4. if the kernel has a classical instruction, it delegates its evaluation to the cpu.
-      4.1 if the evaluation returns a kernel, it evaluates the kernel.
+      1. if the evaluation returns a kernel, it recursively evaluates the kernel.
 
 ---
 
