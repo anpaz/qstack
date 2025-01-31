@@ -1,20 +1,20 @@
-from ..layer import Layer, QuantumInstructionDefinition
+from ..layer import Layer, QuantumDefinition
 
 
-X = QuantumInstructionDefinition(name="x", targets=["q1"], matrix=[[0, 1], [1, 0]])
+X = QuantumDefinition(name="x", targets=["q1"], matrix=[[0, 1], [1, 0]])
 
-Y = QuantumInstructionDefinition(name="y", targets=["q1"], matrix=[[0, -1j], [1j, 0]])
+Y = QuantumDefinition(name="y", targets=["q1"], matrix=[[0, -1j], [1j, 0]])
 
-Z = QuantumInstructionDefinition(name="z", targets=["q1"], matrix=[[1, 0], [0, -1]])
+Z = QuantumDefinition(name="z", targets=["q1"], matrix=[[1, 0], [0, -1]])
 
-H = QuantumInstructionDefinition(name="h", targets=["q1"], matrix=[[0.7071, 0.7071], [0.7071, -0.7071]])
+H = QuantumDefinition(name="h", targets=["q1"], matrix=[[0.7071, 0.7071], [0.7071, -0.7071]])
 
-CX = QuantumInstructionDefinition(
+CX = QuantumDefinition(
     name="cx", targets=["q1", "q2"], matrix=[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1], [0, 0, 1, 0]]
 )
 
-CZ = QuantumInstructionDefinition(
+CZ = QuantumDefinition(
     name="cz", targets=["q1", "q2"], matrix=[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, -1]]
 )
 
-layer = Layer(name="cliffords-min", quantum_instructions=set([X, Y, Z, H, CX, CZ]), classic_instructions=set())
+layer = Layer(name="cliffords-min", quantum_definitions=set([X, Y, Z, H, CX, CZ]), classic_definitions=set())

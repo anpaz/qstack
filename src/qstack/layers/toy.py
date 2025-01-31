@@ -1,4 +1,4 @@
-from ..layer import Layer, QuantumInstructionDefinition, ClassicInstructionDefinition, Outcome
+from ..layer import Layer, QuantumDefinition, ClassicDefinition, Outcome
 
 
 def vote(m1: Outcome, m2: Outcome, m3: Outcome) -> Outcome:
@@ -10,15 +10,15 @@ def vote(m1: Outcome, m2: Outcome, m3: Outcome) -> Outcome:
 
 
 ## Classic Instructions
-Vote = ClassicInstructionDefinition.from_callback(vote)
+Vote = ClassicDefinition.from_callback(vote)
 
 ## Quantum Instructions
-Flip = QuantumInstructionDefinition(name="flip", targets=["q1"], matrix=[[0, 1], [1, 0]])
+Flip = QuantumDefinition(name="flip", targets=["q1"], matrix=[[0, 1], [1, 0]])
 
-Mix = QuantumInstructionDefinition(name="mix", targets=["q1"], matrix=[[0.7071, 0.7071], [0.7071, -0.7071]])
+Mix = QuantumDefinition(name="mix", targets=["q1"], matrix=[[0.7071, 0.7071], [0.7071, -0.7071]])
 
-Entangle = QuantumInstructionDefinition(
+Entangle = QuantumDefinition(
     name="entangle", targets=["q1", "q2"], matrix=[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1], [0, 0, 1, 0]]
 )
 
-layer = Layer(name="toy", quantum_instructions=set([Flip, Mix, Entangle]), classic_instructions=set([Vote]))
+layer = Layer(name="toy", quantum_definitions=set([Flip, Mix, Entangle]), classic_definitions=set([Vote]))

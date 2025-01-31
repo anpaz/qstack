@@ -1,7 +1,7 @@
 # %%
 import qstack.classic_processor
 
-from qstack.layer import ClassicInstructionDefinition, ClassicInstructionDefinition, Outcome, QubitId
+from qstack.layer import ClassicDefinition, ClassicDefinition, Outcome, QubitId
 from qstack.ast import Kernel, QuantumInstruction
 from qstack.processors import flush
 
@@ -22,8 +22,8 @@ def q_flip(m: Outcome, *, q: QubitId):
         return None
 
 
-Vote = ClassicInstructionDefinition.from_callback(vote)
-QFlip = ClassicInstructionDefinition.from_callback(q_flip)
+Vote = ClassicDefinition.from_callback(vote)
+QFlip = ClassicDefinition.from_callback(q_flip)
 
 cpu = qstack.classic_processor.ClassicProcessor(instructions={Vote, QFlip})
 

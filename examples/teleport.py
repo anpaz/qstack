@@ -2,7 +2,7 @@
 import random
 
 from qstack.layers.cliffords_min import *
-from qstack.layer import ClassicInstructionDefinition, Outcome, QubitId, Kernel
+from qstack.layer import ClassicDefinition, Outcome, QubitId, Kernel
 from qstack import Program, Stack, Kernel
 
 # Pick randomly the operation used for preparation:
@@ -22,8 +22,8 @@ def fix(m0: Outcome, m1: Outcome, *, q: QubitId):
     return Kernel(targets=[], instructions=instructions)
 
 
-Prepare = ClassicInstructionDefinition.from_callback(prepare)
-Fix = ClassicInstructionDefinition.from_callback(fix)
+Prepare = ClassicDefinition.from_callback(prepare)
+Fix = ClassicDefinition.from_callback(fix)
 
 teleport_layer = layer.extend_with(classic={Prepare, Fix})
 stack = Stack.create(teleport_layer)

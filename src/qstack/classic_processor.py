@@ -4,7 +4,7 @@ from typing import Callable
 
 from .processors import CPU, Outcome
 from .ast import ClassicInstruction, Kernel
-from .layer import Layer, ClassicInstructionDefinition
+from .layer import Layer, ClassicDefinition
 
 
 @dataclass(frozen=True)
@@ -25,7 +25,7 @@ class CallbackInfo:
 
 
 class ClassicProcessor(CPU):
-    def __init__(self, instructions: set[ClassicInstructionDefinition]):
+    def __init__(self, instructions: set[ClassicDefinition]):
         self.operations = {inst.name.lower(): CallbackInfo.from_callable(inst.callback) for inst in instructions}
 
     def restart(self):
@@ -59,4 +59,4 @@ class ClassicProcessor(CPU):
 
 
 def from_layer(layer: Layer) -> ClassicProcessor:
-    return ClassicProcessor(instructions=layer.classic_instructions)
+    return ClassicProcessor(instructions=layer.classic_definitions)

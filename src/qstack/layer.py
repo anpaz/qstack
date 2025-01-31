@@ -28,7 +28,7 @@ class TargetDefinition(ParameterDefinition):
 
 
 @dataclass(frozen=True)
-class QuantumInstructionDefinition:
+class QuantumDefinition:
     name: str
     targets: tuple[TargetDefinition]
     matrix: Matrix | None
@@ -61,7 +61,7 @@ class QuantumInstructionDefinition:
 
 
 @dataclass(frozen=True)
-class ClassicInstructionDefinition:
+class ClassicDefinition:
     name: str
     callback: Callable[[list[Outcome]], Kernel]
     # parameters: tuple[ParameterDefinition] = tuple()
@@ -78,22 +78,22 @@ class ClassicInstructionDefinition:
 
     @staticmethod
     def from_callback(callback: Callable[[list[Outcome]], Kernel]):
-        return ClassicInstructionDefinition(name=callback.__name__, callback=callback)
+        return ClassicDefinition(name=callback.__name__, callback=callback)
 
 
 @dataclass(frozen=True)
 class Layer:
     name: str
-    quantum_instructions: Set[QuantumInstructionDefinition]
-    classic_instructions: Set[ClassicInstructionDefinition]
+    quantum_definitions: Set[QuantumDefinition]
+    classic_definitions: Set[ClassicDefinition]
 
     def extend_with(
         self,
-        classic: Set[ClassicInstructionDefinition] | None = None,
-        quantum: Set[QuantumInstructionDefinition] | None = None,
+        classic: Set[ClassicDefinition] | None = None,
+        quantum: Set[QuantumDefinition] | None = None,
     ):
         return Layer(
             name=f"{self.name}.extended",
-            quantum_instructions=self.quantum_instructions.union(quantum or set()),
-            classic_instructions=self.classic_instructions.union(classic or set()),
+            quantum_definitions=self.quantum_definitions.union(quantum or set()),
+            classic_definitions=self.classic_definitions.union(classic or set()),
         )

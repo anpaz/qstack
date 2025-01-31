@@ -248,11 +248,11 @@ This program will keep running until the measurement of the qubit returns 1.
 A **layer** defines the **instruction set** available to a program, including both quantum and classical instructions.
 
 ```grammar
-layer                   :== quantum_instructions; classic_instructions
-quantum_instructions    :== quantum_definition
-                          | quantum_definition quantum_instructions
-classic_instructions    :== classic_definition
-                          | classic_definition classic_instructions
+layer                   :== quantum_definitions; classic_definitions
+quantum_definitions     :== quantum_definition
+                          | quantum_definition quantum_definitions
+classic_definitions     :== classic_definition
+                          | classic_definition classic_definitions
 quantum_definition      :== op target_length matrix
 classic_definition      :== op callback
 target_length           :== int

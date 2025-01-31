@@ -3,7 +3,7 @@ import random
 
 from typing import Set
 from .processors import QPU
-from .layer import QuantumInstructionDefinition, Layer
+from .layer import QuantumDefinition, Layer
 from .ast import QuantumInstruction, QubitId
 
 from qsharp.noisy_simulator import StateVectorSimulator, Operation, Instrument
@@ -12,7 +12,7 @@ logger = logging.getLogger("qstack")
 
 
 class StateVectorEmulator(QPU):
-    def __init__(self, instructions: Set[QuantumInstructionDefinition]):
+    def __init__(self, instructions: Set[QuantumDefinition]):
         super().__init__()
 
         operations = {}
@@ -80,4 +80,4 @@ class StateVectorEmulator(QPU):
 
 
 def from_layer(layer: Layer):
-    return StateVectorEmulator(layer.quantum_instructions)
+    return StateVectorEmulator(layer.quantum_definitions)
