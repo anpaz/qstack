@@ -66,7 +66,7 @@ class QuantumMachine:
         return Results([self.single_shot(program) for _ in range(shots)])
 
 
-def local_engine_for(stack: Stack) -> QuantumMachine:
+def local_machine_for(stack: Stack) -> QuantumMachine:
     from .classic_processor import from_stack as get_cpu
     from .emulator import from_stack as get_qpu
 

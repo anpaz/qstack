@@ -1,6 +1,6 @@
 import math
 
-from ..layer import Layer, ParameterDefinition, QuantumDefinition, ClassicDefinition, Outcome, Matrix
+from ..layer import Layer, QuantumDefinition, ClassicDefinition, Outcome, Matrix
 from ..ast import ParameterValue
 
 

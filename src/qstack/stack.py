@@ -45,7 +45,7 @@ class Stack:
 
         return layer_depth(self.target)
 
-    def add_layer(self, compiler: Compiler, layer: Layer):
+    def add_layer(self, compiler: Compiler, layer: Layer) -> "Stack":
         # assert self.target == compiler.source
         new_lower = replace(self.target, namespace=f"l{self.depth}:")
         return Stack(

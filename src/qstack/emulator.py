@@ -2,14 +2,13 @@ import logging
 import random
 
 from typing import Set
+from qsharp.noisy_simulator import StateVectorSimulator, Operation, Instrument
 
 from .processors import QPU
 from .ast import QuantumInstruction, QubitId
 from .layer import QuantumDefinition, Layer
 from .stack import Stack
-from .program import Program
 
-from qsharp.noisy_simulator import StateVectorSimulator, Operation, Instrument
 
 logger = logging.getLogger("qstack")
 
@@ -18,9 +17,8 @@ class StateVectorEmulator(QPU):
     def __init__(self, instructions: Set[QuantumDefinition]):
         super().__init__()
 
+        # Create operators:
         operations = {}
-
-        # Create a combined noise operator for each gate
         for inst in instructions:
             if inst.matrix is None:
                 assert inst.factory is not None, f"Invalid instruction {inst.name}"
@@ -89,4 +87,4 @@ def from_layer(layer: Layer):
 
 
 def from_stack(stack: Stack):
-    return StateVectorEmulator(stack.target.layer.quantum_definitions)
+    return from_layer(stack.target.layer)

@@ -14,14 +14,6 @@ type Matrix = tuple[tuple]
 
 
 @dataclass(frozen=True)
-class ParameterDefinition:
-    name: str
-    type: Type
-    required: bool = True
-    default: ParameterValue | None = None
-
-
-@dataclass(frozen=True)
 class QuantumDefinition:
     name: str
     targets_length: int

@@ -1,5 +1,5 @@
 # %%
-from qstack.layers.toy import *
+from qstack.layers.toy import layer, Mix, Flip, Entangle
 from qstack.ast import QubitId
 import qstack.emulator
 
