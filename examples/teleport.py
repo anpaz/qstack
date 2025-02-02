@@ -59,20 +59,15 @@ program = Program(
 print(program)
 
 # %%
-from qstack import QuantumMachine
-import qstack.classic_processor
-import qstack.emulator
+from qstack.machine import local_machine_for
 
-qpu = qstack.emulator.from_layer(teleport_layer)
-cpu = qstack.classic_processor.from_layer(teleport_layer)
-
-engine = QuantumMachine(qpu=qpu, cpu=cpu)
+machine = local_machine_for(program.stack)
 
 # %%
 print(op.name)
-engine.single_shot(program)
+machine.single_shot(program)
 
 # %%
-engine.eval(program).plot_histogram()
+machine.eval(program).plot_histogram()
 
 # %%
