@@ -2,9 +2,12 @@ import logging
 import random
 
 from typing import Set
+
 from .processors import QPU
-from .layer import QuantumDefinition, Layer
 from .ast import QuantumInstruction, QubitId
+from .layer import QuantumDefinition, Layer
+from .stack import Stack
+from .program import Program
 
 from qsharp.noisy_simulator import StateVectorSimulator, Operation, Instrument
 
@@ -83,3 +86,7 @@ class StateVectorEmulator(QPU):
 
 def from_layer(layer: Layer):
     return StateVectorEmulator(layer.quantum_definitions)
+
+
+def from_stack(stack: Stack):
+    return StateVectorEmulator(stack.target.layer.quantum_definitions)

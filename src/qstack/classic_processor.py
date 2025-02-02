@@ -1,32 +1,18 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import inspect
 from typing import Callable
 
 from .processors import CPU, Outcome
 from .ast import ClassicInstruction, Kernel
 from .layer import Layer, ClassicDefinition
-
-
-@dataclass(frozen=True)
-class CallbackInfo:
-    callback: Callable
-    outcomes_length: int
-    parameters: tuple[str]
-
-    @staticmethod
-    def from_callable(func: Callable):
-        signature = inspect.signature(func)
-        outcomes_length = len(
-            [p for p in signature.parameters.values() if p.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD]
-        )
-        parameters_names = [p.name for p in signature.parameters.values() if p.kind == inspect.Parameter.KEYWORD_ONLY]
-
-        return CallbackInfo(callback=func, outcomes_length=outcomes_length, parameters=parameters_names)
+from .stack import Stack, LayerNode, CompilerNode
+from .program import Program
+from .compiler import Compiler
 
 
 class ClassicProcessor(CPU):
     def __init__(self, instructions: set[ClassicDefinition]):
-        self.operations = {inst.name.lower(): CallbackInfo.from_callable(inst.callback) for inst in instructions}
+        self.operations = {inst.name.lower(): inst for inst in instructions}
 
     def restart(self):
         self.measurements = []
@@ -61,3 +47,32 @@ class ClassicProcessor(CPU):
 
 def from_layer(layer: Layer) -> ClassicProcessor:
     return ClassicProcessor(instructions=layer.classic_definitions)
+
+
+def _add_compilation(instr: ClassicDefinition, node: LayerNode):
+    compiler = node.lower.compiler
+    callback = instr.callback
+
+    def call_and_compile(*targets, **parameters):
+        result = callback(*targets, **parameters)
+        if isinstance(result, Kernel):
+            new_kernel = compiler.eval(result, node)
+            return new_kernel
+        else:
+            return result
+
+    return replace(instr, callback=call_and_compile)
+
+
+def _find_all_instructions(node: LayerNode):
+    if node.lower is not None:
+        for instr in _find_all_instructions(node.lower.lower):
+            yield _add_compilation(instr, node)
+
+    for instr in node.layer.classic_definitions:
+        yield replace(instr, name=f"{node.namespace}{instr.name}")
+
+
+def from_stack(stack: Stack) -> ClassicProcessor:
+    instructions = set(_find_all_instructions(stack.target))
+    return ClassicProcessor(instructions=instructions)

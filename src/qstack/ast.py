@@ -46,7 +46,6 @@ class QuantumInstruction:
 @dataclass(frozen=True)
 class ClassicInstruction:
     name: str
-    callback: str
     parameters: dict[str, ParameterValue] | None = None
 
     @property

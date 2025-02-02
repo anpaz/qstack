@@ -53,8 +53,9 @@ class QuantumDefinition:
 @dataclass(frozen=True)
 class ClassicDefinition:
     name: str
-    callback: Callable[[list[Outcome]], Kernel]
-    # parameters: tuple[ParameterDefinition] = tuple()
+    outcomes_length: int
+    parameters: tuple[str]
+    callback: Callable[[tuple[Outcome]], Kernel]
 
     def __call__(
         self,
@@ -62,13 +63,23 @@ class ClassicDefinition:
     ):
         # TODO: check_types(parameters, self.parameters)
 
-        return ClassicInstruction(
-            name=self.name, callback=f"{self.callback.__module__}.{self.callback.__qualname__}", parameters=parameters
-        )
+        return ClassicInstruction(name=self.name, parameters=parameters)
 
     @staticmethod
-    def from_callback(callback: Callable[[list[Outcome]], Kernel]):
-        return ClassicDefinition(name=callback.__name__, callback=callback)
+    def from_callback(callback: Callable[[tuple[Outcome]], Kernel]):
+        import inspect
+
+        signature = inspect.signature(callback)
+        outcomes_length = len(
+            [p for p in signature.parameters.values() if p.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD]
+        )
+        parameters_names = tuple(
+            [p.name for p in signature.parameters.values() if p.kind == inspect.Parameter.KEYWORD_ONLY]
+        )
+
+        return ClassicDefinition(
+            name=callback.__name__, callback=callback, outcomes_length=outcomes_length, parameters=parameters_names
+        )
 
 
 @dataclass(frozen=True)

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .layer import Layer
 from .compiler import Compiler
@@ -11,45 +11,50 @@ class Node:
 
 @dataclass(frozen=True)
 class LayerNode(Node):
-    layer_id: str
+    namespace: str
+    layer: Layer
     lower: Node | None
-
-    @property
-    def layer() -> Layer:
-        pass
 
     def __str__(self):
         if not self.lower:
-            return self.layer_id
+            return f"{self.namespace}{self.layer.name}"
         else:
-            return f"{self.layer_id}@{str(self.lower)}"
+            return f"{self.namespace}{self.layer.name}@{str(self.lower)}"
 
 
 @dataclass(frozen=True)
 class CompilerNode(Node):
-    compiler_id: Compiler
+    compiler: Compiler
     lower: Node
 
-    @property
-    def compiler() -> Compiler:
-        pass
-
     def __str__(self):
-        return f"@{self.compiler_id}@{str(self.lower)}"
+        return f"{self.compiler.name}@{str(self.lower)}"
 
 
 @dataclass(frozen=True)
 class Stack:
     target: LayerNode
 
+    @property
+    def depth(self):
+        def layer_depth(node: LayerNode):
+            if node.lower is None:
+                return 0
+            else:
+                return 1 + layer_depth(node.lower.lower)
+
+        return layer_depth(self.target)
+
     def add_layer(self, compiler: Compiler, layer: Layer):
         # assert self.target == compiler.source
-        lower = LayerNode(layer_id=layer.name)
-        return Stack(target=LayerNode(layer, CompilerNode(compiler_id=compiler.name, lower=lower)))
+        new_lower = replace(self.target, namespace=f"l{self.depth}:")
+        return Stack(
+            target=LayerNode(namespace="", layer=layer, lower=CompilerNode(compiler=compiler, lower=new_lower))
+        )
 
     @staticmethod
     def create(layer: Layer):
-        return Stack(LayerNode(layer_id=layer.name, lower=None))
+        return Stack(LayerNode(namespace="", layer=layer, lower=None))
 
     def __str__(self):
         return str(self.target)

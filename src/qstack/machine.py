@@ -4,6 +4,7 @@ from collections import Counter, OrderedDict
 from .processors import QPU, CPU, flush
 from .program import Program
 from .ast import Kernel
+from .stack import Stack
 
 
 class Results:
@@ -63,3 +64,12 @@ class QuantumMachine:
 
     def eval(self, program: Program, *, shots: int | None = 1000) -> Results:
         return Results([self.single_shot(program) for _ in range(shots)])
+
+
+def local_engine_for(stack: Stack) -> QuantumMachine:
+    from .classic_processor import from_stack as get_cpu
+    from .emulator import from_stack as get_qpu
+
+    cpu = get_cpu(stack)
+    qpu = get_qpu(stack)
+    return QuantumMachine(qpu=qpu, cpu=cpu)
