@@ -27,7 +27,7 @@ class QuantumInstruction:
     parameters: dict[str, ParameterValue] | None = None
 
     def print(self, indent=0):
-        pre = " " * indent
+        pre = "  " * indent
         result = pre + self.name
 
         if self.parameters:
@@ -53,7 +53,7 @@ class ClassicInstruction:
         return 0
 
     def print(self, indent: int = 0) -> str:
-        pre = " " * indent
+        pre = "  " * indent
         result = pre + ">> " + self.name
         if self.parameters:
             args = ",".join([f"{k}={v}" for k, v in self.parameters.items()])
@@ -80,7 +80,7 @@ class Kernel:
             return len(self.targets) + max(k.depth for k in sub_kernels)
 
     def print(self, indent: int = 0) -> str:
-        pre = " " * indent
+        pre = "  " * indent
 
         result = ""
         if self.targets:
