@@ -31,7 +31,7 @@ class Compiler:
                 instructions.append(self.handlers[inst.name](inst))
 
         callback = kernel.callback
-        if callback is not None:
+        if (callback is not None) and (":" not in callback.name):
             callback = replace(callback, name=f"{node.namespace}{kernel.callback.name}")
 
         return replace(kernel, instructions=instructions, callback=callback)

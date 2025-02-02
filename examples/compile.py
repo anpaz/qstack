@@ -64,9 +64,9 @@ engine.eval(compiled).plot_histogram()
 
 
 # %%
-from qstack.compilers.rep3_toy import ToyRepetitionCompiler
+from qstack.compilers.rep3_trivial import TrivialRepetitionCompiler
 
-compiler = ToyRepetitionCompiler()
+compiler = TrivialRepetitionCompiler()
 rep3 = compiler.compile(compiled)
 
 print(rep3)
@@ -76,7 +76,7 @@ engine = local_engine_for(rep3.stack)
 engine.eval(rep3).plot_histogram()
 
 # %%
-compiler = ToyRepetitionCompiler()
+compiler = TrivialRepetitionCompiler()
 rep3bis = compiler.compile(rep3)
 
 print(rep3bis)

@@ -25,7 +25,7 @@ def decode(m0: Outcome, m1: Outcome, m2: Outcome):
 Decode = ClassicDefinition.from_callback(decode)
 
 
-class ToyRepetitionCompiler(Compiler):
+class TrivialRepetitionCompiler(Compiler):
     def __init__(self):
         super().__init__(
             name="rep3_toy",
