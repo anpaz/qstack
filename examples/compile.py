@@ -39,8 +39,8 @@ print(original)
 # %%
 from qstack.machine import local_machine_for
 
-engine = local_machine_for(original.stack)
-engine.eval(original).plot_histogram()
+machine = local_machine_for(original.stack)
+machine.eval(original).plot_histogram()
 
 
 # %%
@@ -53,14 +53,14 @@ print(compiled)
 
 # %%
 try:
-    engine.eval(compiled).plot_histogram()
+    machine.eval(compiled).plot_histogram()
 except Exception as e:
     print(e)
     print("This is expected, as the engine is for the original stack...")
 
 # %%
-engine = local_machine_for(compiled.stack)
-engine.eval(compiled).plot_histogram()
+machine = local_machine_for(compiled.stack)
+machine.eval(compiled).plot_histogram()
 
 
 # %%
@@ -72,8 +72,8 @@ rep3 = compiler.compile(compiled)
 print(rep3)
 
 # %%
-engine = local_machine_for(rep3.stack)
-engine.eval(rep3).plot_histogram()
+machine = local_machine_for(rep3.stack)
+machine.eval(rep3).plot_histogram()
 
 # %%
 compiler = TrivialRepetitionCompiler()
