@@ -11,6 +11,11 @@ from ..stack import LayerNode
 
 logger = logging.getLogger("qstack")
 
+## Stabilizers we're using:
+#    [1, 1, 0, 1, 1, 0, 0],
+#    [1, 0, 1, 1, 0, 1, 0],
+#    [0, 1, 1, 1, 0, 0, 1],
+
 
 def handle_x(inst: QuantumInstruction):
     target = tuple([QubitId(f"{inst.targets[0]}.{i}") for i in range(7)])
@@ -29,96 +34,29 @@ def handle_cx(inst: QuantumInstruction):
     return Kernel(targets=[], instructions=[cliffords.CX(c, t) for (c, t) in zip(ctrl, target)])
 
 
-def correct_one(m: Outcome, *, qubit=QubitId, op: QuantumInstruction):
-    if m == 1:
-        return Kernel(targets=[], instructions=[op(qubit)])
-
-
 def handle_prepare_zero(t: QubitId):
     q = tuple([QubitId(f"{t}.{i}") for i in range(7)])
     a = QubitId(f"{t}.a")
 
     ## Stabilizers we're using:
-    # H = {
-    #     (1, 1, 0, 0, 1, 1, 0),
-    #     (1, 0, 1, 1, 0, 1, 0),
-    #     (0, 1, 1, 1, 0, 0, 1)
-    # }
-
-    # G = {
-    #     (1, 0, 0, 0, 1, 1, 0),
-    #     (0, 1, 0, 0, 1, 0, 1),
-    #     (0, 0, 1, 0, 0, 1, 1),
-    #     (0, 0, 0, 1, 1, 1, 1),
-    # }
+    #    [1, 1, 0, 1, 1, 0, 0],
+    #    [1, 0, 1, 1, 0, 1, 0],
+    #    [0, 1, 1, 1, 0, 0, 1],
 
     instructions = [
-        cliffords.H(q[0]),
-        cliffords.H(q[1]),
-        cliffords.H(q[2]),
-        cliffords.H(q[3]),
-        cliffords.CX(q[0], q[4]),
-        cliffords.CX(q[0], q[5]),
-        cliffords.CX(q[1], q[4]),
-        cliffords.CX(q[1], q[6]),
-        cliffords.CX(q[2], q[5]),
-        cliffords.CX(q[2], q[6]),
-        cliffords.CX(q[3], q[4]),
-        cliffords.CX(q[3], q[5]),
-        cliffords.CX(q[3], q[6]),
+        cliffords.H(q[4]),
+        cliffords.H(q[5]),
+        cliffords.H(q[6]),
+        cliffords.CX(q[4], q[0]),
+        cliffords.CX(q[4], q[1]),
+        cliffords.CX(q[4], q[3]),
+        cliffords.CX(q[5], q[0]),
+        cliffords.CX(q[5], q[2]),
+        cliffords.CX(q[5], q[3]),
+        cliffords.CX(q[6], q[1]),
+        cliffords.CX(q[6], q[2]),
+        cliffords.CX(q[6], q[3]),
     ]
-
-    # instructions = [
-    #     Kernel(
-    #         targets=[a],
-    #         instructions=[
-    #             cliffords.H(a),
-    #             cliffords.CX(a, q[0]),
-    #             cliffords.CX(a, q[1]),
-    #             cliffords.CX(a, q[3]),
-    #             cliffords.CX(a, q[4]),
-    #             cliffords.H(a),
-    #         ],
-    #         callback=Correct_One(qubit=q[0], op=cliffords.Z),
-    #     ),
-    #     Kernel(
-    #         targets=[a],
-    #         instructions=[
-    #             cliffords.H(a),
-    #             cliffords.CX(a, q[0]),
-    #             cliffords.CX(a, q[2]),
-    #             cliffords.CX(a, q[3]),
-    #             cliffords.CX(a, q[5]),
-    #             cliffords.H(a),
-    #         ],
-    #         callback=Correct_One(qubit=q[0], op=cliffords.Z),
-    #     ),
-    #     Kernel(
-    #         targets=[a],
-    #         instructions=[
-    #             cliffords.H(a),
-    #             cliffords.CX(a, q[1]),
-    #             cliffords.CX(a, q[2]),
-    #             cliffords.CX(a, q[3]),
-    #             cliffords.CX(a, q[6]),
-    #             cliffords.H(a),
-    #         ],
-    #         callback=Correct_One(qubit=q[1], op=cliffords.Z),
-    #     ),
-    #     Kernel(
-    #         targets=[a],
-    #         instructions=[
-    #             cliffords.CX(q[0], a),
-    #             cliffords.CX(q[1], a),
-    #             cliffords.CX(q[2], a),
-    #             cliffords.CX(q[3], a),
-    #             cliffords.CX(q[4], a),
-    #             cliffords.CX(q[5], a),
-    #             cliffords.CX(q[6], a),
-    #         ],
-    #         callback=Correct_One(qubit=q[0], op=cliffords.X),
-    #     ),
-    # ]
 
     return Kernel(targets=[], instructions=instructions)
 
@@ -208,32 +146,18 @@ def correct_z(m0: Outcome, m1: Outcome, m2: Outcome, *, qubit: QubitId):
 
 def decode(m0: Outcome, m1: Outcome, m2: Outcome, m3: Outcome, m4: Outcome, m5: Outcome, m6: Outcome):
     outcome = np.array([m0, m1, m2, m3, m4, m5, m6])
-    check1 = np.dot(outcome, np.array([1, 1, 0, 1, 1, 0, 0])) % 2
-    check2 = np.dot(outcome, np.array([1, 0, 1, 1, 0, 1, 0])) % 2
-    check3 = np.dot(outcome, np.array([0, 1, 1, 1, 0, 0, 1])) % 2
+    check1 = int(np.dot(outcome, np.array([1, 1, 0, 1, 1, 0, 0])) % 2)
+    check2 = int(np.dot(outcome, np.array([1, 0, 1, 1, 0, 1, 0])) % 2)
+    check3 = int(np.dot(outcome, np.array([0, 1, 1, 1, 0, 0, 1])) % 2)
     syndrome = (check1, check2, check3)
     fault = syndrome_table.get(syndrome)
+    logger.debug(f"outcome: {outcome}, syndrome: {syndrome}, correction: {fault}")
 
     if fault is not None:
         outcome[fault] = (outcome[fault] + 1) % 2
 
-    G = {
-        (1, 0, 0, 0, 1, 1, 0),
-        (0, 1, 0, 0, 1, 0, 1),
-        (0, 0, 1, 0, 0, 1, 1),
-        (0, 0, 0, 1, 1, 1, 1),
-    }
+    return int(np.sum(outcome) % 2)
 
-    if tuple(outcome) in G:
-        return 0
-    elif tuple((outcome + np.array([1, 1, 1, 1, 1, 1, 1])) % 2) in G:
-        return 1
-    else:
-        logger.warning(f"unknown outcome: {outcome}, fault: {fault}")
-    return None
-
-
-Correct_One = ClassicDefinition.from_callback(correct_one)
 
 Correct_X = ClassicDefinition.from_callback(correct_x)
 Correct_Z = ClassicDefinition.from_callback(correct_z)
@@ -246,9 +170,7 @@ class SteaneCompiler(Compiler):
         super().__init__(
             name="steane",
             source=cliffords.layer,
-            target=replace(
-                cliffords.layer.extend_with(classic={Correct_One, Correct_X, Correct_Z, Decode}), name="steane"
-            ),
+            target=replace(cliffords.layer.extend_with(classic={Correct_X, Correct_Z, Decode})),
             handlers={
                 cliffords.X.name: handle_x,
                 cliffords.H.name: handle_h,
@@ -300,8 +222,8 @@ class SteaneCompiler(Compiler):
 
         for t in reversed(kernel.targets):
             qubits = tuple(QubitId(f"{t}.{i}") for i in range(7))
-            # current_kernel = Kernel(targets=qubits, instructions=[current_kernel], callback=Decode())
-            current_kernel = Kernel(targets=qubits, instructions=[current_kernel])
+            current_kernel = Kernel(targets=qubits, instructions=[current_kernel], callback=Decode())
+            # current_kernel = Kernel(targets=qubits, instructions=[current_kernel])
 
         # Attach final callback if needed
         final_callback = rename_callback(kernel.callback)

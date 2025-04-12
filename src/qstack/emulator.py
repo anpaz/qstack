@@ -59,14 +59,14 @@ class StateVectorEmulator(QPU):
         self.allocations.append(target)
 
     def eval(self, instruction: QuantumInstruction):
-        logger.debug(f"eval: {instruction}")
         gate_name = instruction.name.lower()
         qubits = [self.allocations.index(t) for t in instruction.targets]
         qubits = [self.num_qubits - int(t) - 1 for t in qubits]
         qubits.reverse()
 
-        assert gate_name in self.operations, f"Invalid instruction {instruction.name}"
+        assert gate_name in self.operations, f"Invalid instruction: {instruction}"
         operation = self.operations.get(gate_name)
+        logger.debug(f"eval: {gate_name} {qubits}")
         if callable(operation):
             self.sim.apply_operation(operation(**instruction.parameters), qubits)
         else:
