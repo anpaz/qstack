@@ -9,6 +9,38 @@ formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
+
+# %%
+from qstack.layers.cliffords_min import *
+from qstack import Program, Stack, Kernel
+
+stack = Stack.create(layer)
+
+original = Program(
+    stack=stack,
+    kernels=[Kernel.allocate("q1", compute=[])],
+)
+
+print(original)
+
+# %%
+from qstack.compilers.steane import SteaneCompiler
+
+compiler = SteaneCompiler()
+compiled = compiler.compile(original)
+
+
+print(compiled)
+
+
+# %%
+logger.setLevel(logging.DEBUG)
+
+machine = local_machine_for(compiled.stack)
+machine.single_shot(compiled)
+
+logger.setLevel(logging.INFO)
+
 # %%
 from qstack.layers.cliffords_min import *
 from qstack import Program, Stack, Kernel

@@ -22,6 +22,11 @@ def handle_x(inst: QuantumInstruction):
     return Kernel(targets=[], instructions=[cliffords.X(q) for q in target])
 
 
+def handle_z(inst: QuantumInstruction):
+    target = tuple([QubitId(f"{inst.targets[0]}.{i}") for i in range(7)])
+    return Kernel(targets=[], instructions=[cliffords.Z(q) for q in target])
+
+
 def handle_h(inst: QuantumInstruction):
     target = tuple([QubitId(f"{inst.targets[0]}.{i}") for i in range(7)])
     return Kernel(targets=[], instructions=[cliffords.H(q) for q in target])
@@ -63,50 +68,50 @@ def handle_prepare_zero(t: QubitId):
 
 def x_syndrome_extraction(t: QubitId):
     target = tuple([QubitId(f"{t}.{i}") for i in range(7)])
-    ax = tuple([QubitId(f"x.{i}") for i in range(3)])
+    a = tuple([QubitId(f"{t}.x.{i}") for i in range(3)])
 
     x_syndrome_extraction = (
-        [cliffords.H(a) for a in ax]
+        [cliffords.H(a) for a in a]
         + [
-            cliffords.CX(ax[0], target[0]),
-            cliffords.CX(ax[0], target[1]),
-            cliffords.CX(ax[0], target[3]),
-            cliffords.CX(ax[0], target[4]),
-            cliffords.CX(ax[1], target[0]),
-            cliffords.CX(ax[1], target[2]),
-            cliffords.CX(ax[1], target[3]),
-            cliffords.CX(ax[1], target[5]),
-            cliffords.CX(ax[2], target[1]),
-            cliffords.CX(ax[2], target[2]),
-            cliffords.CX(ax[2], target[3]),
-            cliffords.CX(ax[2], target[6]),
+            cliffords.CX(a[0], target[0]),
+            cliffords.CX(a[0], target[1]),
+            cliffords.CX(a[0], target[3]),
+            cliffords.CX(a[0], target[4]),
+            cliffords.CX(a[1], target[0]),
+            cliffords.CX(a[1], target[2]),
+            cliffords.CX(a[1], target[3]),
+            cliffords.CX(a[1], target[5]),
+            cliffords.CX(a[2], target[1]),
+            cliffords.CX(a[2], target[2]),
+            cliffords.CX(a[2], target[3]),
+            cliffords.CX(a[2], target[6]),
         ]
-        + [cliffords.H(a) for a in ax]
+        + [cliffords.H(a) for a in a]
     )
 
-    return Kernel(targets=ax, instructions=x_syndrome_extraction, callback=Correct_X(qubit=t))
+    return Kernel(targets=a, instructions=x_syndrome_extraction, callback=Correct_X(qubit=t))
 
 
 def z_syndrome_extraction(t: QubitId):
     target = tuple([QubitId(f"{t}.{i}") for i in range(7)])
-    az = tuple([QubitId(f"z.{i}") for i in range(3)])
+    a = tuple([QubitId(f"{t}.z.{i}") for i in range(3)])
 
     z_syndrome_extraction = [
-        cliffords.CX(target[0], az[0]),
-        cliffords.CX(target[1], az[0]),
-        cliffords.CX(target[3], az[0]),
-        cliffords.CX(target[4], az[0]),
-        cliffords.CX(target[0], az[1]),
-        cliffords.CX(target[2], az[1]),
-        cliffords.CX(target[3], az[1]),
-        cliffords.CX(target[5], az[1]),
-        cliffords.CX(target[1], az[2]),
-        cliffords.CX(target[2], az[2]),
-        cliffords.CX(target[3], az[2]),
-        cliffords.CX(target[6], az[2]),
+        cliffords.CX(target[0], a[0]),
+        cliffords.CX(target[1], a[0]),
+        cliffords.CX(target[3], a[0]),
+        cliffords.CX(target[4], a[0]),
+        cliffords.CX(target[0], a[1]),
+        cliffords.CX(target[2], a[1]),
+        cliffords.CX(target[3], a[1]),
+        cliffords.CX(target[5], a[1]),
+        cliffords.CX(target[1], a[2]),
+        cliffords.CX(target[2], a[2]),
+        cliffords.CX(target[3], a[2]),
+        cliffords.CX(target[6], a[2]),
     ]
 
-    return Kernel(targets=az, instructions=z_syndrome_extraction, callback=Correct_Z(qubit=t))
+    return Kernel(targets=a, instructions=z_syndrome_extraction, callback=Correct_Z(qubit=t))
 
 
 # These maps are derived from the classical Hamming syndrome decoding
@@ -128,7 +133,7 @@ def correct_x(m0: Outcome, m1: Outcome, m2: Outcome, *, qubit: QubitId):
 
     if fault is not None:
         target = tuple([QubitId(f"{qubit}.{i}") for i in range(7)])
-        return Kernel(targets=[], instructions=[cliffords.X(QubitId(f"{qubit}.{fault}"))])
+        return Kernel(targets=[], instructions=[cliffords.X(QubitId(f"{qubit}.{target[fault]}"))])
     else:
         return None
 
@@ -139,7 +144,7 @@ def correct_z(m0: Outcome, m1: Outcome, m2: Outcome, *, qubit: QubitId):
 
     if fault is not None:
         target = tuple([QubitId(f"{qubit}.{i}") for i in range(7)])
-        return Kernel(targets=[], instructions=[cliffords.Z(QubitId(f"{qubit}.{fault}"))])
+        return Kernel(targets=[], instructions=[cliffords.Z(QubitId(f"{qubit}.{target[fault]}"))])
     else:
         return None
 
@@ -173,6 +178,7 @@ class SteaneCompiler(Compiler):
             target=cliffords.layer.extend_with(classic={Correct_X, Correct_Z, Decode}),
             handlers={
                 cliffords.X.name: handle_x,
+                cliffords.Z.name: handle_z,
                 cliffords.H.name: handle_h,
                 cliffords.CX.name: handle_cx,
             },
