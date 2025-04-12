@@ -59,8 +59,7 @@ logger.setLevel(logging.INFO)
 machine.eval(compiled, shots=100).plot_histogram()
 
 # %%
-
-# %%
+## The state prep routing for Steane:
 from qstack.machine import local_machine_for
 from qstack.ast import QubitId
 

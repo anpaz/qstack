@@ -170,7 +170,7 @@ class SteaneCompiler(Compiler):
         super().__init__(
             name="steane",
             source=cliffords.layer,
-            target=replace(cliffords.layer.extend_with(classic={Correct_X, Correct_Z, Decode})),
+            target=cliffords.layer.extend_with(classic={Correct_X, Correct_Z, Decode}),
             handlers={
                 cliffords.X.name: handle_x,
                 cliffords.H.name: handle_h,

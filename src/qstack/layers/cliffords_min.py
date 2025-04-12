@@ -14,7 +14,7 @@ CX = QuantumDefinition.from_matrix(
 )
 
 CZ = QuantumDefinition.from_matrix(
-    name="cz", targets=["q1", "q2"], matrix=[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, -1]]
+    name="cz", targets=2, matrix=[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, -1]]
 )
 
 layer = Layer(name="cliffords-min", quantum_definitions=set([X, Y, Z, H, CX, CZ]), classic_definitions=set())

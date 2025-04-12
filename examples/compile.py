@@ -1,4 +1,15 @@
 # %%
+import logging
+
+
+logger = logging.getLogger("qstack")
+
+handler = logging.StreamHandler()
+formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
+# %%
 from qstack.ast import QubitId
 from qstack.layers.toy import *
 from qstack import Program, Stack, Kernel
@@ -56,7 +67,7 @@ try:
     machine.eval(compiled).plot_histogram()
 except Exception as e:
     print(e)
-    print("This is expected, as the engine is for the original stack...")
+    print("This is expected, as the machine is for the original stack...")
 
 # %%
 machine = local_machine_for(compiled.stack)
@@ -81,4 +92,9 @@ rep3bis = compiler.compile(rep3)
 
 print(rep3bis)
 
-# %%
+
+# # %%
+# logger.setLevel(logging.DEBUG)
+
+# machine = local_machine_for(rep3bis.stack)
+# machine.single_shot(rep3bis)
