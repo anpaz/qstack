@@ -1,5 +1,7 @@
 import logging
 import random
+from abc import ABC, abstractmethod
+import numpy as np
 
 from typing import Set
 from qsharp.noisy_simulator import StateVectorSimulator, Operation, Instrument
@@ -8,14 +10,17 @@ from .processors import QPU
 from .ast import QuantumInstruction, QubitId
 from .layer import QuantumDefinition, Layer
 from .stack import Stack
+from .noise import NoiseChannel, NoiselessChannel, DepolarizingNoise
 
 
 logger = logging.getLogger("qstack")
 
 
 class StateVectorEmulator(QPU):
-    def __init__(self, instructions: Set[QuantumDefinition]):
+    def __init__(self, instructions: Set[QuantumDefinition], noise_channel: NoiseChannel):
         super().__init__()
+
+        self.noise_channel = noise_channel
 
         # Create operators:
         operations = {}
@@ -25,12 +30,15 @@ class StateVectorEmulator(QPU):
                 capture = inst
 
                 def operation_maker(**args) -> Operation:
-                    return Operation([capture.factory(**args)])
+                    noiseless_op = capture.factory(**args)
+                    kraus_matrices = self.noise_channel.get_kraus_matrices(capture)
+                    return Operation([K @ noiseless_op for K in kraus_matrices])
 
                 operations[inst.name.lower()] = operation_maker
             else:
                 logger.debug(f"Found gate {inst.name}: {inst.matrix}")
-                operations[inst.name.lower()] = Operation([inst.matrix])
+                kraus_matrices = self.noise_channel.get_kraus_matrices(inst)
+                operations[inst.name.lower()] = Operation([K @ inst.matrix for K in kraus_matrices])
         self.operations = operations
 
         # Create instruments.
@@ -82,9 +90,9 @@ class StateVectorEmulator(QPU):
         return outcome
 
 
-def from_layer(layer: Layer):
-    return StateVectorEmulator(layer.quantum_definitions)
+def from_layer(layer: Layer, noise_channel: NoiseChannel = NoiselessChannel()):
+    return StateVectorEmulator(layer.quantum_definitions, noise_channel=noise_channel)
 
 
-def from_stack(stack: Stack):
-    return from_layer(stack.target.layer)
+def from_stack(stack: Stack, noise: NoiseChannel = NoiselessChannel()):
+    return from_layer(stack.target.layer, noise_channel=noise)
