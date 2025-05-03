@@ -10,11 +10,8 @@ from .program import Program
 from .compiler import Compiler
 
 
-class ClassicProcessor(CPU):
-    def __init__(self, instructions: set[ClassicDefinition]):
-        self.operations = {inst.name.lower(): inst for inst in instructions}
-
-    def restart(self):
+class ClassicalContext:
+    def __init__(self):
         self.measurements = []
 
     def collect(self, result: Outcome):
@@ -24,21 +21,30 @@ class ClassicProcessor(CPU):
         if len(self.measurements) > 0:
             return self.measurements.pop()
 
+
+class ClassicProcessor(CPU):
+    def __init__(self, instructions: set[ClassicDefinition]):
+        self.operations = {inst.name.lower(): inst for inst in instructions}
+
+    def restart(self):
+        self.context = ClassicalContext()
+
+    def collect(self, result: Outcome):
+        self.context.collect(result)
+
+    def consume(self) -> Outcome:
+        return self.context.consume()
+
     def eval(self, instruction: ClassicInstruction) -> Kernel:
         name = instruction.name.lower()
         assert name in self.operations, f"Invalid classic instruction {instruction.name}."
         info = self.operations[name]
-
-        targets = [self.consume() for _ in range(info.outcomes_length)]
         parameters = {name: instruction.parameters[name] for name in info.parameters}
 
-        result = info.callback(*targets, **parameters)
+        result = info.callback(self.context, **parameters)
 
         if isinstance(result, Kernel):
             return result
-        elif isinstance(result, int):
-            self.collect(result)
-            return Kernel.empty()
         elif result is None:
             return Kernel.empty()
         else:

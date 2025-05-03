@@ -1,10 +1,13 @@
 import math
 
 from ..layer import Layer, QuantumDefinition, ClassicDefinition, Outcome, Matrix
-from ..ast import ParameterValue
+from ..classic_processor import ClassicalContext
 
 
-def vote(m1: Outcome, m2: Outcome, m3: Outcome) -> Outcome:
+def vote(context: ClassicalContext) -> Outcome:
+    m1 = context.consume()
+    m2 = context.consume()
+    m3 = context.consume()
     print("on vote", m1, m2, m3)
     if m1 + m2 + m3 >= 2:
         return 1

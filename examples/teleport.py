@@ -2,23 +2,28 @@
 import random
 
 from qstack.layers.cliffords_min import *
-from qstack.layer import ClassicDefinition, Outcome, QubitId, Kernel
+from qstack.layer import ClassicDefinition, QubitId, Kernel
 from qstack import Program, Stack, Kernel
+from qstack.classic_processor import ClassicalContext
 
 # Pick randomly the operation used for preparation:
 op = random.choice([X, H])
 
 
-def prepare(*, q: QubitId):
+def prepare(context: ClassicalContext, *, q: QubitId):
     return Kernel(targets=[], instructions=[op(q)])
 
 
-def fix(m0: Outcome, m1: Outcome, *, q: QubitId):
+def fix(context: ClassicalContext, *, q: QubitId):
+    m0 = context.consume()
+    m1 = context.consume()
+
     instructions = []
     if m1 == 1:
         instructions.append(Z(q))
     if m0 == 1:
         instructions.append(X(q))
+
     return Kernel(targets=[], instructions=instructions)
 
 

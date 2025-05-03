@@ -1,31 +1,33 @@
 # %%
-import qstack.classic_processor
-
-from qstack.layer import ClassicDefinition, ClassicDefinition, Outcome, QubitId
+from qstack.layer import ClassicDefinition, ClassicDefinition, QubitId
 from qstack.ast import Kernel, QuantumInstruction
 from qstack.processors import flush
+from qstack.classic_processor import ClassicalContext, ClassicProcessor
 
 
-def vote(m1: Outcome, m2: Outcome, m3: Outcome) -> Outcome:
+def vote(context: ClassicalContext):
+    m1 = context.consume()
+    m2 = context.consume()
+    m3 = context.consume()
+
     print("on vote", m1, m2, m3)
     if m1 + m2 + m3 >= 2:
-        return 1
+        context.collect(1)
     else:
-        return 0
+        context.collect(0)
 
 
-def q_flip(m: Outcome, *, q: QubitId):
+def q_flip(context: ClassicalContext, *, q: QubitId):
+    m = context.consume()
     print("on q_flip", m)
     if m == 1:
         return Kernel(targets=[], instructions=[QuantumInstruction(name="x", targets=[q])])
-    else:
-        return None
 
 
 Vote = ClassicDefinition.from_callback(vote)
 QFlip = ClassicDefinition.from_callback(q_flip)
 
-cpu = qstack.classic_processor.ClassicProcessor(instructions={Vote, QFlip})
+cpu = ClassicProcessor(instructions={Vote, QFlip})
 
 # %%
 cpu.restart()
@@ -48,4 +50,5 @@ print(cpu.eval(QFlip(q=QubitId("q1"))))
 print(cpu.eval(QFlip(q=QubitId("q2"))))
 
 print(tuple(flush(cpu)))
+
 # %%

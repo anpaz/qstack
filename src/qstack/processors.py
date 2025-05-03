@@ -38,7 +38,7 @@ class CPU(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def eval(self, instruction: ClassicInstruction) -> Kernel:
+    def eval(self, instruction: ClassicInstruction) -> Kernel | None:
         pass
 
 

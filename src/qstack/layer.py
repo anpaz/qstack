@@ -45,7 +45,6 @@ class QuantumDefinition:
 @dataclass(frozen=True)
 class ClassicDefinition:
     name: str
-    outcomes_length: int
     parameters: tuple[str]
     callback: Callable[[tuple[Outcome]], Kernel]
 
@@ -62,16 +61,11 @@ class ClassicDefinition:
         import inspect
 
         signature = inspect.signature(callback)
-        outcomes_length = len(
-            [p for p in signature.parameters.values() if p.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD]
-        )
         parameters_names = tuple(
             [p.name for p in signature.parameters.values() if p.kind == inspect.Parameter.KEYWORD_ONLY]
         )
 
-        return ClassicDefinition(
-            name=callback.__name__, callback=callback, outcomes_length=outcomes_length, parameters=parameters_names
-        )
+        return ClassicDefinition(name=callback.__name__, callback=callback, parameters=parameters_names)
 
 
 @dataclass(frozen=True)

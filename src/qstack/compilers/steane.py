@@ -6,7 +6,7 @@ from ..compiler import Compiler
 from ..ast import QuantumInstruction, Kernel, QubitId
 from ..layers import cliffords_min as cliffords
 from ..layer import ClassicDefinition
-from ..processors import Outcome
+from ..classic_processor import ClassicalContext
 from ..stack import LayerNode
 
 logger = logging.getLogger("qstack")
@@ -127,30 +127,26 @@ syndrome_table = {
 }
 
 
-def correct_x(m0: Outcome, m1: Outcome, m2: Outcome, *, qubit: QubitId):
-    syndrome = (m0, m1, m2)
+def correct_x(context: ClassicalContext, *, qubit: QubitId):
+    syndrome = (context.consume(), context.consume(), context.consume())
     fault = syndrome_table.get(syndrome)
 
     if fault is not None:
         target = tuple([QubitId(f"{qubit}.{i}") for i in range(7)])
         return Kernel(targets=[], instructions=[cliffords.X(QubitId(f"{qubit}.{target[fault]}"))])
-    else:
-        return None
 
 
-def correct_z(m0: Outcome, m1: Outcome, m2: Outcome, *, qubit: QubitId):
-    syndrome = (m0, m1, m2)
+def correct_z(context: ClassicalContext, *, qubit: QubitId):
+    syndrome = (context.consume(), context.consume(), context.consume())
     fault = syndrome_table.get(syndrome)
 
     if fault is not None:
         target = tuple([QubitId(f"{qubit}.{i}") for i in range(7)])
         return Kernel(targets=[], instructions=[cliffords.Z(QubitId(f"{qubit}.{target[fault]}"))])
-    else:
-        return None
 
 
-def decode(m0: Outcome, m1: Outcome, m2: Outcome, m3: Outcome, m4: Outcome, m5: Outcome, m6: Outcome):
-    outcome = np.array([m0, m1, m2, m3, m4, m5, m6])
+def decode(context: ClassicalContext):
+    outcome = np.array([context.consume() for _ in range(7)])
     check1 = int(np.dot(outcome, np.array([1, 1, 0, 1, 1, 0, 0])) % 2)
     check2 = int(np.dot(outcome, np.array([1, 0, 1, 1, 0, 1, 0])) % 2)
     check3 = int(np.dot(outcome, np.array([0, 1, 1, 1, 0, 0, 1])) % 2)
@@ -161,7 +157,7 @@ def decode(m0: Outcome, m1: Outcome, m2: Outcome, m3: Outcome, m4: Outcome, m5: 
     if fault is not None:
         outcome[fault] = (outcome[fault] + 1) % 2
 
-    return int(np.sum(outcome) % 2)
+    context.collect(int(np.sum(outcome) % 2))
 
 
 Correct_X = ClassicDefinition.from_callback(correct_x)

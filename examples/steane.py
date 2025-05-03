@@ -116,3 +116,5 @@ encoder = Program(stack=stack, kernels=[Kernel(targets=q, instructions=instructi
 machine = local_machine_for(stack)
 for k, v in machine.eval(encoder).get_histogram().items():
     print(k, v)
+
+# %%

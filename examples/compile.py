@@ -13,9 +13,10 @@ logger.addHandler(handler)
 from qstack.ast import QubitId
 from qstack.layers.toy import *
 from qstack import Program, Stack, Kernel
+from qstack.classic_processor import ClassicalContext
 
 
-def fix(*, q: QubitId):
+def fix(context: ClassicalContext, *, q: QubitId):
     return Kernel(targets=[], instructions=[Flip(q)])
 
 
@@ -98,3 +99,5 @@ print(rep3bis)
 
 # machine = local_machine_for(rep3bis.stack)
 # machine.single_shot(rep3bis)
+
+# %%

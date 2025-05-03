@@ -3,7 +3,7 @@ from ..compiler import Compiler
 from ..ast import QuantumInstruction, Kernel, QubitId
 from ..layers import cliffords_min as cliffords
 from ..layer import ClassicDefinition
-from ..processors import Outcome
+from ..classic_processor import ClassicalContext
 from ..stack import LayerNode
 
 
@@ -15,11 +15,14 @@ def handle_h(inst: QuantumInstruction):
     return Kernel(targets=[], instructions=[cliffords.H(f"{inst.targets[0]}.{i}") for i in range(3)])
 
 
-def decode(m0: Outcome, m1: Outcome, m2: Outcome):
+def decode(context: ClassicalContext):
+    m0 = context.consume()
+    m1 = context.consume()
+    m2 = context.consume()
     if m0 + m1 + m2 > 1:
-        return 1
+        context.collect(1)
     else:
-        return 0
+        context.collect(0)
 
 
 Decode = ClassicDefinition.from_callback(decode)

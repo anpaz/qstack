@@ -37,6 +37,9 @@ class QuantumMachine:
         self.cpu = cpu
 
     def eval_kernel(self, kernel: Kernel) -> None:
+        if not kernel:
+            return
+
         for q in kernel.targets:
             self.qpu.allocate(q)
 
