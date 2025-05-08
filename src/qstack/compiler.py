@@ -21,7 +21,6 @@ class Compiler:
                 logger.warning(f"Instruction {instr.name} has no handler.")
 
     def eval(self, kernel, node):
-        from .ast import Kernel
 
         instructions = []
         for inst in kernel.instructions:

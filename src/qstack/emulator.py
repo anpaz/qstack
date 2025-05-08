@@ -1,7 +1,5 @@
 import logging
 import random
-from abc import ABC, abstractmethod
-import numpy as np
 
 from typing import Set
 from qsharp.noisy_simulator import StateVectorSimulator, Operation, Instrument
@@ -10,7 +8,7 @@ from .processors import QPU
 from .ast import QuantumInstruction, QubitId
 from .layer import QuantumDefinition, Layer
 from .stack import Stack
-from .noise import NoiseChannel, NoiselessChannel, DepolarizingNoise
+from .noise import NoiseChannel, NoiselessChannel
 
 
 logger = logging.getLogger("qstack")

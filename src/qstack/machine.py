@@ -1,4 +1,3 @@
-import inspect
 from collections import Counter, OrderedDict
 
 from .processors import QPU, CPU, flush

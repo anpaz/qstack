@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, Set, Type
+from typing import Callable, Set
 
 from .ast import (
     ClassicInstruction,

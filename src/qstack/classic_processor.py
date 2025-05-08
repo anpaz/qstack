@@ -1,13 +1,9 @@
-from dataclasses import dataclass, replace
-import inspect
-from typing import Callable
+from dataclasses import replace
 
 from .processors import CPU, Outcome
 from .ast import ClassicInstruction, Kernel
 from .layer import Layer, ClassicDefinition
-from .stack import Stack, LayerNode, CompilerNode
-from .program import Program
-from .compiler import Compiler
+from .stack import Stack, LayerNode
 
 
 class ClassicalContext:

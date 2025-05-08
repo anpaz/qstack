@@ -1,5 +1,7 @@
 """
-This module defines noise channels for quantum systems, including the base class `NoiseChannel` and specific implementations such as `NoiselessChannel`, `DepolarizingNoise`, and `PauliNoise`.
+This module defines noise channels for quantum systems,
+including the base class `NoiseChannel` and specific implementations
+such as `NoiselessChannel`, `DepolarizingNoise`, and `PauliNoise`.
 """
 
 from abc import ABC, abstractmethod
@@ -37,7 +39,10 @@ class DepolarizingNoise(NoiseChannel):
     """
     Represents a depolarizing noise channel.
 
-    Depolarizing noise is a type of quantum noise that affects all gates uniformly. It introduces errors by randomly replacing the quantum state with a completely mixed state with a certain probability. This noise model is widely used to simulate the effects of decoherence and other imperfections in quantum systems.
+    Depolarizing noise is a type of quantum noise that affects all gates uniformly.
+    It introduces errors by randomly replacing the quantum state with a completely
+    mixed state with a certain probability. This noise model is widely used to simulate
+    the effects of decoherence and other imperfections in quantum systems.
 
     Constructor Arguments:
         error_probability (float):
@@ -69,7 +74,9 @@ class PauliNoise(NoiseChannel):
     """
     Represents a Pauli noise channel.
 
-    Pauli noise applies one of the Pauli operations (X, Y, Z) to the quantum state with equal probability. This noise model is useful for simulating errors that occur due to bit flips, phase flips, or both.
+    Pauli noise applies one of the Pauli operations (X, Y, Z) to the quantum state
+    with equal probability. This noise model is useful for simulating errors
+    that occur due to bit flips, phase flips, or both.
 
     Constructor Arguments:
         error_probability (float):
