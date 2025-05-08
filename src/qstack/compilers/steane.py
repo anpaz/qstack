@@ -41,7 +41,6 @@ def handle_cx(inst: QuantumInstruction):
 
 def handle_prepare_zero(t: QubitId):
     q = tuple([QubitId(f"{t}.{i}") for i in range(7)])
-    a = QubitId(f"{t}.a")
 
     ## Stabilizers we're using:
     #    [1, 1, 0, 1, 1, 0, 0],
