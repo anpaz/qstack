@@ -54,7 +54,7 @@ class ClassicInstruction:
 
     def print(self, indent: int = 0) -> str:
         pre = "  " * indent
-        result = pre + ">> " + self.name
+        result = pre + "?? " + self.name
         if self.parameters:
             args = ",".join([f"{k}={v}" for k, v in self.parameters.items()])
             return result + f"({args})"
