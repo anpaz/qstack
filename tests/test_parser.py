@@ -122,6 +122,7 @@ allocate q3:
 measure"""
     parser = QStackParser(layer=teleport_layer)
     program = parser.parse(program_str)
+    print(program)
 
     assert isinstance(program, Program)
     assert program.stack.target.layer == teleport_layer
@@ -130,7 +131,6 @@ measure"""
     assert isinstance(program.kernels[0].instructions[0], Kernel)
     assert program.kernels[0].instructions[0].callback.name == "fix"
 
-    print(program)
     assert parser.parse(str(program)) == program
 
 
