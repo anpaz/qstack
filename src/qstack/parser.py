@@ -83,25 +83,31 @@ class QStackParser:
         return kernels
 
     def parse_kernel(self, lines):
-        if not lines or not lines[0].content.startswith("allocate"):
-            raise ParsingError("Expected 'allocate' keyword.", lines[0].line_number if lines else 1, 1)
+        if lines[0].content.startswith("allocate"):
+            allocate_line_info = lines.pop(0)
+            match = re.match(r"allocate\s+([\w\s]+):", allocate_line_info.content)
+            if not match:
+                raise ParsingError("Invalid 'allocate' declaration.", allocate_line_info.line_number, 1)
 
-        allocate_line_info = lines.pop(0)
-        match = re.match(r"allocate\s+([\w\s]+):", allocate_line_info.content)
-        if not match:
-            raise ParsingError("Invalid 'allocate' declaration.", allocate_line_info.line_number, 1)
+            targets = match.group(1).split()
 
-        targets = match.group(1).split()
+            instructions = []
+            while lines and not lines[0].content.startswith("measure"):
+                instructions.append(self.parse_instruction(lines))
 
-        instructions = []
-        while lines and not lines[0].content.startswith("measure"):
-            instructions.append(self.parse_instruction(lines))
+            if not lines or not lines[0].content.startswith("measure"):
+                raise ParsingError(
+                    "Expected 'measure' keyword.", lines[0].line_number if lines else allocate_line_info.line_number, 1
+                )
+            lines.pop(0)  # Remove the 'measure' line
 
-        if not lines or not lines[0].content.startswith("measure"):
-            raise ParsingError(
-                "Expected 'measure' keyword.", lines[0].line_number if lines else allocate_line_info.line_number, 1
-            )
-        lines.pop(0)  # Remove the 'measure' line
+        elif lines[0].content.startswith("---"):
+            targets = []
+            instructions = []
+            lines.pop(0)  # Remove the '---' line
+
+        else:
+            raise ParsingError("Expected 'allocate' or '---' keyword.", lines[0].line_number, 1)
 
         callback = None
         if lines and lines[0].content.startswith("??"):
@@ -116,7 +122,7 @@ class QStackParser:
         The method processes a line of instruction, determines its type, and extracts
         the operation, arguments, and targets using a regular expression.
         """
-        if lines[0].content.startswith("allocate"):
+        if lines[0].content.startswith("allocate") or lines[0].content.startswith("---"):
             return self.parse_kernel(lines)
 
         line_info = lines.pop(0)

@@ -112,6 +112,7 @@ def test_parser_with_classical_callbacks():
     program_str = """
 allocate q3:
   allocate q2 q1:
+    ---
     ?? prepare(q=q1)
     h q2
     cx q2 q3
