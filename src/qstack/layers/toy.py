@@ -15,8 +15,8 @@ def vote(context: ClassicalContext) -> Outcome:
         return 0
 
 
-def skew(p: float) -> Matrix:
-    theta = 2 * math.asin(math.sqrt(p))
+def skew(bias: float) -> Matrix:
+    theta = 2 * math.asin(math.sqrt(float(bias)))
     c = math.cos(theta / 2)
     s = math.sin(theta / 2)
     return [[c, -1j * s], [-1j * s, c]]
