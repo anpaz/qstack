@@ -4,7 +4,8 @@ The parser supports layers defined in qstack.layers and can handle classical cal
 """
 
 import re
-from qstack import Program, Stack, Kernel
+from qstack import Program, Stack
+from qstack.ast import ClassicInstruction, Kernel
 from qstack.layers import *
 from qstack.layers import get_layer_by_name
 from collections import namedtuple
@@ -27,7 +28,6 @@ class QStackParser:
     def __init__(self, layer=None):
         self.default_layer = layer
         self.qinstr = {i.name: i for i in layer.quantum_definitions} if layer else {}
-        self.cinstr = {i.name: i for i in layer.classic_definitions} if layer else {}
 
     def parse(self, program_str):
         lines = self.split_lines(program_str)
@@ -69,7 +69,6 @@ class QStackParser:
 
         stack = Stack.create(layer=layer)
         self.qinstr = {i.name: i for i in layer.quantum_definitions}
-        self.cinstr = {i.name: i for i in layer.classic_definitions}
 
         return stack
 
@@ -126,12 +125,7 @@ class QStackParser:
             return self.parse_kernel(lines)
 
         line_info = lines.pop(0)
-        if line_info.content.startswith("??"):
-            content = line_info.content[2:].strip()
-            instruction_set = self.cinstr
-        else:
-            content = line_info.content
-            instruction_set = self.qinstr
+        content = line_info.content
 
         if not content:
             raise ParsingError("Instruction content cannot be empty.", line_info.line_number, 1)
@@ -155,6 +149,49 @@ class QStackParser:
 
         if args:
             args = {k: v for arg in args.split(",") for k, v in [arg.split("=")]}  # Parse key=value pairs
-            return instruction_set[op](*targets, **args)
+            return self.qinstr[op](*targets, **args)
         else:
-            return instruction_set[op](*targets)
+            return self.qinstr[op](*targets)
+
+    def parse_callback(self, lines):
+        """
+        Parses a callback instruction.
+
+        The method processes a line of instruction, determines its type, and extracts
+        the operation, arguments, and targets using a regular expression.
+        """
+        line_info = lines.pop(0)
+        if line_info.content.startswith("??"):
+            content = line_info.content[2:].strip()
+        else:
+            raise ParsingError(
+                "Invalid callback instruction: callbacks must start with '??'.", line_info.line_number, 1
+            )
+
+        if not content:
+            raise ParsingError("Instruction content cannot be empty.", line_info.line_number, 1)
+
+        #     - (\w+): Captures the operation name, which consists of one or more word characters.
+        #     - (\(([^)]*)\))?: Optionally captures arguments enclosed in parentheses.
+        #         - ([^)]*): Matches any characters inside the parentheses, excluding the closing parenthesis.
+        #     - \s*: Matches zero or more whitespace characters.
+        #     - (.*): Captures the remaining part of the line as targets.
+        match = re.match(r"(\w+)(\(([^)]*)\))?\s*(.*)", content)
+        if not match:
+            raise ParsingError("Invalid instruction format.", line_info.line_number, 1)
+
+        # Groups:
+        #     1. `op`: The operation name (e.g., "allocate", "add").
+        #     2. `_`: The full argument string including parentheses (e.g., "(key=value)").
+        #     3. `args`: The inner content of the parentheses, representing key-value pairs (e.g., "key=value").
+        #     4. `targets`: The remaining part of the line, representing target variables or parameters.
+        op, _, args, targets = match.groups()
+
+        if targets:
+            raise ParsingError("Callback instructions should not have targets.", line_info.line_number, 1)
+
+        if args:
+            args = {k: v for arg in args.split(",") for k, v in [arg.split("=")]}  # Parse key=value pairs
+            return ClassicInstruction(name=op, parameters=args)
+        else:
+            return ClassicInstruction(name=op, parameters={})

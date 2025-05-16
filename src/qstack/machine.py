@@ -1,4 +1,5 @@
 from collections import Counter, OrderedDict
+from typing import Callable
 
 from .processors import QPU, CPU, flush
 from .program import Program
@@ -69,19 +70,19 @@ class QuantumMachine:
         return Results([self.single_shot(program) for _ in range(shots)])
 
 
-def local_machine_for(stack: Stack) -> QuantumMachine:
-    from .classic_processor import from_stack as get_cpu
+def local_machine_for(stack: Stack, *callbacks: list[Callable]) -> QuantumMachine:
+    from .classic_processor import from_list_of_callbacks as get_cpu
     from .emulator import from_stack as get_qpu
 
-    cpu = get_cpu(stack)
+    cpu = get_cpu(callbacks)
     qpu = get_qpu(stack)
     return QuantumMachine(qpu=qpu, cpu=cpu)
 
 
-def local_noisy_machine_for(stack: Stack, noise: NoiseChannel) -> QuantumMachine:
-    from .classic_processor import from_stack as get_cpu
+def local_noisy_machine_for(stack: Stack, noise: NoiseChannel, *callbacks: list[Callable]) -> QuantumMachine:
+    from .classic_processor import from_list_of_callbacks as get_cpu
     from .emulator import from_stack as get_qpu
 
-    cpu = get_cpu(stack)
+    cpu = get_cpu(callbacks)
     qpu = get_qpu(stack, noise)
     return QuantumMachine(qpu=qpu, cpu=cpu)

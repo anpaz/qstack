@@ -1,9 +1,10 @@
 from dataclasses import replace
+from typing import Callable
 
 from .processors import CPU, Outcome
 from .ast import ClassicInstruction, Kernel
 from .layer import Layer, ClassicDefinition
-from .stack import Stack, LayerNode
+from .stack import LayerNode
 
 
 class ClassicalContext:
@@ -75,6 +76,6 @@ def _find_all_instructions(node: LayerNode):
         yield replace(instr, name=f"{node.namespace}{instr.name}")
 
 
-def from_stack(stack: Stack) -> ClassicProcessor:
-    instructions = set(_find_all_instructions(stack.target))
+def from_list_of_callbacks(*callbacks: list[Callable]) -> ClassicProcessor:
+    instructions = set([ClassicDefinition.from_callback(callback) for callback in callbacks])
     return ClassicProcessor(instructions=instructions)
