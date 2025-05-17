@@ -4,10 +4,8 @@ from dataclasses import replace
 
 from ..compiler import Compiler
 from ..ast import QuantumInstruction, Kernel, QubitId
-from ..layers import cliffords_min as cliffords
-from ..layer import ClassicDefinition
-from ..classic_processor import ClassicalContext
-from ..stack import LayerNode
+from ..instruction_sets import cliffords_min as cliffords
+from ..classic_processor import ClassicalContext, ClassicDefinition
 
 logger = logging.getLogger("qstack")
 
@@ -169,24 +167,18 @@ class SteaneCompiler(Compiler):
     def __init__(self):
         super().__init__(
             name="steane",
-            source=cliffords.layer,
-            target=cliffords.layer.extend_with(classic={Correct_X, Correct_Z, Decode}),
+            source=cliffords.instruction_set,
+            target=cliffords.instruction_set,
             handlers={
                 cliffords.X.name: handle_x,
                 cliffords.Z.name: handle_z,
                 cliffords.H.name: handle_h,
                 cliffords.CX.name: handle_cx,
             },
+            compiler_callbacks={Correct_X, Correct_Z, Decode},
         )
 
-    def eval(self, kernel: Kernel, node: LayerNode):
-        def rename_callback(cb):
-            if cb is None:
-                return None
-            if ":" not in cb.name:
-                return replace(cb, name=f"{node.namespace}{cb.name}")
-            return cb
-
+    def compile_kernel(self, kernel: Kernel):
         def build_innermost_kernel():
             # Build list: prepare_zero + instructions
             instructions = [handle_prepare_zero(t) for t in kernel.targets]
@@ -204,7 +196,7 @@ class SteaneCompiler(Compiler):
                     is_last = i == len(kernel.instructions) - 1
 
                     if isinstance(inst, Kernel):
-                        instructions.append(self.eval(inst, node))
+                        instructions.append(self.compile_kernel(inst))
                     else:
                         instructions.append(self.handlers[inst.name](inst))
                         if not is_last:
@@ -224,10 +216,9 @@ class SteaneCompiler(Compiler):
         for t in reversed(kernel.targets):
             qubits = tuple(QubitId(f"{t}.{i}") for i in range(7))
             current_kernel = Kernel(targets=qubits, instructions=[current_kernel], callback=Decode())
-            # current_kernel = Kernel(targets=qubits, instructions=[current_kernel])
 
         # Attach final callback if needed
-        final_callback = rename_callback(kernel.callback)
+        final_callback = self.compile_callback(kernel.callback)
         if final_callback:
             return Kernel(targets="", instructions=[current_kernel], callback=final_callback)
         else:

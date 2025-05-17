@@ -2,12 +2,9 @@ from dataclasses import dataclass
 from typing import Callable, Set
 
 from .ast import (
-    ClassicInstruction,
     QubitId,
     QuantumInstruction,
     ParameterValue,
-    Outcome,
-    Kernel,
 )
 
 type Matrix = tuple[tuple]
@@ -43,44 +40,17 @@ class QuantumDefinition:
 
 
 @dataclass(frozen=True)
-class ClassicDefinition:
-    name: str
-    parameters: tuple[str]
-    callback: Callable[[tuple[Outcome]], Kernel]
-
-    def __call__(
-        self,
-        **parameters: ParameterValue,
-    ):
-        # TODO: check_types(parameters, self.parameters)
-
-        return ClassicInstruction(name=self.name, parameters=parameters)
-
-    @staticmethod
-    def from_callback(callback: Callable[[tuple[Outcome]], Kernel]):
-        import inspect
-
-        signature = inspect.signature(callback)
-        parameters_names = tuple(
-            [p.name for p in signature.parameters.values() if p.kind == inspect.Parameter.KEYWORD_ONLY]
-        )
-
-        return ClassicDefinition(name=callback.__name__, callback=callback, parameters=parameters_names)
-
-
-@dataclass(frozen=True)
-class Layer:
+class InstructionSet:
     name: str
     quantum_definitions: Set[QuantumDefinition]
-    classic_definitions: Set[ClassicDefinition]
 
     def extend_with(
         self,
-        classic: Set[ClassicDefinition] | None = None,
-        quantum: Set[QuantumDefinition] | None = None,
+        quantum: Set[QuantumDefinition],
     ):
-        return Layer(
-            name=f"{self.name}.extended",
-            quantum_definitions=self.quantum_definitions.union(quantum or set()),
-            classic_definitions=self.classic_definitions.union(classic or set()),
+        return InstructionSet(
+            name=f"{self.name}.extended", quantum_definitions=self.quantum_definitions.union(quantum)
         )
+
+    def __str__(self):
+        return str(self.name)

@@ -1,10 +1,8 @@
 from dataclasses import replace
 from ..compiler import Compiler
 from ..ast import QuantumInstruction, Kernel, QubitId
-from ..layers import cliffords_min as cliffords
-from ..layer import ClassicDefinition
-from ..classic_processor import ClassicalContext
-from ..stack import LayerNode
+from ..instruction_sets import cliffords_min as cliffords
+from ..classic_processor import ClassicalContext, ClassicDefinition
 
 
 def handle_x(inst: QuantumInstruction):
@@ -31,23 +29,23 @@ Decode = ClassicDefinition.from_callback(decode)
 class TrivialRepetitionCompiler(Compiler):
     def __init__(self):
         super().__init__(
-            name="rep3_toy",
-            source=cliffords.layer,
-            target=replace(cliffords.layer.extend_with(classic={Decode}), name="cliffords+decoder"),
+            name="rep3-trivial",
+            source=cliffords.instruction_set,
+            target=cliffords.instruction_set,
             handlers={
                 cliffords.X.name: handle_x,
                 cliffords.H.name: handle_h,
             },
+            compiler_callbacks={Decode},
         )
 
-    def eval(self, kernel: Kernel, node: LayerNode):
-
+    def compile_kernel(self, kernel: Kernel):
         def build_kernel(targets):
             if len(targets) == 0:
                 instructions = []
                 for inst in kernel.instructions:
                     if isinstance(inst, Kernel):
-                        instructions.append(self.eval(inst, node))
+                        instructions.append(self.compile_kernel(inst))
                     else:
                         instructions.append(self.handlers[inst.name](inst))
                 return Kernel(targets=[], instructions=instructions)
@@ -59,6 +57,5 @@ class TrivialRepetitionCompiler(Compiler):
         if callback is None:
             return build_kernel(kernel.targets)
         else:
-            if ":" not in callback.name:
-                callback = replace(callback, name=f"{node.namespace}{kernel.callback.name}")
+            callback = self.compile_callback(callback)
             return Kernel(targets="", instructions=[build_kernel(kernel.targets)], callback=callback)

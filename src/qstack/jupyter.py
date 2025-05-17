@@ -12,7 +12,7 @@ class QStackMagics(Magics):
             # Evaluate the line as a Python expression in user namespace
             layer = eval(line, self.shell.user_ns)
 
-        parser = QStackParser(layer=layer)
+        parser = QStackParser(instruction_set=layer)
         program = parser.parse(cell)
 
         # Set `program` in user namespace

@@ -6,7 +6,7 @@ such as `NoiselessChannel`, `DepolarizingNoise`, and `PauliNoise`.
 
 from abc import ABC, abstractmethod
 import numpy as np
-from qstack.layer import QuantumDefinition
+from qstack.instruction_set import QuantumDefinition
 
 
 class NoiseChannel(ABC):

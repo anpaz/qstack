@@ -1,7 +1,7 @@
 from ..compiler import Compiler
 from ..ast import QuantumInstruction
-from ..layers import toy
-from ..layers import cliffords_min as cliffords
+from ..instruction_sets import toy
+from ..instruction_sets import cliffords_min as cliffords
 
 
 def handle_flip(inst: QuantumInstruction):
@@ -20,8 +20,8 @@ class ToyCompiler(Compiler):
     def __init__(self):
         super().__init__(
             name="toy2cliffords",
-            source=toy.layer,
-            target=cliffords.layer,
+            source=toy.instruction_set,
+            target=cliffords.instruction_set,
             handlers={
                 toy.Flip.name: handle_flip,
                 toy.Mix.name: handle_mix,
