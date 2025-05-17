@@ -1,10 +1,10 @@
 from collections import Counter, OrderedDict
 from typing import Callable
 
+from .instruction_set import InstructionSet
 from .processors import QPU, CPU, flush
 from .program import Program
 from .ast import Kernel
-from .stack import Stack
 from .noise import NoiseChannel
 
 
@@ -70,19 +70,26 @@ class QuantumMachine:
         return Results([self.single_shot(program) for _ in range(shots)])
 
 
-def local_machine_for(stack: Stack, *callbacks: list[Callable]) -> QuantumMachine:
-    from .classic_processor import from_list_of_callbacks as get_cpu
-    from .emulator import from_stack as get_qpu
+def create_callbacks(*definitions: list[Callable]):
+    from .classic_processor import ClassicDefinition
+
+    instructions = set([ClassicDefinition.from_callback(callback) for callback in definitions])
+    return instructions
+
+
+def local_machine_for(instruction_set: InstructionSet, callbacks=None) -> QuantumMachine:
+    from .classic_processor import from_callbacks as get_cpu
+    from .emulator import from_instruction_set as get_qpu
 
     cpu = get_cpu(callbacks)
-    qpu = get_qpu(stack)
+    qpu = get_qpu(instruction_set)
     return QuantumMachine(qpu=qpu, cpu=cpu)
 
 
-def local_noisy_machine_for(stack: Stack, noise: NoiseChannel, *callbacks: list[Callable]) -> QuantumMachine:
-    from .classic_processor import from_list_of_callbacks as get_cpu
-    from .emulator import from_stack as get_qpu
+def local_noisy_machine_for(instruction_set: InstructionSet, noise: NoiseChannel, callbacks=None) -> QuantumMachine:
+    from .classic_processor import from_callbacks as get_cpu
+    from .emulator import from_instruction_set as get_qpu
 
     cpu = get_cpu(callbacks)
-    qpu = get_qpu(stack, noise)
+    qpu = get_qpu(instruction_set, noise)
     return QuantumMachine(qpu=qpu, cpu=cpu)

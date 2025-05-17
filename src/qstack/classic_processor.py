@@ -1,10 +1,8 @@
-from dataclasses import replace
-from typing import Callable
+from dataclasses import dataclass, replace
+from typing import Any, Callable
 
 from .processors import CPU, Outcome
-from .ast import ClassicInstruction, Kernel
-from .layer import Layer, ClassicDefinition
-from .stack import LayerNode
+from .ast import ClassicInstruction, Kernel, ParameterValue
 
 
 class ClassicalContext:
@@ -17,6 +15,32 @@ class ClassicalContext:
     def consume(self) -> Outcome:
         if len(self.measurements) > 0:
             return self.measurements.pop()
+
+
+@dataclass(frozen=True)
+class ClassicDefinition:
+    name: str
+    parameters: tuple[str]
+    callback: Callable[[tuple[Outcome]], Kernel]
+
+    def __call__(
+        self,
+        **parameters: ParameterValue,
+    ):
+        # TODO: check_types(parameters, self.parameters)
+
+        return ClassicInstruction(name=self.name, parameters=parameters)
+
+    @staticmethod
+    def from_callback(callback: Callable[[Any], Kernel]):
+        import inspect
+
+        signature = inspect.signature(callback)
+        parameters_names = tuple(
+            [p.name for p in signature.parameters.values() if p.kind == inspect.Parameter.KEYWORD_ONLY]
+        )
+
+        return ClassicDefinition(name=callback.__name__, callback=callback, parameters=parameters_names)
 
 
 class ClassicProcessor(CPU):
@@ -48,34 +72,33 @@ class ClassicProcessor(CPU):
             raise ValueError(f"Invalid result {result}")
 
 
-def from_layer(layer: Layer) -> ClassicProcessor:
-    return ClassicProcessor(instructions=layer.classic_definitions)
+# def from_layer(layer: Layer) -> ClassicProcessor:
+#     return ClassicProcessor(instructions=layer.classic_definitions)
 
 
-def _add_compilation(instr: ClassicDefinition, node: LayerNode):
-    compiler = node.lower.compiler
-    callback = instr.callback
+# def _add_compilation(instr: ClassicDefinition, node: LayerNode):
+#     compiler = node.lower.compiler
+#     callback = instr.callback
 
-    def call_and_compile(*targets, **parameters):
-        result = callback(*targets, **parameters)
-        if isinstance(result, Kernel):
-            new_kernel = compiler.eval(result, node)
-            return new_kernel
-        else:
-            return result
+#     def call_and_compile(*targets, **parameters):
+#         result = callback(*targets, **parameters)
+#         if isinstance(result, Kernel):
+#             new_kernel = compiler.eval(result, node)
+#             return new_kernel
+#         else:
+#             return result
 
-    return replace(instr, callback=call_and_compile)
-
-
-def _find_all_instructions(node: LayerNode):
-    if node.lower is not None:
-        for instr in _find_all_instructions(node.lower.lower):
-            yield _add_compilation(instr, node)
-
-    for instr in node.layer.classic_definitions:
-        yield replace(instr, name=f"{node.namespace}{instr.name}")
+#     return replace(instr, callback=call_and_compile)
 
 
-def from_list_of_callbacks(*callbacks: list[Callable]) -> ClassicProcessor:
-    instructions = set([ClassicDefinition.from_callback(callback) for callback in callbacks])
-    return ClassicProcessor(instructions=instructions)
+# def _find_all_instructions(node: LayerNode):
+#     if node.lower is not None:
+#         for instr in _find_all_instructions(node.lower.lower):
+#             yield _add_compilation(instr, node)
+
+#     for instr in node.layer.classic_definitions:
+#         yield replace(instr, name=f"{node.namespace}{instr.name}")
+
+
+def from_callbacks(callbacks: set[ClassicDefinition] | None) -> ClassicProcessor:
+    return ClassicProcessor(instructions=callbacks or set())

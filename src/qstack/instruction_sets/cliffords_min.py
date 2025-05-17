@@ -1,4 +1,4 @@
-from ..layer import Layer, QuantumDefinition
+from ..instruction_set import InstructionSet, QuantumDefinition
 
 
 X = QuantumDefinition.from_matrix(name="x", targets=1, matrix=[[0, 1], [1, 0]])
@@ -17,4 +17,4 @@ CZ = QuantumDefinition.from_matrix(
     name="cz", targets=2, matrix=[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, -1]]
 )
 
-layer = Layer(name="cliffords-min", quantum_definitions=set([X, Y, Z, H, CX, CZ]), classic_definitions=set())
+instruction_set = InstructionSet(name="cliffords-min", quantum_definitions=set([X, Y, Z, H, CX, CZ]))

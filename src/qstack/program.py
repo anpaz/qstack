@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 from .ast import Kernel
-from .stack import Stack
+from .instruction_set import InstructionSet
 
 
 @dataclass(frozen=True)
 class Program:
-    stack: Stack
+    instruction_set: InstructionSet
     kernels: tuple[Kernel]
 
     @property
@@ -13,7 +13,7 @@ class Program:
         return max(k.depth for k in self.kernels)
 
     def __str__(self):
-        attributes = ["@stack: " + str(self.stack)]
+        attributes = ["@instruction-set: " + str(self.instruction_set)]
         kernels = [str(k) for k in self.kernels]
 
         return "\n".join(attributes + [""] + kernels)

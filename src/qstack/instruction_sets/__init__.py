@@ -1,24 +1,24 @@
 import os
 import importlib
-from ..layer import Layer
+from ..instruction_set import InstructionSet
 
 # Dynamically populate the LAYER_REGISTRY by scanning the layers directory
-LAYER_REGISTRY = {}
+INST_SET_REGISTRY = {}
 layers_dir = os.path.dirname(__file__)
 
 for filename in os.listdir(layers_dir):
     if filename.endswith(".py") and filename != "__init__.py":
-        module_name = f"qstack.layers.{filename[:-3]}"
+        module_name = f"qstack.instruction_sets.{filename[:-3]}"
         try:
             module = importlib.import_module(module_name)
-            if hasattr(module, "layer") and isinstance(module.layer, Layer):
-                LAYER_REGISTRY[module.layer.name] = module.layer
+            if hasattr(module, "instruction_set") and isinstance(module.instruction_set, InstructionSet):
+                INST_SET_REGISTRY[module.instruction_set.name] = module.instruction_set
         except Exception as e:
             # Log or handle the error if needed
             pass
 
 
-def get_layer_by_name(name: str):
+def get_instruction_set_by_name(name: str):
     """
     Retrieve a Layer instance by its name.
 
@@ -31,6 +31,6 @@ def get_layer_by_name(name: str):
     Raises:
         ValueError: If the layer name is not found in the registry.
     """
-    if name not in LAYER_REGISTRY:
+    if name not in INST_SET_REGISTRY:
         raise ValueError(f"Layer '{name}' not found in the registry.")
-    return LAYER_REGISTRY[name]
+    return INST_SET_REGISTRY[name]

@@ -5,12 +5,10 @@ These tests validate the parser's ability to handle various scenarios, including
 
 import pytest
 from qstack.parser import QStackParser
-from qstack import Program, Stack
-from qstack.layers.toy import layer as toy_layer
-from qstack.layers.cliffords_min import layer as cliffords_min
-from qstack.layer import ClassicDefinition
-from qstack import Program, Stack, Kernel
-from qstack.classic_processor import ClassicalContext
+from qstack.instruction_sets.toy import instruction_set as toy_layer
+from qstack.instruction_sets.cliffords_min import instruction_set as cliffords_min
+from qstack import Program, Kernel
+from qstack.classic_processor import ClassicalContext, ClassicDefinition
 
 
 def prepare(context: ClassicalContext, *, q):
@@ -38,7 +36,7 @@ def fix(context: ClassicalContext, *, q):
 
 Prepare = ClassicDefinition.from_callback(prepare)
 Fix = ClassicDefinition.from_callback(fix)
-teleport_layer = cliffords_min.extend_with(classic={Prepare, Fix})
+teleport_layer = cliffords_min
 
 
 def test_parser_with_stack():
@@ -46,7 +44,7 @@ def test_parser_with_stack():
     Test parsing a program with a specified stack. Validates that the stack and instructions are correctly parsed.
     """
     program_str = """
-@stack: toy
+@instruction-set: toy
 
 allocate q1 q2:
   mix(bias=0.8) q1
@@ -57,7 +55,7 @@ measure"""
     program = parser.parse(program_str)
 
     assert isinstance(program, Program)
-    assert program.stack.target.layer == toy_layer
+    assert program.instruction_set == toy_layer
     assert len(program.kernels) == 1
     assert len(program.kernels[0].instructions) == 2
 
@@ -77,11 +75,11 @@ allocate q1:
   measure
 measure"""
 
-    parser = QStackParser(layer=toy_layer)
+    parser = QStackParser(instruction_set=toy_layer)
     program = parser.parse(program_str)
 
     assert isinstance(program, Program)
-    assert program.stack.target.layer == toy_layer
+    assert program.instruction_set == toy_layer
     assert len(program.kernels) == 1
     assert len(program.kernels[0].instructions) == 1
     assert len(program.kernels) == 1
@@ -93,7 +91,7 @@ def test_parser_invalid_stack():
     Test parsing a program with an invalid stack name. Ensures that a ValueError is raised.
     """
     program_str = """
-@stack: invalid
+@instruction-set: invalid
 
 allocate q1 q2:    
   mix(bias=0.8) q1
@@ -121,12 +119,12 @@ allocate q3:
   measure
   ?? fix(q=q3)
 measure"""
-    parser = QStackParser(layer=teleport_layer)
+    parser = QStackParser(instruction_set=teleport_layer)
     program = parser.parse(program_str)
     print(program)
 
     assert isinstance(program, Program)
-    assert program.stack.target.layer == teleport_layer
+    assert program.instruction_set == teleport_layer
     assert len(program.kernels) == 1
     assert len(program.kernels[0].instructions) == 1
     assert isinstance(program.kernels[0].instructions[0], Kernel)
@@ -139,20 +137,20 @@ def test_get_layer_by_name():
     """
     Test the get_layer_by_name function to ensure it retrieves the correct Layer instance.
     """
-    from qstack.layers import get_layer_by_name
+    from qstack.instruction_sets import get_instruction_set_by_name
 
     # Test with valid layer names
-    assert get_layer_by_name("toy") == toy_layer
-    assert get_layer_by_name("cliffords-min") == cliffords_min
+    assert get_instruction_set_by_name("toy") == toy_layer
+    assert get_instruction_set_by_name("cliffords-min") == cliffords_min
 
     # Test with an invalid layer name
     with pytest.raises(ValueError):
-        get_layer_by_name("nonexistent-layer")
+        get_instruction_set_by_name("nonexistent-layer")
 
 
 def test_parse_simple_program():
     program_str = """
-@stack: toy
+@instruction-set: toy
 
 allocate q1 q2:
   mix(bias=0.8) q1

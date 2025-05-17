@@ -4,10 +4,9 @@ The parser supports layers defined in qstack.layers and can handle classical cal
 """
 
 import re
-from qstack import Program, Stack
+from qstack import Program
 from qstack.ast import ClassicInstruction, Kernel
-from qstack.layers import *
-from qstack.layers import get_layer_by_name
+from qstack.instruction_sets import get_instruction_set_by_name
 from collections import namedtuple
 
 LineInfo = namedtuple("LineInfo", ["content", "line_number"])
@@ -25,14 +24,14 @@ class QStackParser:
     Parses qstack programs into Program instances. The parser supports specifying a stack via @stack or using an optional layer parameter.
     """
 
-    def __init__(self, layer=None):
-        self.default_layer = layer
-        self.qinstr = {i.name: i for i in layer.quantum_definitions} if layer else {}
+    def __init__(self, instruction_set=None):
+        self.default_instruction_set = instruction_set
+        self.qinstr = {i.name: i for i in instruction_set.quantum_definitions} if instruction_set else {}
 
     def parse(self, program_str):
         lines = self.split_lines(program_str)
-        stack, kernels = self.parse_program(lines)
-        return Program(stack=stack, kernels=kernels)
+        inst_set, kernels = self.parse_program(lines)
+        return Program(instruction_set=inst_set, kernels=kernels)
 
     def split_lines(self, program_str):
         lines = [
@@ -43,34 +42,32 @@ class QStackParser:
         return lines
 
     def parse_program(self, lines):
-        stack = self.parse_stack(lines)
+        layer = self.parse_instruction_set(lines)
         kernels = self.parse_kernels(lines)
-        return stack, kernels
+        return layer, kernels
 
-    def parse_stack(self, lines):
-        if lines and lines[0].content.startswith("@stack"):
+    def parse_instruction_set(self, lines):
+        if lines and lines[0].content.startswith("@instruction-set"):
             line_info = lines.pop(0)
-            stack_name = line_info.content.split(":")[1].strip()
+            inst_set_name = line_info.content.split(":")[1].strip()
 
-            if self.default_layer:
-                if stack_name != self.default_layer.name:
+            if self.default_instruction_set:
+                if inst_set_name != self.default_instruction_set.name:
                     raise ParsingError(
-                        f"Program stack ({stack_name}) doesn't match parser's layer ({self.default_layer.name}).",
+                        f"Program instruction-set ({inst_set_name}) doesn't match parser's layer ({self.default_instruction_set.name}).",
                         line_info.line_number,
                         1,
                     )
-                layer = self.default_layer
+                instruction_set = self.default_instruction_set
             else:
-                layer = get_layer_by_name(stack_name)
-        elif self.default_layer:
-            layer = self.default_layer
+                instruction_set = get_instruction_set_by_name(inst_set_name)
+        elif self.default_instruction_set:
+            instruction_set = self.default_instruction_set
         else:
-            raise ParsingError("No stack specified and no layer provided.", 1, 1)
+            raise ParsingError("No instruction-set specified and no layer provided.", 1, 1)
 
-        stack = Stack.create(layer=layer)
-        self.qinstr = {i.name: i for i in layer.quantum_definitions}
-
-        return stack
+        self.qinstr = {i.name: i for i in instruction_set.quantum_definitions}
+        return instruction_set
 
     def parse_kernels(self, lines):
         kernels = []
@@ -110,7 +107,7 @@ class QStackParser:
 
         callback = None
         if lines and lines[0].content.startswith("??"):
-            callback = self.parse_instruction(lines)
+            callback = self.parse_callback(lines)
 
         return Kernel.allocate(*targets, compute=instructions, continue_with=callback)
 
@@ -137,7 +134,7 @@ class QStackParser:
         #     - (.*): Captures the remaining part of the line as targets.
         match = re.match(r"(\w+)(\(([^)]*)\))?\s*(.*)", content)
         if not match:
-            raise ParsingError("Invalid instruction format.", line_info.line_number, 1)
+            raise ParsingError(f"Invalid instruction format {content}.", line_info.line_number, 1)
 
         # Groups:
         #     1. `op`: The operation name (e.g., "allocate", "add").

@@ -6,8 +6,7 @@ from qsharp.noisy_simulator import StateVectorSimulator, Operation, Instrument
 
 from .processors import QPU
 from .ast import QuantumInstruction, QubitId
-from .layer import QuantumDefinition, Layer
-from .stack import Stack
+from .instruction_set import QuantumDefinition, InstructionSet
 from .noise import NoiseChannel, NoiselessChannel
 
 
@@ -88,9 +87,5 @@ class StateVectorEmulator(QPU):
         return outcome
 
 
-def from_layer(layer: Layer, noise_channel: NoiseChannel = NoiselessChannel()):
+def from_instruction_set(layer: InstructionSet, noise_channel: NoiseChannel = NoiselessChannel()):
     return StateVectorEmulator(layer.quantum_definitions, noise_channel=noise_channel)
-
-
-def from_stack(stack: Stack, noise: NoiseChannel = NoiselessChannel()):
-    return from_layer(stack.target.layer, noise_channel=noise)
