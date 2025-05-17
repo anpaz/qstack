@@ -4,7 +4,7 @@ from typing import Callable
 from .instruction_set import InstructionSet
 from .processors import QPU, CPU, flush
 from .program import Program
-from .ast import Kernel
+from .ast import Kernel, QubitId
 from .noise import NoiseChannel
 
 
@@ -42,7 +42,7 @@ class QuantumMachine:
             return
 
         for q in kernel.targets:
-            self.qpu.allocate(q)
+            self.qpu.allocate(QubitId.wrap(q))
 
         for instruction in kernel.instructions:
             if isinstance(instruction, Kernel):

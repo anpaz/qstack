@@ -19,7 +19,7 @@ class QStackMagics(Magics):
         self.shell.user_ns["program"] = program
 
         # Return the program so it's displayed as the cell result
-        return program
+        return program.kernels
 
 
 def load_ipython_extension(ipython):
