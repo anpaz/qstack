@@ -14,6 +14,12 @@ logger = logging.getLogger("qstack")
 
 
 class StateVectorEmulator(QPU):
+    _builtin_not = Operation(
+        [
+            [[0.0, 1.0], [1.0, 0.0]],  # NOT gate
+        ]
+    )
+
     def __init__(self, instructions: Set[QuantumDefinition], noise_channel: NoiseChannel):
         super().__init__()
 
@@ -83,6 +89,8 @@ class StateVectorEmulator(QPU):
         qubits = [self.num_qubits - 1 - id]
         outcome: int = self.sim.sample_instrument(self.instrument, qubits)
         logger.debug(f"outcome: {outcome}")
+        if outcome == 1 and len(qubits) == 1:
+            self.sim.apply_operation(self._builtin_not, qubits)
         self.allocations.pop()
         return outcome
 
