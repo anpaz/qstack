@@ -17,24 +17,24 @@ logger = logging.getLogger("qstack")
 
 def handle_x(inst: QuantumInstruction):
     target = tuple([QubitId(f"{inst.targets[0]}.{i}") for i in range(7)])
-    return Kernel(targets=[], instructions=[cliffords.X(q) for q in target])
+    return Kernel(target=None, instructions=[cliffords.X(q) for q in target])
 
 
 def handle_z(inst: QuantumInstruction):
     target = tuple([QubitId(f"{inst.targets[0]}.{i}") for i in range(7)])
-    return Kernel(targets=[], instructions=[cliffords.Z(q) for q in target])
+    return Kernel(target=None, instructions=[cliffords.Z(q) for q in target])
 
 
 def handle_h(inst: QuantumInstruction):
     target = tuple([QubitId(f"{inst.targets[0]}.{i}") for i in range(7)])
-    return Kernel(targets=[], instructions=[cliffords.H(q) for q in target])
+    return Kernel(target=None, instructions=[cliffords.H(q) for q in target])
 
 
 def handle_cx(inst: QuantumInstruction):
     ctrl = tuple([QubitId(f"{inst.targets[0]}.{i}") for i in range(7)])
     target = tuple([QubitId(f"{inst.targets[1]}.{i}") for i in range(7)])
 
-    return Kernel(targets=[], instructions=[cliffords.CX(c, t) for (c, t) in zip(ctrl, target)])
+    return Kernel(target=None, instructions=[cliffords.CX(c, t) for (c, t) in zip(ctrl, target)])
 
 
 def handle_prepare_zero(t: QubitId):
@@ -60,12 +60,13 @@ def handle_prepare_zero(t: QubitId):
         cliffords.CX(q[6], q[3]),
     ]
 
-    return Kernel(targets=[], instructions=instructions)
+    return Kernel(target=None, instructions=instructions)
 
 
 def x_syndrome_extraction(t: QubitId):
     target = tuple([QubitId(f"{t}.{i}") for i in range(7)])
-    a = tuple([QubitId(f"{t}.x.{i}") for i in range(3)])
+    ancilla_ids = [f"{t}.z.{i}" for i in range(3)]
+    a = tuple([QubitId(i) for i in ancilla_ids])
 
     x_syndrome_extraction = (
         [cliffords.H(a) for a in a]
@@ -86,12 +87,13 @@ def x_syndrome_extraction(t: QubitId):
         + [cliffords.H(a) for a in a]
     )
 
-    return Kernel(targets=a, instructions=x_syndrome_extraction, callback=Correct_X(qubit=t))
+    return Kernel.allocate(*ancilla_ids, instructions=x_syndrome_extraction, callback=Correct_X(qubit=t))
 
 
 def z_syndrome_extraction(t: QubitId):
     target = tuple([QubitId(f"{t}.{i}") for i in range(7)])
-    a = tuple([QubitId(f"{t}.z.{i}") for i in range(3)])
+    ancilla_ids = [f"{t}.z.{i}" for i in range(3)]
+    a = tuple([QubitId(i) for i in ancilla_ids])
 
     z_syndrome_extraction = [
         cliffords.CX(target[0], a[0]),
@@ -108,7 +110,7 @@ def z_syndrome_extraction(t: QubitId):
         cliffords.CX(target[6], a[2]),
     ]
 
-    return Kernel(targets=a, instructions=z_syndrome_extraction, callback=Correct_Z(qubit=t))
+    return Kernel.allocate(*ancilla_ids, instructions=z_syndrome_extraction, callback=Correct_Z(qubit=t))
 
 
 # These maps are derived from the classical Hamming syndrome decoding
@@ -130,7 +132,7 @@ def correct_x(context: ClassicalContext, *, qubit: QubitId):
 
     if fault is not None:
         target = tuple([QubitId(f"{qubit}.{i}") for i in range(7)])
-        return Kernel(targets=[], instructions=[cliffords.X(QubitId(f"{qubit}.{target[fault]}"))])
+        return Kernel(target=None, instructions=[cliffords.X(target[fault])])
 
 
 def correct_z(context: ClassicalContext, *, qubit: QubitId):
@@ -139,7 +141,7 @@ def correct_z(context: ClassicalContext, *, qubit: QubitId):
 
     if fault is not None:
         target = tuple([QubitId(f"{qubit}.{i}") for i in range(7)])
-        return Kernel(targets=[], instructions=[cliffords.Z(QubitId(f"{qubit}.{target[fault]}"))])
+        return Kernel(target=None, instructions=[cliffords.Z(target[fault])])
 
 
 def decode(context: ClassicalContext):
@@ -179,47 +181,51 @@ class SteaneCompiler(Compiler):
         )
 
     def compile_kernel(self, kernel: Kernel):
-        def build_innermost_kernel():
-            # Build list: prepare_zero + instructions
-            instructions = [handle_prepare_zero(t) for t in kernel.targets]
+        # Build list: prepare_zero + instructions
+        instructions = []
+        if kernel.target:
+            instructions.append(handle_prepare_zero(kernel.target))
 
-            if len(kernel.instructions) > 0:
-                for t in kernel.targets:
-                    instructions.extend(
-                        [
-                            z_syndrome_extraction(t),
-                            x_syndrome_extraction(t),
-                        ]
-                    )
+        if len(kernel.instructions) > 0:
+            if kernel.target:
+                instructions.extend(
+                    [
+                        z_syndrome_extraction(kernel.target),
+                        x_syndrome_extraction(kernel.target),
+                    ]
+                )
 
-                for i, inst in enumerate(kernel.instructions):
-                    is_last = i == len(kernel.instructions) - 1
+            for i, inst in enumerate(kernel.instructions):
+                is_last = i == len(kernel.instructions) - 1
 
-                    if isinstance(inst, Kernel):
-                        instructions.append(self.compile_kernel(inst))
-                    else:
-                        instructions.append(self.handlers[inst.name](inst))
-                        if not is_last:
-                            for t in inst.targets:
-                                instructions.extend(
-                                    [
-                                        z_syndrome_extraction(t),
-                                        x_syndrome_extraction(t),
-                                    ]
-                                )
+                if isinstance(inst, Kernel):
+                    instructions.append(self.compile_kernel(inst))
+                else:
+                    instructions.append(self.handlers[inst.name](inst))
+                    if not is_last:
+                        for t in inst.targets:
+                            instructions.extend(
+                                [
+                                    z_syndrome_extraction(t),
+                                    x_syndrome_extraction(t),
+                                ]
+                            )
 
-            return Kernel(targets=[], instructions=instructions)
+        # Create the result kernel
+        if kernel.target:
+            # Use Kernel.allocate to create nested structure for 7 physical qubits
+            qubits = [f"{kernel.target}.{i}" for i in range(7)]
 
-        # Build the full nested structure from inside out
-        current_kernel = build_innermost_kernel()
+            # Create the nested kernel structure with Decode callback on the innermost level
+            innermost_kernel = Kernel.allocate(*qubits, instructions=instructions, callback=Decode())
 
-        for t in reversed(kernel.targets):
-            qubits = tuple(QubitId(f"{t}.{i}") for i in range(7))
-            current_kernel = Kernel(targets=qubits, instructions=[current_kernel], callback=Decode())
-
-        # Attach final callback if needed
-        final_callback = self.compile_callback(kernel.callback)
-        if final_callback:
-            return Kernel(targets="", instructions=[current_kernel], callback=final_callback)
+            # Attach final callback if needed
+            final_callback = self.compile_callback(kernel.callback)
+            if final_callback:
+                return Kernel(target=None, instructions=[innermost_kernel], callback=final_callback)
+            else:
+                return innermost_kernel
         else:
-            return current_kernel
+            # No targets, just return kernel with instructions and callback
+            final_callback = self.compile_callback(kernel.callback)
+            return Kernel(target=None, instructions=instructions, callback=final_callback)

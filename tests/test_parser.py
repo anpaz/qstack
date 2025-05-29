@@ -7,7 +7,7 @@ import pytest
 from qstack.parser import QStackParser
 from qstack.instruction_sets.toy import instruction_set as toy_layer
 from qstack.instruction_sets.cliffords_min import instruction_set as cliffords_min
-from qstack import Program, Kernel
+from qstack import Program, Kernel, QubitId
 from qstack.classic_processor import ClassicalContext, ClassicDefinition
 
 
@@ -15,7 +15,7 @@ def prepare(context: ClassicalContext, *, q):
     """
     Classical callback for state preparation. Prepares the qubit `q` using a Hadamard gate.
     """
-    return Kernel(targets=[], instructions=[cliffords_min.H(q)])
+    return Kernel(target=[], instructions=[cliffords_min.H(q)])
 
 
 def fix(context: ClassicalContext, *, q):
@@ -31,7 +31,7 @@ def fix(context: ClassicalContext, *, q):
     if m0 == 1:
         instructions.append(cliffords_min.X(q))
 
-    return Kernel(targets=[], instructions=instructions)
+    return Kernel(target=[], instructions=instructions)
 
 
 Prepare = ClassicDefinition.from_callback(prepare)
@@ -57,10 +57,13 @@ measure"""
     assert isinstance(program, Program)
     assert program.instruction_set == toy_layer
     assert len(program.kernels) == 1
-    assert len(program.kernels[0].instructions) == 2
+    assert len(program.kernels[0].instructions) == 1
+    assert isinstance(program.kernels[0].instructions[0], Kernel)
+    assert len(program.kernels[0].instructions[0].instructions) == 2
 
     print(str(program))
-    assert program_str.strip() == str(program).strip()
+    parsed = parser.parse(str(program))
+    assert program == parsed
 
 
 def test_parser_with_layer():
@@ -148,17 +151,72 @@ def test_get_layer_by_name():
         get_instruction_set_by_name("nonexistent-layer")
 
 
-def test_parse_simple_program():
+def test_parser_with_nested_kernels():
+    """
+    Test parsing a program with a specified stack. Validates that the stack and instructions are correctly parsed.
+    """
     program_str = """
 @instruction-set: toy
 
-allocate q1 q2:
-  mix(bias=0.8) q1
-  entangle q1 q2
+allocate q1:
+  allocate q2:
+    allocate q3:
+      entangle q1 q2
+    measure
+  measure
 measure
+"""
+
+    parser = QStackParser()
+    program = parser.parse(program_str)
+
+    assert isinstance(program, Program)
+    assert program.instruction_set == toy_layer
+    assert len(program.kernels) == 1
+
+    k1 = program.kernels[0]
+    assert k1.target == QubitId("q1")
+    assert len(k1.instructions) == 1
+    assert isinstance(k1.instructions[0], Kernel)
+
+    k2 = k1.instructions[0]
+    assert k2.target == QubitId("q2")
+    assert len(k2.instructions) == 1
+    assert isinstance(k2.instructions[0], Kernel)
+
+    k3 = k2.instructions[0]
+    assert k3.target == QubitId("q3")
+    assert len(k3.instructions) == 1
+    assert k3.instructions[0].name == "entangle"
+
+    print(str(program))
+    parsed = parser.parse(str(program))
+    assert program == parsed
+
+
+def test_parser_with_only_callback():
+    """
+    Test parsing a program with a specified stack. Validates that the stack and instructions are correctly parsed.
+    """
+    program_str = """
+@instruction-set: toy
+
+---
+?? fix
+
 """
     parser = QStackParser()
     program = parser.parse(program_str)
-    print(program)
+    print(str(program))
+
     assert isinstance(program, Program)
-    assert str(program) == program_str.strip()
+    assert program.instruction_set == toy_layer
+    assert len(program.kernels) == 1
+
+    k1 = program.kernels[0]
+    assert k1.target is None
+    assert len(k1.instructions) == 0
+    assert k1.callback.name == "fix"
+
+    parsed = parser.parse(str(program))
+    assert program == parsed

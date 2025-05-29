@@ -67,7 +67,7 @@ class ClassicInstruction:
 
 @dataclass(frozen=True)
 class Kernel:
-    targets: tuple[QubitId]
+    target: QubitId | None
     instructions: tuple[QuantumInstruction]
     callback: ClassicInstruction | None = None
 
@@ -75,16 +75,17 @@ class Kernel:
     def depth(self):
         sub_kernels = [k for k in self.instructions if isinstance(k, Kernel)]
         if len(sub_kernels) == 0:
-            return len(self.targets)
+            return 1 if self.target else 0
         else:
-            return len(self.targets) + max(k.depth for k in sub_kernels)
+            target_depth = 1 if self.target else 0
+            return target_depth + max(k.depth for k in sub_kernels)
 
     def print(self, indent: int = 0) -> str:
         pre = "  " * indent
 
         result = ""
-        if self.targets:
-            result += pre + "allocate " + " ".join(str(q) for q in self.targets) + ":\n"
+        if self.target:
+            result += pre + "allocate " + str(self.target) + ":\n"
             for i in self.instructions:
                 result += i.print(indent + 1) + "\n"
             result += pre + "measure"
@@ -103,16 +104,30 @@ class Kernel:
 
     @staticmethod
     def empty() -> "Kernel":
-        return Kernel(targets=(), instructions=(), callback=None)
+        return Kernel(target=None, instructions=(), callback=None)
 
     @staticmethod
     def allocate(
-        *targets: str, compute: list[QuantumInstruction], continue_with: Optional[ClassicInstruction] = None
+        *targets: str, instructions: list[QuantumInstruction], callback: Optional[ClassicInstruction] = None
     ) -> "Kernel":
-        return Kernel(
-            targets=tuple([QubitId.wrap(q) for q in targets]), instructions=tuple(compute), callback=continue_with
-        )
+        if len(targets) == 0:
+            return Kernel(target=None, instructions=tuple(instructions), callback=callback)
+        elif len(targets) == 1:
+            return Kernel(target=QubitId.wrap(targets[0]), instructions=tuple(instructions), callback=callback)
+        else:
+            # For multiple targets, create nested kernels recursively
+            # Start with the innermost kernel (last target) containing the actual instructions
+            innermost = Kernel(target=QubitId.wrap(targets[-1]), instructions=tuple(instructions), callback=None)
+
+            # Build outward, each kernel contains the next inner kernel as its only instruction
+            for target in reversed(targets[:-1]):
+                innermost = Kernel(target=QubitId.wrap(target), instructions=(innermost,), callback=None)
+
+            # The callback goes on the outermost kernel
+            if callback:
+                return Kernel(target=innermost.target, instructions=innermost.instructions, callback=callback)
+            return innermost
 
     @staticmethod
     def continue_with(callback: ClassicInstruction) -> "Kernel":
-        return Kernel(targets=(), instructions=(), callback=callback)
+        return Kernel(target=None, instructions=(), callback=callback)

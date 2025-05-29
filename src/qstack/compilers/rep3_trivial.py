@@ -6,11 +6,11 @@ from ..classic_processor import ClassicalContext, ClassicDefinition
 
 
 def handle_x(inst: QuantumInstruction):
-    return Kernel(targets=[], instructions=[cliffords.X(f"{inst.targets[0]}.{i}") for i in range(3)])
+    return Kernel(target=None, instructions=[cliffords.X(f"{inst.targets[0]}.{i}") for i in range(3)])
 
 
 def handle_h(inst: QuantumInstruction):
-    return Kernel(targets=[], instructions=[cliffords.H(f"{inst.targets[0]}.{i}") for i in range(3)])
+    return Kernel(target=None, instructions=[cliffords.H(f"{inst.targets[0]}.{i}") for i in range(3)])
 
 
 def decode(context: ClassicalContext):
@@ -40,22 +40,29 @@ class TrivialRepetitionCompiler(Compiler):
         )
 
     def compile_kernel(self, kernel: Kernel):
-        def build_kernel(targets):
-            if len(targets) == 0:
-                instructions = []
-                for inst in kernel.instructions:
-                    if isinstance(inst, Kernel):
-                        instructions.append(self.compile_kernel(inst))
-                    else:
-                        instructions.append(self.handlers[inst.name](inst))
-                return Kernel(targets=[], instructions=instructions)
+        # Build list of compiled instructions
+        instructions = []
+        for inst in kernel.instructions:
+            if isinstance(inst, Kernel):
+                instructions.append(self.compile_kernel(inst))
             else:
-                qubits = tuple([QubitId(f"{targets[0]}.{i}") for i in range(3)])
-                return Kernel(targets=qubits, instructions=[build_kernel(targets[1:])], callback=Decode())
+                instructions.append(self.handlers[inst.name](inst))
 
-        callback = kernel.callback
-        if callback is None:
-            return build_kernel(kernel.targets)
+        # Handle the case where there are targets (logical qubit)
+        if kernel.target:
+            # Use Kernel.allocate to create nested structure for 3 physical qubits
+            qubits = [f"{kernel.target}.{i}" for i in range(3)]
+
+            # Create the nested kernel structure with Decode callback on the innermost level
+            innermost_kernel = Kernel.allocate(*qubits, instructions=instructions, callback=Decode())
+
+            # Attach final callback if needed
+            final_callback = self.compile_callback(kernel.callback)
+            if final_callback:
+                return Kernel(target=None, instructions=[innermost_kernel], callback=final_callback)
+            else:
+                return innermost_kernel
         else:
-            callback = self.compile_callback(callback)
-            return Kernel(targets="", instructions=[build_kernel(kernel.targets)], callback=callback)
+            # No targets, just return kernel with instructions and callback
+            final_callback = self.compile_callback(kernel.callback)
+            return Kernel(target=None, instructions=instructions, callback=final_callback)

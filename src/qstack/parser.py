@@ -72,7 +72,7 @@ class QStackParser:
     def parse_kernels(self, lines):
         kernels = []
         while lines:
-            if lines[0].content.startswith("allocate"):
+            if lines[0].content.startswith("allocate") or lines[0].content.startswith("---"):
                 kernels.append(self.parse_kernel(lines))
             else:
                 break
@@ -109,7 +109,7 @@ class QStackParser:
         if lines and lines[0].content.startswith("??"):
             callback = self.parse_callback(lines)
 
-        return Kernel.allocate(*targets, compute=instructions, continue_with=callback)
+        return Kernel.allocate(*targets, instructions=instructions, callback=callback)
 
     def parse_instruction(self, lines):
         """

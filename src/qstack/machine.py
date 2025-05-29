@@ -41,8 +41,8 @@ class QuantumMachine:
         if not kernel:
             return
 
-        for q in kernel.targets:
-            self.qpu.allocate(QubitId.wrap(q))
+        if kernel.target:
+            self.qpu.allocate(QubitId.wrap(kernel.target))
 
         for instruction in kernel.instructions:
             if isinstance(instruction, Kernel):
@@ -50,7 +50,7 @@ class QuantumMachine:
             else:
                 self.qpu.eval(instruction)
 
-        for _ in kernel.targets:
+        if kernel.target:
             self.cpu.collect(self.qpu.measure())
 
         if kernel.callback:
