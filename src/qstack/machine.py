@@ -2,7 +2,7 @@ from collections import Counter, OrderedDict
 from typing import Callable
 
 from .instruction_set import InstructionSet
-from .processors import QPU, CPU, flush
+from .processors import QPU, CPU
 from .program import Program
 from .ast import Kernel, QubitId
 from .noise import NoiseChannel
@@ -50,21 +50,19 @@ class QuantumMachine:
             else:
                 self.qpu.eval(instruction)
 
-        if kernel.target:
-            self.cpu.collect(self.qpu.measure())
+        outcome = self.qpu.measure() if kernel.target else None
 
-        if kernel.callback:
-            continuation = self.cpu.eval(kernel.callback)
-            self.eval_kernel(continuation)
+        continuation = self.cpu.eval(kernel.callback, outcome)
+        self.eval_kernel(continuation)
 
     def single_shot(self, program: Program):
-        self.qpu.restart(num_qubits=program.depth)
         self.cpu.restart()
+        self.qpu.restart(num_qubits=program.depth)
 
         for kernel in program.kernels:
             self.eval_kernel(kernel)
 
-        return tuple(flush(self.cpu))
+        return tuple(self.cpu.context)
 
     def eval(self, program: Program, *, shots: int | None = 1000) -> Results:
         return Results([self.single_shot(program) for _ in range(shots)])

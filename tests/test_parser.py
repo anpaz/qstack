@@ -8,17 +8,17 @@ from qstack.parser import QStackParser
 from qstack.instruction_sets.toy import instruction_set as toy_layer
 from qstack.instruction_sets.cliffords_min import instruction_set as cliffords_min
 from qstack import Program, Kernel, QubitId
-from qstack.classic_processor import ClassicalContext, ClassicDefinition
+from qstack.classic_processor import ClassicContext, ClassicDefinition
 
 
-def prepare(context: ClassicalContext, *, q):
+def prepare(context: ClassicContext, *, q):
     """
     Classical callback for state preparation. Prepares the qubit `q` using a Hadamard gate.
     """
     return Kernel(target=[], instructions=[cliffords_min.H(q)])
 
 
-def fix(context: ClassicalContext, *, q):
+def fix(context: ClassicContext, *, q):
     """
     Classical callback for fixing the teleported state based on measurement outcomes.
     """

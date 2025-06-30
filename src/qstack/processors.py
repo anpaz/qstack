@@ -30,20 +30,10 @@ class CPU(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def collect(self, result: Outcome):
+    def eval(self, instruction: ClassicInstruction | None, outcome: Outcome | None) -> Kernel | None:
         pass
 
+    @property
     @abc.abstractmethod
-    def consume(self) -> Outcome:
+    def context(self):
         pass
-
-    @abc.abstractmethod
-    def eval(self, instruction: ClassicInstruction) -> Kernel | None:
-        pass
-
-
-def flush(cpu: QPU):
-    o = cpu.consume()
-    while o is not None:
-        yield o
-        o = cpu.consume()

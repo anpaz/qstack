@@ -2,7 +2,7 @@ from dataclasses import replace
 from ..compiler import Compiler
 from ..ast import QuantumInstruction, Kernel, QubitId
 from ..instruction_sets import cliffords_min as cliffords
-from ..classic_processor import ClassicalContext, ClassicDefinition
+from ..classic_processor import ClassicContext, ClassicDefinition
 
 
 def handle_x(inst: QuantumInstruction):
@@ -13,7 +13,7 @@ def handle_h(inst: QuantumInstruction):
     return Kernel(target=None, instructions=[cliffords.H(f"{inst.targets[0]}.{i}") for i in range(3)])
 
 
-def decode(context: ClassicalContext):
+def decode(context: ClassicContext):
     m0 = context.consume()
     m1 = context.consume()
     m2 = context.consume()

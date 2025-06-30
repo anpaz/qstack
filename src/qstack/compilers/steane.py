@@ -5,7 +5,7 @@ from dataclasses import replace
 from ..compiler import Compiler
 from ..ast import QuantumInstruction, Kernel, QubitId
 from ..instruction_sets import cliffords_min as cliffords
-from ..classic_processor import ClassicalContext, ClassicDefinition
+from ..classic_processor import ClassicContext, ClassicDefinition
 
 logger = logging.getLogger("qstack")
 
@@ -126,7 +126,7 @@ syndrome_table = {
 }
 
 
-def correct_x(context: ClassicalContext, *, qubit: QubitId):
+def correct_x(context: ClassicContext, *, qubit: QubitId):
     syndrome = (context.consume(), context.consume(), context.consume())
     fault = syndrome_table.get(syndrome)
 
@@ -135,7 +135,7 @@ def correct_x(context: ClassicalContext, *, qubit: QubitId):
         return Kernel(target=None, instructions=[cliffords.X(target[fault])])
 
 
-def correct_z(context: ClassicalContext, *, qubit: QubitId):
+def correct_z(context: ClassicContext, *, qubit: QubitId):
     syndrome = (context.consume(), context.consume(), context.consume())
     fault = syndrome_table.get(syndrome)
 
@@ -144,7 +144,7 @@ def correct_z(context: ClassicalContext, *, qubit: QubitId):
         return Kernel(target=None, instructions=[cliffords.Z(target[fault])])
 
 
-def decode(context: ClassicalContext):
+def decode(context: ClassicContext):
     outcome = np.array([context.consume() for _ in range(7)])
     check1 = int(np.dot(outcome, np.array([1, 1, 0, 1, 1, 0, 0])) % 2)
     check2 = int(np.dot(outcome, np.array([1, 0, 1, 1, 0, 1, 0])) % 2)

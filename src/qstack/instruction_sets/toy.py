@@ -1,7 +1,7 @@
 import math
 
 from ..instruction_set import InstructionSet, QuantumDefinition, Matrix
-from ..classic_processor import ClassicalContext
+from ..classic_processor import ClassicContext
 
 
 ## Quantum Instructions
@@ -24,7 +24,7 @@ Entangle = QuantumDefinition.from_matrix(
 
 
 ## Classic Instructions
-def vote(context: ClassicalContext):
+def vote(context: ClassicContext):
     m1 = context.consume()
     m2 = context.consume()
     m3 = context.consume()

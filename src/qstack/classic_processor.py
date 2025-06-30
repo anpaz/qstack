@@ -5,18 +5,6 @@ from .processors import CPU, Outcome
 from .ast import ClassicInstruction, Kernel, ParameterValue
 
 
-class ClassicalContext:
-    def __init__(self):
-        self.measurements = []
-
-    def collect(self, result: Outcome):
-        self.measurements.append(result)
-
-    def consume(self) -> Outcome:
-        if len(self.measurements) > 0:
-            return self.measurements.pop()
-
-
 @dataclass(frozen=True)
 class ClassicDefinition:
     name: str
@@ -43,20 +31,43 @@ class ClassicDefinition:
         return ClassicDefinition(name=callback.__name__, callback=callback, parameters=parameters_names)
 
 
+class ClassicContext:
+    def __init__(self):
+        self.measurements = []
+
+    def collect(self, result: Outcome):
+        self.measurements.append(result)
+
+    def consume(self) -> Outcome:
+        if len(self.measurements) > 0:
+            return self.measurements.pop()
+
+    def __str__(self):
+        return str(self.measurements)
+
+    def __iter__(self):
+        return iter(self.measurements)
+
+
 class ClassicProcessor(CPU):
     def __init__(self, instructions: set[ClassicDefinition]):
         self.operations = {inst.name.lower(): inst for inst in instructions}
+        self._context = ClassicContext()
 
     def restart(self):
-        self.context = ClassicalContext()
+        self._context = ClassicContext()
 
-    def collect(self, result: Outcome):
-        self.context.collect(result)
+    @property
+    def context(self) -> ClassicContext:
+        return self._context
 
-    def consume(self) -> Outcome:
-        return self.context.consume()
+    def eval(self, instruction: ClassicInstruction | None, outcome: Outcome | None) -> Kernel | None:
+        if outcome is not None:
+            self.context.collect(outcome)
 
-    def eval(self, instruction: ClassicInstruction) -> Kernel:
+        if instruction is None:
+            return None
+
         name = instruction.name.lower()
         assert name in self.operations, f"Invalid classic instruction {instruction.name}."
         info = self.operations[name]
@@ -67,37 +78,9 @@ class ClassicProcessor(CPU):
         if isinstance(result, Kernel):
             return result
         elif result is None:
-            return Kernel.empty()
+            return None
         else:
             raise ValueError(f"Invalid result {result}")
-
-
-# def from_layer(layer: Layer) -> ClassicProcessor:
-#     return ClassicProcessor(instructions=layer.classic_definitions)
-
-
-# def _add_compilation(instr: ClassicDefinition, node: LayerNode):
-#     compiler = node.lower.compiler
-#     callback = instr.callback
-
-#     def call_and_compile(*targets, **parameters):
-#         result = callback(*targets, **parameters)
-#         if isinstance(result, Kernel):
-#             new_kernel = compiler.eval(result, node)
-#             return new_kernel
-#         else:
-#             return result
-
-#     return replace(instr, callback=call_and_compile)
-
-
-# def _find_all_instructions(node: LayerNode):
-#     if node.lower is not None:
-#         for instr in _find_all_instructions(node.lower.lower):
-#             yield _add_compilation(instr, node)
-
-#     for instr in node.layer.classic_definitions:
-#         yield replace(instr, name=f"{node.namespace}{instr.name}")
 
 
 def from_callbacks(callbacks: set[ClassicDefinition] | None) -> ClassicProcessor:
