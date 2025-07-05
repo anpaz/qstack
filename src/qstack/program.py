@@ -17,3 +17,11 @@ class Program:
         kernels = [str(k) for k in self.kernels]
 
         return "\n".join(attributes + [""] + kernels)
+
+    @staticmethod
+    def from_string(program: str, instruction_set=None) -> "Program":
+        from qstack.parser import QStackParser
+
+        parser = QStackParser(instruction_set=instruction_set)
+        program = parser.parse(program)
+        return program

@@ -23,10 +23,8 @@ setup(
         "numpy",
         "matplotlib",
         "qsharp",
-        # wip:
-        # "pyquil",
-        # "qiskit",
-        # "pytket",
-        # "stim",
     ],
+    extras_require={
+        "qiskit": ["qiskit", "qiskit-aer"],
+    },
 )
