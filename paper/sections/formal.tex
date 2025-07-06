@@ -1,0 +1,204 @@
+\section{Formal semantics}\label{sec:formal}
+
+\newcommand{\keval}{\Rightarrow }
+\newcommand{\qeval}{\mapsto_q }
+\newcommand{\ceval}{\mapsto_c }
+
+Before presenting the formal semantics of qstack programs, we briefly review the standard mathematical concepts and notation of quantum computation that form the foundation of our approach. This section serves as a reference to make the paper self-contained for readers from programming languages backgrounds who may be less familiar with quantum computing formalisms. The concepts presented below are well-established in quantum computing literature and are included here primarily to introduce notation and terminology used in our formal model.
+
+\subsection{Quantum Programs Basic Concepts}
+
+A qubit is a unit vector in the 2-dimensional complex Hilbert space, $\mathbb{C}^2$. Its general form is:
+\[
+\ket{\psi} = \alpha\ket{0} + \beta\ket{1}, \quad \alpha, \beta \in \mathbb{C}, \quad |\alpha|^2 + |\beta|^2 = 1
+\]
+
+Unlike classical bits with definite values of 0 or 1, qubits encode information through quantum superposition—a linear combination of basis states $\ket{0}$ and $\ket{1}$. The complex coefficients $\alpha$ and $\beta$ determine not only the probabilities $|\alpha|^2$ and $|\beta|^2$ of measuring the corresponding basis states, but also contain phase information that affects quantum interference patterns during computation. This phase information, while unobservable in direct measurements, plays a crucial role in quantum algorithms through constructive and destructive interference.
+
+Quantum operations can affect both the probability amplitudes and phases. For example, a phase flip operation transforms a state $\ket{+} = \frac{1}{\sqrt{2}}(\ket{0} + \ket{1})$ into $\ket{-} = \frac{1}{\sqrt{2}}(\ket{0} - \ket{1})$ without altering the measurement probabilities, yet fundamentally changing the quantum state's behavior in subsequent operations.
+
+
+An $n$-qubit system is described by a state $\ket{\psi^n} \in \mathbb{C}^{2^n}$, constructed as the tensor product of $n$ single-qubit spaces. When the dimension of the space is not relevant, we denote the state simply as $\ket{\psi}$. Adding a new qubit in state $\ket{0}$ at position $n$ results in:
+\[
+\ket{\psi^{n+1}} = \ket{\psi^n} \otimes \ket{0}
+\]
+
+The computational basis of an $n$-qubit system  the set of $2^n$ orthonormal states $\{\ket{x} : x \in \{0,1\}^n\}$, where each $\ket{x}$ corresponds to a classical bitstring $x = (x_0, x_1, \ldots, x_{n-1})$. These basis states represent configurations in which each qubit is either in state $\ket{0}$ or $\ket{1}$, and they span the space $\mathbb{C}^{2^n}$. Any quantum state $\ket{\psi^n}$ can be expressed as a linear combination of these:
+
+\[
+\ket{\psi^n} = \sum_{x \in \{0,1\}^n} \alpha_x \ket{x}
+\]
+
+
+A unitary operator $U$ is a linear transformation such that $U^\dagger U = UU^\dagger = I$. Applying a unitary to a quantum state preserves its norm and produces another valid quantum state. The composition of two unitaries is also unitary.
+
+To apply a unitary $U$ that acts on a single qubit $j$ in an $n$-qubit system, we define a lifted operator $U^{(j)}$ that acts as the identity on all qubits except at position $j$:
+\[
+U^{(j)} = I \otimes \cdots \otimes I \otimes U \otimes I \otimes \cdots \otimes I
+\]
+with $U$ appearing in the $j$-th position.
+
+If $U$ acts on $k$ qubits, we assume it is defined to act on the last $k$ positions of a tensor product space. To apply it to any arbitrary set of $k$ qubits at positions $j_1, j_2, \ldots, j_k$, we use a permutation operator $\Pi$ that moves those qubits to the last $k$ positions. The lifted operator is then defined as:
+\[
+U^{(j_1, \ldots, j_k)} = \Pi^{-1} \circ (I \otimes \cdots \otimes I \otimes U) \circ \Pi
+\]
+The permutation operator $\Pi$ is unitary, since it rearranges tensor product factors without changing inner products. Therefore, $U^{(j_1, \ldots, j_k)}$ is also unitary.
+
+The state evolves under this operation as:
+\[
+\ket{\psi'} = U^{(j_1, \ldots, j_k)} \ket{\psi^n}
+\]
+
+
+Measurement of qubit $j$ in the computational basis is denoted by $\|\psi^n\|_j \mapsto b, \ket{\psi^{n-1}}$. This operation produces a classical outcome $b \in \{0, 1\}$ and a post-measurement state $\ket{\psi^{n-1}}$, calculated as follows: assume $\ket{\psi^n}$ is expressed in the computational basis as:
+\[
+\ket{\psi^n} = \sum_{x \in \{0,1\}^n} \alpha_x \ket{x}
+\]
+where $x = (x_0, x_1, \ldots, x_{n-1})$ is a bitstring of length $n$. Then the probability of observing outcome $b$ is:
+\[
+P(b) = \sum_{\substack{x \in \{0,1\}^n \\ x_j = b}} |\alpha_x|^2
+\]
+and the post-measurement state is:
+\[
+\ket{\psi^{n-1}} = \frac{1}{\sqrt{P(b)}} \sum_{\substack{x \in \{0,1\}^n \\ x_j = b}} \alpha_x \ket{x}
+\]
+This state lies in the subspace where qubit $j$ is fixed to $b$, reducing the dimensionality of the space from $2^n$ to $2^{n-1}$. Intuitively, we think of measurement as also deallocating the measured qubit: after measuring, we no longer treat it as part of the quantum state.
+
+\subsection{Formal Semantics of qstack Programs}
+
+To formalize the behavior of our kernel-based quantum language, we define an operational semantics that captures the interplay between classical control and quantum state evolution. Execution proceeds through kernel instructions, each of which introduces a new qubit, performs a sequence of operations, and concludes with a callback function that governs the next step based on measurement outcomes. The model defines a strict, linear stack discipline for qubit allocation and use, supporting dynamic control flow through measurement-driven callbacks.
+
+The formal syntax of qstack programs is given by the grammar below:
+
+
+{\tt\small
+\begin{tabular}{lrl}
+program                 &:==& kernel \\
+kernel                  &:==& (\textit{qubit\_id}:instructions:callback) \\
+instructions            &:==& instruction | instruction, instructions | $\varnothing$ \\
+instruction             &:==& quantum\_gate | kernel \\
+quantum\_gate           &:==& \textit{gate\_id}(targets) \\
+targets                 &:==& \textit{qubit\_id} | \textit{qubit\_id}, target  \\
+callback                &:==& \textit{callback\_id} \\
+kernel\_option          &:==& kernel | $\varnothing$ \\
+\end{tabular}}
+
+Each gate identifier \textit{gate\_id} is assumed to denote a fixed unitary operator of appropriate arity. We write $U$ to refer to the unitary associated with a particular gate identifier. Similarly, each callback identifier \textit{callback\_id} denotes a classical function of type $\texttt{bool} \rightarrow \texttt{kernel\_option} \times S$, which we write as $cb$ when referring to its application. We assume this association is fixed and globally defined.
+
+For simplicity, this formal semantics does not explicitly encode the notion of instruction sets or compilation layers that are central to qstack's practical implementation. While qstack programs in practice operate within specific instruction sets (groups of related quantum operations) and can be compiled between different instruction sets or enhanced with error correction, the core operational behavior can be understood through this simplified model where gates are treated as abstract unitary operators. The layered compilation and instruction set transformations preserve the fundamental execution semantics defined here.
+
+
+A program consists of a single kernel. We formally represent each kernel as a triple $(q : I : cb)$, where:
+\begin{itemize}
+    \item $q$ is a fresh logical qubit identifier,
+    \item $I$ is a finite sequence of instructions to execute on that qubit and others in scope,
+    \item $cb$ is a callback function that takes a measurement outcome and classical state, and produces a new kernel.
+\end{itemize}
+
+
+Instructions are either quantum gates ---parameterized by gate identifiers and target qubits--- or nested kernel, allowing dynamic extension of the program during execution.
+
+
+Execution is modeled via a small-step relation on configurations $(C, S, (\ket{\psi}, m))$, where:
+\begin{itemize}
+    \item $C$ is a stack of instruction sequences and associated callbacks,
+    \item $S$ is the classical store (e.g., memory, registers, or control variables),
+    \item $(\ket{\psi}, m)$ is the current quantum state vector $\psi$ and a mapping $m$ from logical qubit names to positions in the state vector.
+\end{itemize}
+
+We denote the evaluation with:
+$$
+C, S, (\ket{\psi}, m) \keval C', S', (\ket{\psi'}, m')
+$$
+
+Given a program $(q : I : cb)$, we start in the initial configuration $((q : I : cb):[]):[], S_0, ([], [])$. The first step applies the \textsc{start-kernel} rule to allocate the initial qubit and begin execution of the top-level kernel. A final state has the form $[]; S; ([], [])$ and we take the outcome of the program to be the final classical state $S$.
+
+The operational semantics is defined by the following inference rules. Which rule applies at each step depends on the form of the next instruction in the instruction sequence at the top of the stack:
+\begin{itemize}
+\item If the next instruction is a nested kernel, the \textsc{start-kernel} rule is applied.
+\item If it is a gate application, the \textsc{quantum-gate} rule is used.
+\item If there are no instructions left, one of the two \textsc{end-of-kernel} rules applies depending on the callback result.
+\end{itemize}
+
+
+
+\subsection*{Kernel Initiation (\textsc{start-kernel})}
+
+
+\begin{center}
+\begin{mathpar}
+\inferrule[start-kernel]
+{  }
+{ ((q_k:I_k:cb_k): I, cb):C', S, (\ket{\psi^n}, m)  \keval (I_k, cb_k):(I, cb):C', S, (\ket{\psi^{n}} \otimes \ket{0},\ m[q \mapsto n])  }
+
+\end{mathpar}
+\end{center}
+
+This rule initiates the execution of a kernel by allocating a new qubit in the $|0\rangle$ state and extending the qubit mapping.
+
+A fresh qubit is allocated at the next available position $n$ in the state vector. The logical identifier $q_k$ is mapped to this index, and the quantum state is extended with $|0\rangle$. The instructions $I_k$ are pushed onto the call stack along with their callback $cb_k$.
+
+\subsection*{Quantum Gate Application (\textsc{quantum-gate})}
+
+
+\begin{center}
+\begin{mathpar}
+\inferrule[quantum-gate]
+{  }
+{ (U(q_0, \dots, q_j): I', cb):C', S, (\ket{\psi}, m) \keval (I', cb):C', S, (U^{(m[q_0], \ldots, m[q_j])}\ket{\psi}, m)  }
+\end{mathpar}
+\end{center}
+
+This rule handles the application of a quantum gate to one or more target qubits.
+
+If the next instruction is a gate application $U(q_0, \ldots, q_j)$, we resolve each $q_i$ to its corresponding index in the quantum state using the mapping $m$, then apply the appropriate lifted unitary operator $U$ to the current state vector. The call stack is updated to reflect the remaining instructions, and the classical state and qubit mapping are unchanged.
+
+\subsection*{Kernel Completion with Termination (\textsc{end-of-kernel-done})}
+
+\begin{center}
+\begin{mathpar}
+    
+\inferrule[end-of-kernel-done]
+{  
+    \|\psi^{n}\|_{n-1} \mapsto b, \ket{\psi'} \\ 
+    m =   m' \uplus  [q \mapsto n-1]  \\
+    cb(b) \mapsto \varnothing, S'  }
+{ ([], cb):C', S, (\ket{\psi^n}, m) \keval C', S', (\ket{\psi'}, m') }
+
+\end{mathpar}
+\end{center}
+
+This rule completes a kernel when there are no more instructions to execute, and the callback returns no further computation. 
+
+Provided that:
+\begin{itemize}
+    \item The last qubit (at position $n - 1$) is measured, yielding a classical bit $b$ and a collapsed state $\psi'$,
+    \item The callback $cb(b, S)$ does not provide a continuation,
+    \item The mapping $m$ is updated to remove the deallocated qubit: $m = m' \uplus [q \mapsto n - 1]$.
+\end{itemize}
+
+
+
+\subsection*{Kernel Completion with Continuation (\textsc{end-of-kernel-continue})}
+
+
+\begin{center}
+\begin{mathpar}
+
+\inferrule[end-of-kernel-continue]
+{ \|\psi^{n}\|_{n-1} \mapsto b, \ket{\psi'} \\
+    m =   m' \uplus  [q \mapsto n-1]  \\
+    cb(b) \mapsto (q_k:I_k:cb_k), S'  }
+{ ([], cb):C', S, (\ket{\psi^n}, m) \keval (I_k, cb_k):C', S',  (\ket{\psi'} \otimes \ket{0},\ m'[q_k \mapsto n-1])  }
+
+\end{mathpar}
+\end{center}
+
+This rule completes a kernel when the callback returns a new kernel, allowing runtime-controlled chaining of further quantum computation.
+
+Provided that:
+\begin{itemize}
+    \item The last qubit is measured, yielding $b$ and $\psi'$
+    \item The callback $cb(b, S)$ returns a new kernel $(q_k : I_k : cb_k)$,
+    \item The qubit mapping $m$ is updated to remove the measured qubit and add a new mapping: $m = m' \uplus [q \mapsto n - 1]$.
+\end{itemize}

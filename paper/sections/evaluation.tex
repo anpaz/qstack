@@ -1,0 +1,65 @@
+\section{Evaluation}\label{sec:evaluation}
+
+To evaluate qstack, we conducted a comparison with IBM's Qiskit~\cite{Qiskit}, focusing on program transformation capabilities. We demonstrate how qstack's compositional compiler framework enables sophisticated quantum program transformations through reusable compiler passes, while Qiskit requires more manual implementation for equivalent functionality.
+
+Our evaluation uses the repeat-until-success example introduced earlier: transforming a basic program from a toy instruction set through multiple compilation stages to produce an error-corrected version with nested 9-qubit repetition code. This transformation showcases qstack's three key advantages: (1) \textbf{unified quantum-classical transformation}, (2) \textbf{dynamic resource allocation}, and (3) \textbf{compositional compilation}.
+
+\textbf{qstack vs. Qiskit: Architectural Differences}
+
+Our comparison reveals fundamental architectural differences between qstack and Qiskit that impact how developers implement and maintain quantum algorithms with error correction:
+
+\begin{enumerate}
+\item \textbf{Computation Model}: Qiskit follows a QRAM model where a classical program dispatches quantum instructions, while qstack implements a co-processor model with quantum programs that include classical callbacks.
+
+\item \textbf{Classical Control}: Qiskit provides limited classical control with \texttt{if\_test} and loop constructs using simple boolean expressions. qstack supports arbitrary classical computation through callbacks.
+
+\item \textbf{Resource Management}: Qiskit requires static declaration of quantum and classical registers at program start, while qstack enables dynamic allocation/deallocation of qubits through nested kernels with automatic hierarchical naming.
+
+\item \textbf{Error Correction}: Qiskit uses a post-processing approach with measurements analyzed after circuit completion. qstack provides an integrated approach with real-time correction via callbacks during circuit execution.
+
+\item \textbf{Program Transformation}: Qiskit supports compositional compilation of quantum circuits but separates classical control transformations, requiring manual synchronization between them. qstack offers unified transformation of both quantum operations and classical components through its compiler framework.
+
+\item \textbf{Classical Language Support}: Qiskit's approach is tightly coupled to Python's object model, while qstack's callback architecture is fundamentally language-neutral.
+\end{enumerate}
+
+\textbf{Same Expressiveness, Different Management Paradigm}
+
+Both qstack and Qiskit have equivalent expressive power—both can implement the same quantum algorithms. The difference lies in how they manage the quantum-classical interface:
+
+\begin{itemize}
+\item \textbf{Qiskit's separation approach}: Classical control logic and quantum transformations are separate concerns, requiring manual synchronization when transformations change.
+
+\item \textbf{qstack's unification approach}: Callbacks and quantum operations are unified compilation targets, with automatic adaptation when transformations are applied.
+\end{itemize}
+
+This architectural difference makes qstack particularly advantageous for scenarios involving dynamic resources, transformation composition, error correction, and programming language diversity.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|p{0.25\textwidth}|p{0.35\textwidth}|p{0.35\textwidth}|}
+\hline
+\textbf{Feature} & \textbf{Qiskit} & \textbf{qstack} \\
+\hline
+\textbf{Computation Model} & QRAM: classical program dispatches quantum instructions & Co-processor: quantum program with classical callbacks \\
+\hline
+\textbf{Classical Control} & Limited to predefined control flow constructs & Arbitrary classical computation through callbacks \\
+\hline
+\textbf{Resource Allocation} & Static declaration of quantum registers & Dynamic allocation with automatic hierarchical naming \\
+\hline
+\textbf{Error Correction} & Post-processing of measurement results & Real-time correction via callbacks during execution \\
+\hline
+\textbf{Compiler Integration} & Compositional compilation of quantum circuits, but manual orchestration of classical control & Seamless composition of both quantum and classical components \\
+\hline
+\textbf{Classical Language Support} & Primarily Python-based & Language-agnostic callback interface \\
+\hline
+\end{tabular}
+\caption{Architectural comparison between Qiskit and qstack}
+\label{fig:qstack-qiskit-comparison}
+\end{table}
+
+Both approaches have their strengths. Qiskit's approach more directly reflects current hardware architectures and their limitations, while qstack's approach anticipates future systems where tighter classical-quantum integration will be essential for error correction and adaptive algorithms.
+
+\textbf{Practical Implementation}
+
+For practical side-by-side comparisons, we've provided a Jupyter notebook example (\texttt{examples/7.qiskit.ipynb}) that implements the repeat-until-success pattern with error correction in both frameworks, demonstrating the architectural differences described above.
+

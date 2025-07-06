@@ -1,0 +1,43 @@
+\section{Conclusion}\label{sec:conclusion}
+
+In this paper, we have presented qstack, a novel quantum programming framework that fundamentally rethinks how quantum and classical computation interact. Our stack-based approach, with its emphasis on dynamic qubit allocation, callback-based classical control, and modular execution, addresses several critical challenges in quantum programming language design, particularly those related to quantum error correction and hardware-independent compilation.
+
+\subsection{Key Contributions}
+
+The primary contributions of this work include:
+
+\begin{enumerate}
+\item A quantum programming model that treats classical computation as callbacks embedded within quantum execution, inverting the traditional QRAM paradigm and simplifying the expression of complex quantum-classical algorithms.
+
+\item A formal operational semantics that precisely specifies the behavior of qstack programs, providing a foundation for reasoning about program correctness and transformation.
+
+\item A compilation strategy that enables automatic insertion of error correction protocols without changing program semantics, demonstrating how our model naturally accommodates the requirements of fault-tolerant quantum computing.
+
+\item A flexible approach to instruction set definition that allows quantum programs to target diverse hardware platforms through compilation rather than reimplementation.
+
+\item A callback compilation mechanism that offers:
+  \begin{itemize}
+  \item Separation of concerns between logical algorithm design and physical implementation details
+  \item Automatic adaptation of classical control logic to changes in quantum instruction sets
+  \item Composable transformations where multiple compiler passes build upon each other
+  \item Unified semantics that preserve program behavior across different compilation targets
+  \item Real-time classical feedback during quantum execution, enabling adaptive algorithms and error correction
+  \item Language-agnostic interface that allows callback implementations in different programming languages
+  \end{itemize}
+\end{enumerate}
+
+\subsection{Limitations and Future Work}
+
+While qstack represents a significant step forward in quantum programming language design, several limitations and opportunities for future work remain:
+
+\begin{itemize}
+\item \textbf{Optimization across the quantum-classical boundary}: Developing techniques for optimizing programs that involve both quantum and classical components, particularly focusing on minimizing the overhead of quantum-classical interaction.
+
+\item \textbf{Formal verification}: Extending formal methods to verify the correctness of qstack programs, especially those involving complex error correction protocols.
+
+\item \textbf{Automatic fidelity calculations for error codes}: Developing a system to automatically calculate the effective noise characteristics of logical operations. This would work by compiling individual gates from an error correction code, simulating them using a hardware-specific noise model, and using these results to generate a derived noise model for the logical instructions. The resulting logical noise model could then be used to directly simulate logical gates at a higher level of abstraction, enabling more efficient simulation of large-scale fault-tolerant algorithms without sacrificing accuracy.
+
+\item \textbf{Hardware-specific optimization}: Extending the compilation framework to incorporate hardware-specific constraints and optimizations, such as qubit connectivity limitations, gate fidelities, and coherence times. This would enable the automatic transformation of abstract quantum programs into optimized physical implementations tailored to specific quantum processors.
+\end{itemize}
+
+In conclusion, qstack represents a significant paradigm shift in quantum programming language design. By inverting the traditional quantum-classical relationship and introducing a compositional framework for quantum programs, we provide a foundation for developing more robust quantum applications that can seamlessly incorporate error correction and adapt to diverse hardware platforms. This work contributes to the growing field of quantum software engineering by addressing the unique challenges of programming fault-tolerant quantum computers, paving the way for practical quantum applications in the future.

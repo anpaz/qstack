@@ -1,0 +1,67 @@
+\section{Implementation}\label{sec:implementation}
+
+We implemented qstack as a Python framework that provides both a runtime environment for executing quantum programs and a compilation infrastructure for transforming programs across different abstraction layers. This section describes the key components of our implementation.
+
+\subsection{System Architecture}
+
+The qstack implementation consists of several interrelated components:
+
+\begin{enumerate}
+\item \textbf{Abstract Syntax Tree}: At the heart of qstack is an AST representation that models quantum kernels, instructions, and qubit identifiers. The implementation uses immutable data structures such as \texttt{QubitId}, \texttt{QuantumInstruction}, \texttt{ClassicInstruction}, and \texttt{Kernel} to ensure program integrity during compilation and transformation operations.
+
+\item \textbf{Parser}: The framework includes a parser that converts textual quantum programs into their AST representation, supporting the concrete syntax shown in our examples.
+
+\item \textbf{Program}: A quantum program consists of an instruction set and a top-level kernel. This simple representation allows for programs to be easily compiled, transformed, and executed while maintaining their semantic properties.
+
+\item \textbf{Processor Abstractions}: The implementation defines abstract interfaces for quantum and classical processors. The quantum processor interface handles operations like qubit allocation, gate application, and measurement, while the classical processor interface manages callback execution and measurement context. This separation enforces a clear boundary between quantum and classical computation.
+
+\item \textbf{Execution Engine}: The execution engine, named \texttt{QuantumMachine}, coordinates program execution according to our operational semantics. It manages kernel evaluation, instruction execution, and measurement collection, providing utilities for analyzing execution outcomes through histograms and other statistical measures.
+
+\item \textbf{Emulation Backend}: The emulation system implements the quantum processor interface using state vector simulation. It leverages Q\#'s quantum simulation libraries for state manipulation and integrates with qstack's noise model to apply quantum noise during execution.
+
+\item \textbf{Instruction Sets}: The framework defines quantum operations through their matrix representations or parametric construction methods. Instruction sets group related quantum operations into coherent sets that can be targeted by compilers.
+
+\item \textbf{Compilation Framework}: The compilation system serves two key purposes: transforming programs between different instruction sets (for example, from a toy instruction set to the cliffords instruction set) and injecting quantum error correction into existing programs (such as Steane or repetition code). Compilers like the Steane compiler accept programs using the same instruction set and produce enhanced programs with error correction capabilities while maintaining program semantics during transformation.
+
+\item \textbf{Noise Modeling}: The framework includes a system for modeling quantum noise through Kraus operators. It defines interfaces and implementations for common noise models, enabling realistic simulation of quantum hardware.
+
+\item \textbf{Jupyter Integration}: The implementation provides integration with IPython/Jupyter notebooks, enabling interactive development and visualization of quantum programs through cell magics.
+\end{enumerate}
+
+\subsection{Program Representation and Execution}
+
+In the qstack model, a program consists of a top-level kernel that may contain nested sub-kernels, forming a hierarchical structure. Each kernel consists of:
+
+\begin{itemize}
+\item A target qubit to be allocated (or none for instruction sequences without allocation)
+\item A sequence of instructions (quantum operations or nested kernels)
+\item An optional classical callback to process measurement results
+\end{itemize}
+
+The execution follows our formal semantics: the execution engine evaluates the top-level kernel and any encountered sub-kernels recursively, maintaining a stack of active kernels. When a kernel's instructions are exhausted, it measures the target qubit and invokes the associated classical callback, which can either return a new kernel to execute or simply manipulate the measurement stack.
+
+\subsection{Compilation Infrastructure}
+
+The qstack compiler architecture transforms programs between different instruction sets through handler functions that map source instructions to equivalent sequences in the target instruction set.
+
+When a compiler processes a program, it traverses the AST and applies the appropriate handlers to each instruction, producing a new program that preserves the original semantics while potentially changing the physical implementation details. This preserves the compositional nature of qstack programs while enabling adaptation to different hardware platforms or incorporating error correction capabilities.
+
+A key aspect of the compilation process is the handling of classical callbacks. Since these callbacks can generate new kernels dynamically at runtime, the compiler must ensure that any kernel returned by a callback is also properly compiled. This is achieved through a callback wrapping mechanism where each source callback is transformed into a target callback that:
+\begin{enumerate}
+\item Invokes the original callback function with the provided parameters
+\item Checks if the result is a new kernel
+\item If so, recursively compiles that kernel before returning it
+\end{enumerate}
+
+This recursive compilation of dynamically generated kernels ensures that the semantics of the program are preserved across all possible execution paths, even those that only become apparent during runtime. This is essential for maintaining the correctness of error correction protocols, which often rely on dynamic decision-making based on measurement outcomes.
+
+\subsection{Noise Modeling}
+
+The qstack framework includes a noise modeling system that applies quantum noise during simulation. The noise model defines an interface for retrieving Kraus operators associated with quantum operations. The framework provides:
+
+\begin{itemize}
+\item \textbf{Noiseless Channel}: An ideal quantum channel with no noise, represented by a single Kraus operator (the identity matrix)
+\item \textbf{Depolarizing Noise}: The standard depolarizing noise model that introduces random errors with a specified probability
+\end{itemize}
+
+The noise modeling integrates with the state vector emulator, which applies the appropriate Kraus operators during instruction evaluation. This capability is essential for testing error correction strategies and evaluating algorithm performance under realistic conditions.

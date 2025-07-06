@@ -1,0 +1,221 @@
+\section{Error Correction: The Steane Code}\label{sec:error-correction}
+
+In this section, we first provide a concise overview of quantum error correction principles to establish context for readers less familiar with these techniques. This background material covers established concepts from the quantum computing literature. Following this introduction, we detail our specific implementation of the Steane code within the qstack framework.
+
+\subsection{Quantum Error Correction}
+
+As with classical counterparts, quantum codes work by encoding one qubit of information into multiple to achieve redundancy and resist individual errors. However, several uniquely quantum obstacles complicate this approach:
+
+\begin{enumerate}
+\item Due to the no-cloning theorem, we can’t copy quantum information into multiple qubits.
+\item We can’t directly measure the state of a qubit without disturbing it.
+\item Quantum errors aren’t just bit flips — they can include phase flips, or both simultaneously.
+\end{enumerate}
+
+To work around these constraints, redundancy is introduced not by copying, but by entanglement. For example, a single-qubit state $\alpha \ket{0} + \beta \ket{1}$ can be encoded as $\alpha \ket{000} + \beta \ket{111}$. Instead of inspecting individual qubit states, which would collapse the superposition, we perform parity checks across groups of qubits. These can be implemented indirectly using ancilla qubits to determine whether two or more qubits are in the same state (that is, have even parity), without revealing what that state actually is.
+
+This use of entanglement makes quantum codes remarkably sensitive: a single-qubit error can disturb the entire encoded state. Consider, for instance, the three-qubit state $\alpha \ket{000} + \beta \ket{111}$. If a bit-flip error (Pauli $X$) occurs on the first qubit, the state becomes $\alpha \ket{100} + \beta \ket{011}$, which is still entangled but no longer lies in the original code space.
+
+These parity-check operations are called stabilizers. A stabilizer is a quantum operator that leaves valid encoded states invariant, that is, the state is a $+1$ eigenstate of the stabilizer. Stabilizers composed of Pauli-$Z$ operators are used to detect bit flip (Pauli-$X$) errors, and are called $Z$ stabilizers. Similarly, stabilizers made from Pauli-$X$ operators are used to detect phase flip (Pauli-$Z$) errors, and are called $X$ stabilizers. More generally, some codes use mixed stabilizers with both $X$ and $Z$ terms to detect a broader class of errors.
+
+A quantum error-correcting code is typically defined by a set of stabilizer operators. A quantum state is considered valid (i.e., free of detectable errors) if it is a $+1$ eigenstate of every stabilizer in the set. Measuring stabilizers doesn’t collapse the encoded state, it only tells us whether the parity constraints still hold. The result of all stabilizer measurements is collected into a bitstring called the syndrome. This syndrome doesn’t identify which specific qubit failed, but it narrows the possibilities. The syndrome decoder is the map from each syndrome to the most likely error (MLE), which can then be corrected, and the procedure that performs all measurements is the syndrome extraction routine.
+
+In summary, the process of quantum error correction involves:
+
+\begin{enumerate}
+\item \textbf{Encoding}: spread one logical qubit across multiple physical ones using entanglement.
+\item \textbf{Syndrome extraction}: measure stabilizers to detect signs of corruption without collapsing the logical state.
+\item \textbf{Syndrome decoding}: analyze the syndrome to determine the most probable error.
+\item \textbf{Correction}: apply the inverse operation to return to the original code space.
+\end{enumerate}
+
+As with classical codes, quantum codes are characterized by three parameters:
+
+\begin{itemize}
+\item $n$ = number of physical qubits used by the code
+\item $k$ = number of logical qubits encoded
+\item $d$ = code distance, the minimum number of physical qubits that must be altered to implement a nontrivial logical operation or transform one valid encoded state into another (i.e., smallest weight of a logical operator not in the stabilizer group)
+\end{itemize}
+
+When describing the characteristics of a code, these parameters are denoted as:
+
+$$
+[[n, k, d]]
+$$
+
+
+To demonstrate quantum error correction within our framework, we implemented the Steane code, a \([[7, 1, 3]]\) CSS (Calderbank-Shor-Steane) code. The Steane code encodes 1 logical qubit into 7 physical qubits and can correct any single-qubit phase or bit flip error. Based on the classical Hamming code, it features a symmetric structure where X and Z stabilizers mirror each other, enabling transversal implementations of logical $H$ and $CX$ operations ---a valuable property for fault-tolerant quantum computing.
+
+The code is defined by the following stabilizer generators:
+
+\[
+\begin{aligned}
+\text{Z stabilizers: } &[Z, Z, I, Z, Z, I, I] \\
+&[Z, I, Z, Z, I, Z, I] \\
+&[I, Z, Z, Z, I, I, Z] \\
+\text{X stabilizers: } &[X, X, I, X, X, I, I] \\
+&[X, I, X, X, I, X, I] \\
+&[I, X, X, X, I, I, X] \\
+\end{aligned}
+\]
+
+The logical operators that act on the encoded qubit are:
+
+\[
+X_L = [X, X, X, X, X, X, X], \quad
+Z_L = [Z, Z, Z, Z, Z, Z, Z]
+\]
+
+\subsection{Compilation Process}
+
+Our compiler transforms quantum programs to incorporate error correction transparently. When a kernel in the source program allocates a logical qubit, the compiler expands this into an allocation of 7 physical qubits and injects a preparation routine. This routine initializes the quantum system to the $+1$ eigenspace of all Z stabilizers, representing the logical zero state $\ket{0}_L$. Additionally, it inserts a classical decoder routine for error correction. For instance, the simple kernel:
+
+\begin{minted}[fontsize=\footnotesize]{ruby}
+allocate q:
+measure
+\end{minted}
+
+which simply allocates a qubit in a $\ket{0}$ state, gets compiled into:
+
+\begin{minted}[fontsize=\footnotesize]{ruby}
+allocate q1.0 q1.1 q1.2 q1.3 q1.4 q1.5 q1.6:
+    h q1.4
+    h q1.5
+    h q1.6
+    cx q1.4 q1.0
+    cx q1.4 q1.1
+    cx q1.4 q1.3
+    cx q1.5 q1.0
+    cx q1.5 q1.2
+    cx q1.5 q1.3
+    cx q1.6 q1.1
+    cx q1.6 q1.2
+    cx q1.6 q1.3
+measure decode
+\end{minted}
+
+The compiled program features a classical \`{decode} callback that processes measurement outcomes to detect and correct errors.
+
+\begin{minted}[fontsize=\scriptsize]{python}
+def decode():
+    m0, m1, m2, m3, m4, m5, m6 = context.pop(7)
+    outcome = np.array([m0, m1, m2, m3, m4, m5, m6])
+    # Calculate syndrome bits by checking parities
+    check1 = np.dot(outcome, [1, 1, 0, 1, 1, 0, 0]) % 2
+    check2 = np.dot(outcome, [1, 0, 1, 1, 0, 1, 0]) % 2
+    check3 = np.dot(outcome, [0, 1, 1, 1, 0, 0, 1]) % 2
+    syndrome = (check1, check2, check3)
+    fault = syndrome_table.get(syndrome)
+
+    if fault is not None:
+        outcome[fault] = (outcome[fault] + 1) % 2
+
+    # Compute logical Z measurement as parity of all physical qubits
+    logical_outcome = np.sum(outcome) % 2
+    context.push(logical_outcome)
+    return None
+\end{minted}
+
+For small codes like Steane, the error lookup is implemented using a static lookup table mapping syndromes to likely errors. Larger codes would employ more sophisticated decoders such as minimum-weight perfect matching or neural networks.
+
+\subsection{Preserving Program Semantics}
+
+A critical feature of our approach is that the compiled error-corrected program preserves the semantics of the original. Although the compilation process introduces significant complexity in the quantum circuit, the semantics remains unchanged—a single logical measurement outcome is pushed onto the measurement stack, enabling any classical postprocessing code from the original program to behave identically.
+
+\subsection{Logical Gate Implementation}
+
+During compilation, each instruction in the original source is replaced by its logical counterpart. For many operations in the Steane code, these mappings are transversal—applied identically to each physical qubit. For example:
+
+\begin{minted}[fontsize=\footnotesize]{ruby}
+allocate q:
+    h q
+measure
+\end{minted}
+
+compiles to:
+
+\begin{minted}[fontsize=\footnotesize]{ruby}
+allocate q1.0 q1.1 q1.2 q1.3 q1.4 q1.5 q1.6:
+    ... prepare-zero ...
+    h q1.0
+    h q1.1
+    h q1.2
+    h q1.3
+    h q1.4
+    h q1.5
+    h q1.6
+measure decode
+\end{minted}
+
+\subsection{Syndrome Extraction}
+
+The compiler strategically inserts syndrome extraction and correction routines \textit{between} logical instructions. These routines identify and correct errors that may have occurred during computation. 
+
+For our implementation, we use a straightforward approach for syndrome extraction: one ancilla qubit per stabilizer measurement. Each stabilizer is measured by entangling an ancilla with the data qubits using controlled-Pauli gates, and then measuring the ancilla in the computational basis to determine parity. For clarity, we separate Z and X checks into distinct subroutines. While this approach is not fully fault-tolerant, it effectively demonstrates the compiled structure and error correction capabilities.
+
+Below is an example of X stabilizer syndrome extraction, which detects phase (Z) errors:
+
+\begin{minted}[fontsize=\footnotesize]{ruby}
+allocate x.q1.0 x.q1.1 x.q1.2:
+    h x.q1.0 
+    h x.q1.1 
+    h x.q1.2
+    cx x.q1.0 q1.0
+    cx x.q1.1 q1.0
+    cx x.q1.3 q1.0
+    cx x.q1.4 q1.0
+    cx x.q1.0 q1.1
+    cx x.q1.2 q1.1
+    cx x.q1.3 q1.1
+    cx x.q1.5 q1.1
+    cx x.q1.1 q1.2
+    cx x.q1.2 q1.2
+    cx x.q1.3 q1.2
+    cx x.q1.6 q1.2
+    h x.q1.0 
+    h x.q1.1 
+    h x.q1.2
+measure correct_phase(qubit=q1)
+\end{minted}
+
+The measurement activates a classical callback that processes the syndrome and applies corrections when needed:
+
+\begin{minted}[fontsize=\scriptsize]{python}
+def correct_phase(qubit):
+    m0, m1, m2 = context.pop(3)
+    syndrome = (m0, m1, m2)
+    fault = syndrome_table.get(syndrome)
+
+    if fault is not None:
+        target = tuple(QubitId(f"{qubit}.{i}") for i in range(7))
+        return Kernel(targets=[], instructions=[cliffords.Z(target[fault])])
+\end{minted}
+
+\subsection{Complete Compilation Structure}
+
+Putting all the components together, a compiled error-corrected kernel follows this general structure:
+
+\begin{minted}[fontsize=\footnotesize]{ruby}
+allocate q1.0 q1.1 q1.2 q1.3 q1.4 q1.5 q1.6:
+    # Logical state preparation
+    ... prepare-zero instructions ...
+    
+    # Error correction cycle
+    ... correct z (bit) errors...
+    ... correct x (phase) errors...
+    
+    # Apply first logical instruction
+    ... logical instr ...
+    
+    # Another error correction cycle
+    ... correct z (bit) errors...
+    ... correct x (phase) errors...
+    
+    # Apply next logical instruction
+    ... logical instr ...
+    
+    # Additional cycles as needed
+    ...
+    
+measure decode
+\end{minted}

@@ -1,0 +1,107 @@
+\section{Introduction}
+
+Quantum computing presents significant potential for addressing computational problems that remain intractable for classical computers, including molecular simulations, optimization problems, and integer factorization\cite{shor1997,wecker-reactions,cao2018potential,gidney2025factor2048bitrsa}. These computational advantages derive from quantum computers' ability to leverage quantum mechanical phenomena --like superposition, entanglement, and interference--- to process information in fundamentally different ways from classical systems. Current research reports that fully functional quantum computers could significantly outperform classical supercomputers for specific computational tasks\cite{resourceestimation-beverland2022assessing,arute2019quantum,kim2023evidence,morvan2024phase}.
+
+Quantum algorithms are very different from classical algorithms; they require instructions that explicitly utilize quantum mechanical principles to achieve computational advantages. Despite fundamental differences from classical computing, several principles from classical programming remain valuable in quantum contexts:
+
+\begin{itemize}
+\item Dynamic memory allocation for optimizing physical qubit usage across hardware implementations
+\item Standardized instruction sets enabling targeting of different hardware architectures
+\item Automatic error correction to mitigate the inherently error-prone nature of quantum operations
+\end{itemize}
+
+Quantum error correction, in particular, has been a primary motivation for this work. Unlike classical error correction, quantum states cannot be directly observed without destroying their quantum properties. Error detection must occur through indirect measurements, with classical feedback mechanisms triggering appropriate quantum corrections\cite{shor1995scheme}. This requirement transforms what might initially be conceived as ``pure'' quantum programs into hybrid systems that necessarily combine both quantum and classical instructions.
+
+Furthermore, quantum operations exist within a Hilbert space, theoretically allowing for infinite possible operations. In practice, a finite ``universal'' instruction set approximates any quantum operation to arbitrary precision. Implementing certain gates in this universal set, particularly through techniques like T-gate injection, requires classical measurements to determine whether quantum state corrections are necessary\cite{bravyi2005universal}.
+
+These considerations highlight a fundamental characteristic of practical quantum computing: quantum programs must frequently be transformed into hybrid programs that interleave classical and quantum instructions to achieve reliable operation. This hybrid nature presents significant challenges for quantum programming models and compiler design.
+
+The central research question addressed in this paper is: How can we design a quantum programming framework that seamlessly integrates classical and quantum components, particularly for error correction protocols, while maintaining program semantics and supporting hardware-agnostic compilation? Our objective is to develop a paradigm that inverts the traditional quantum-classical relationship, empowering developers to express sophisticated quantum algorithms with proper error handling at multiple abstraction levels.
+
+\subsection{Current Approaches to Quantum Programming}
+
+Quantum programs have traditionally been shaped by the Quantum Random Access Machine (QRAM) computational model~\cite{knill2022conventions}, in which a classical processor accesses a quantum memory composed of a fixed set of qubits and applies a well-defined set of operations: preparing qubits, applying unitary transformations, and performing measurements. In this model, quantum programs function essentially as classical programs that compute and dispatch quantum instructions to a quantum processor. This approach, while intuitive from a classical programming perspective, creates substantial challenges when implementing error correction protocols or adaptive quantum algorithms where classical feedback must be tightly integrated with quantum operations.
+
+The QRAM model is certainly universal, capable of implementing any quantum algorithm or error-correction scheme. But just as a classical assembly language is universal, that does not mean it provides any natural structures for common idioms and approaches. We believe our stack-based and callback-based approach provides a more modular and natural fit especially when translating among quantum instructions and implementing error-correction schemes.
+
+\subsection{Our Contribution: The qstack Approach}
+
+In this work, we introduce \textbf{qstack}, a quantum programming framework that implements an alternative co-processor model with a reversed emphasis: quantum programs are structured as sequences of instructions executed by a quantum processing unit (QPU) with access to classical processing capabilities during execution. This classical component enables dynamic adjustments, such as state corrections or conditional branches, based on measurement outcomes obtained during runtime. qstack significantly simplifies the compilation process into lower-level operations that naturally interleave classical and quantum instructions—a critical requirement for contexts such as quantum error correction and fault-tolerant quantum computing.
+
+To make this approach concrete, consider a toy example that demonstrates a repeat-until-success algorithm where a quantum program continues executing until a desired measurement outcome is achieved.
+
+The program allocates two qubits and prepares them in an entangled (correlated) state. The program measures the first qubit and collects the result, then measures the second qubit and uses that result to determine whether to repeat the computation. This program is expressed in qstack as follows:
+
+\begin{minted}[fontsize=\footnotesize]{ruby}
+allocate q1:
+  allocate q2:
+    mix q1
+    entangle q1 q2
+  measure collect
+measure repeat_until_zero
+\end{minted}
+
+The \`{repeat\_until\_zero} is a classical callback (implemented in Python) that conditionally generates new quantum computation based on the measurement result:
+
+\begin{minted}[fontsize=\scriptsize]{python}
+def repeat_until_zero(measurement):
+    if measurement != 0:
+        # Return new quantum computation to retry
+        return Kernel(
+            allocate q1:
+              allocate q2:
+                mix q1
+                entangle q1 q2
+              measure collect
+            measure repeat_until_zero)
+    else:
+        return None  # Success - terminate
+\end{minted}
+
+This simple example illustrates how quantum programs are inherently probabilistic and how qstack handles dynamic control flow. Due to the random nature of quantum measurements, for this program each execution of the inner kernel has a 50\% chance of producing a 0 (which terminates the program) and a 50\% chance of producing a 1 (which causes the callback to generate a new iteration). Because the qubits are entangled, the second qubit's measurement will always match the first qubit's result. Therefore the program will generate a sequence of 1's terminated by a 0; if you build a histogram of the outcomes, you will see that the number of outcomes becomes exponentially smaller as the length of the bitstring increases—sequences of length $n$ occur with probability $1/2^{n+1}$ [Figure~\ref{fig:repeat-until-success}].
+
+\begin{figure}[h]
+\centering
+\begin{minipage}{0.48\textwidth}
+\centering
+\includegraphics[width=\textwidth]{figures/repeat_until_success_simple.png}
+\end{minipage}
+\hfill
+\begin{minipage}{0.48\textwidth}
+\centering
+\scriptsize
+\begin{tabular}{|r|c|c|}
+\hline
+Bitstring & Probability & Expected Formula \\
+\hline
+0, & 0.4700 & $1/2^{1}$ \\
+1,0 & 0.2720 & $1/2^{2}$ \\
+1,1,0 & 0.1400 & $1/2^{3}$ \\
+1,1,1,0 & 0.0580 & $1/2^{4}$ \\
+1,1,1,1,0 & 0.0190 & $1/2^{5}$ \\
+1,1,1,1,1,0 & 0.0180 & $1/2^{6}$ \\
+1,1,1,1,1,1,0 & 0.0160 & $1/2^{7}$ \\
+\hline
+\end{tabular}
+\end{minipage}
+\caption{Exponential decay in the repeat-until-zero program simulated using qstack. The histogram (left) shows the distribution of measurement outcomes resulting from 1000 simulation runs, where each bitstring represents a sequence ending in successful termination (0). The table (right) compares the observed probabilities against theoretical expectations. Each additional retry (represented by a '1') reduces the probability by approximately 50\%, demonstrating the exponential decay characteristic of this quantum algorithm pattern. The close agreement between observed and expected values validates both the theoretical model and qstack's implementation.}
+\label{fig:repeat-until-success}
+\end{figure}
+
+Beyond demonstrating probabilistic quantum behavior, this example illustrates qstack's core programming pattern. Programs in qstack follow an \textbf{allocate/compute/measure/callback} structure: quantum resources are allocated in a nested fashion, quantum operations are performed within these allocation scopes, measurements are taken at specific points, and classical callbacks process measurement results to determine whether additional quantum computation should be generated. This pattern naturally supports the iterative and conditional execution common in quantum algorithms, particularly those requiring error correction or probabilistic success patterns.
+
+This example also demonstrates qstack's key design principle: inversion of control where quantum execution is primary, while classical computation occurs via callbacks that can dynamically generate new quantum instructions based on measurement outcomes.
+
+Our model introduces several key innovations that this example illustrates:
+
+\begin{enumerate}
+\item \textbf{Stack-based qubit allocation}: Rather than pre-allocating a fixed qubit set, qubits are allocated and measured in a nested fashion, with each measurement implicitly applying to the most recently allocated qubit. Measurement results are pushed onto a classical stack, making them directly available for classical control, while qubits retain explicit names in the program. This approach enables dynamic resource management and simplifies the implementation of complex quantum algorithms with varying qubit requirements.
+
+\item \textbf{Callback-based classical logic}: When classical logic is required during quantum execution, it is introduced via callbacks—classical computations that determine whether additional quantum instructions should be incorporated based on measurement results. The repeat-until-zero example demonstrates this perfectly: the callback examines the measurement outcome and conditionally returns new quantum computation, enabling sophisticated control flow without explicit branching constructs in the quantum language itself.
+
+\item \textbf{Modular execution}: This structure promotes modularity, allowing classical computations to be safely interleaved with quantum code even when those classical operations trigger additional quantum subcomputations. This modularity is particularly important for implementing error correction protocols, where syndrome measurements must trigger appropriate quantum correction operations.
+\end{enumerate}
+
+Our approach focuses on providing a programming framework that supports various instruction sets rather than prescribing a specific universal set. Programs written in qstack can target different hardware platforms through their respective instruction sets, while maintaining the same high-level semantics. This flexibility allows quantum computations to be described at different layers of abstraction, accommodating both hardware-specific constraints and algorithm-level optimizations within a unified programming model. The framework addresses the critical challenge of bridging the gap between abstract quantum algorithms and their hardware implementations, particularly when error correction is required.
+
+The remainder of this paper is organized as follows: Section~\ref{sec:examples} introduces the qstack language through practical examples, illustrating its key features and programming patterns including error correction techniques. Section~\ref{sec:synthesis} examines instruction synthesis and decomposition in quantum programming, highlighting qstack's unique approach to this universal challenge. Section~\ref{sec:callbacks} describes qstack's callback mechanism in depth, showing how it enables integration of classical control with quantum computation. Section~\ref{sec:formal} presents the formal definition of the qstack language and its operational semantics, providing a rigorous framework for understanding the language's behavior. Section~\ref{sec:error-correction} provides a concrete example of a quantum error correction code and demonstrates how it naturally fits within the qstack framework, highlighting one of the principal advantages of our approach. Section~\ref{sec:implementation} details the implementation of the language and its compiler, addressing practical considerations for real-world usage. Section~\ref{sec:evaluation} compares qstack to other quantum programming frameworks, particularly Qiskit, highlighting our approach's advantages for classical-quantum integration and error correction. Section~\ref{sec:related-work} reviews related work in quantum programming models and compilation techniques, positioning our work within the existing literature. Finally, Section~\ref{sec:conclusion} discusses directions for future work in our framework.

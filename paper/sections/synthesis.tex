@@ -1,0 +1,67 @@
+\section{Synthesis and Decomposition}\label{sec:synthesis}
+
+Quantum instruction synthesis and decomposition is a core pattern available in most quantum programming languages. This process—translating between different levels of abstraction and different quantum instruction sets—is fundamental to bridging the gap between algorithm design and hardware execution. While this functionality exists in frameworks like Qiskit, Cirq, and Q\#, qstack's approach provides unique advantages through its consistent programming model across abstraction levels.
+
+The previous examples used qstack's toy instruction set with intuitive names like \`{mix}, \`{entangle}, and \`{skew} to make quantum operations more accessible. However, quantum programs are typically expressed in terms of a \textit{canonical} instruction set consisting of commonly used quantum gates with standardized names. These gates, also called quantum instructions, are unitary operations that transform quantum states while preserving quantum properties like superposition and entanglement. The canonical set usually includes Clifford operations—the Pauli gates ($X$, $Y$, $Z$), Hadamard ($H$), phase ($S$), and controlled-X ($CX$)—along with arbitrary single- or two-qubit rotations. This set is universal, meaning it can approximate any quantum operation to arbitrary precision when gates are combined appropriately.
+
+To illustrate the compilation process, our Bell state program using the toy instruction set:
+
+\begin{minted}[fontsize=\footnotesize]{ruby}
+allocate q1 q2:
+  mix q1
+  entangle q1 q2
+measure
+\end{minted}
+
+corresponds to this canonical instruction set program:
+
+\begin{minted}[fontsize=\footnotesize]{ruby}
+allocate q1 q2:
+  h q1
+  cx q1 q2
+measure
+\end{minted}
+
+where \`{mix} from the toy instruction set maps to the Hadamard gate ($H$) and \`{entangle} maps to the controlled-X gate ($CX$) in the canonical set. This demonstrates qstack's flexibility: the same program semantics can be expressed using different instruction vocabularies, from the beginner-friendly toy instruction set to standard quantum computing terminology.
+
+In practice, quantum hardware does not necessarily implement this canonical set natively. Instead, each quantum processor provides its own minimal universal instruction set based on its physical capabilities and constraints. Since all universal sets can express the same operations, they are equivalent up to a change of basis and can be transformed into one another through compilation—a process that replaces high-level gates with equivalent sequences of hardware-native gates.
+
+As an example take Quantinuum's Trapped-Ion quantum processor\cite{moses2023race}, which expose as its universal instruction set two one-qubit -$U_1$ and $RZ$- operations, and the Mølmer-Sørenson-Gate ($RZZ$) as its entanglement operation. With these instructions, the Hadamard operation can be synthesized as:
+
+$$H =  RZ(\pi) \circ U_1(\pi/2, -\pi/2) $$
+
+and the two qubit Controlled-X as:
+
+$$CX = I \otimes RZ(-\pi2) \circ I \otimes U_1(\pi /2, \pi) \circ RZ(-\pi /2) \otimes I \circ RZZ( \pi /2 ) \circ I \otimes U_1(-\pi/2, \pi/2)$$
+
+For these instructions, the complete compilation chain shows how the same Bell state program can be expressed at three different levels. Starting from qstack's toy instruction set, compiling to the canonical instruction set, and then compiling to Quantinuum's hardware-specific instruction set:
+
+\begin{minted}[fontsize=\footnotesize]{ruby}
+# Toy instruction set (intuitive)
+allocate q1 q2:
+  mix q1
+  entangle q1 q2
+measure
+
+# Canonical instruction set (standard)
+allocate q1 q2:
+  h q1
+  cx q1 q2
+measure
+
+# Quantinuum instruction set (hardware-specific)
+allocate q1 q2:
+  u_1(pi/2, -pi/2) q1
+  rz(pi) q1
+  
+  u_1(-pi/2, pi/2) q2
+  rzz(pi/2)
+  rz(-pi/2) q1
+  u_1(pi/2, pi) q2
+  rz(-pi/2) q2
+measure
+\end{minted}
+
+Notice that both the original and compiled programs follow identical qstack syntax—the same kernel structure, the same allocation and measurement patterns, and the same instruction sequences. This uniformity is a key strength of qstack: compilation preserves the programming model while transforming the underlying operations. The compiled program remains a valid qstack program that can be further compiled, analyzed, or executed using the same tools and semantics. This compositional property enables modular compilation pipelines where different compilers can be chained together, each targeting specific aspects like instruction set translation, optimization, or error correction.
+
+Unlike many other quantum programming frameworks where gate decomposition creates fundamentally different program representations, qstack's approach maintains consistent semantics across all levels of abstraction. This uniformity simplifies reasoning about programs and enables composition of transformations in ways that are challenging in traditional quantum programming models.

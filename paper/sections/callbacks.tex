@@ -1,0 +1,134 @@
+\section{Callbacks Compilation}\label{sec:callbacks-compilation}
+
+A distinctive feature of qstack is its principled approach to compiling programs with classical callbacks. This section examines how qstack's compiler framework transforms classical callbacks during program compilation, enabling error correction and adaptive quantum circuits without manual programmer intervention.
+
+\subsection{Just-in-Time Compilation of Callback Outputs}
+
+Central to qstack's callback compilation is a just-in-time (JIT) mechanism. When a program with callbacks is compiled across instruction sets, the compiler transforms both quantum operations and establishes wrappers around callbacks to handle any kernels they might return. Importantly, the compiler takes both the quantum program and the list of callbacks as input, and returns both a transformed program and a transformed list of callbacks:
+
+\begin{minted}[fontsize=\footnotesize]{python}
+# Original program with a callback
+original_program = Program.from_string("""
+allocate q:
+  mix q
+measure my_callback
+""")
+
+# Define the callback
+def my_callback(measurement):
+    if measurement == 1:
+        return Kernel("q", [Mix("q")])
+    return None
+
+# Create the callbacks data structure that the compiler can use
+callbacks = create_callbacks(my_callback)
+
+# Compilation transforms both program and callbacks
+compiled_program, compiled_callbacks = SomeCompiler().compile(original_program, callbacks)
+# Results in a new program and wrapped callbacks where my_callback is transformed
+\end{minted}
+
+During execution, when a measurement triggers a callback, the original function executes normally within its wrapper. If the callback returns a new kernel (common in adaptive quantum algorithms), that kernel is automatically compiled just-in-time by the same compiler before execution, ensuring dynamically generated quantum instructions remain compatible with the compilation context.
+
+For example, when a callback returns a kernel with a \texttt{Mix} operation in the toy instruction set, and the program is compiled to use standard gates, the wrapped callback automatically transforms the returned kernel to use a Hadamard gate:
+
+\begin{minted}[fontsize=\scriptsize]{python}
+# Original callback in toy instruction set
+def adaptive_callback(measurement):
+    if measurement == 1:
+        # Return a kernel that applies a Mix operation
+        return Kernel("q", [Mix("q")])
+    return None
+
+# After compilation with ToyCompiler
+original_callbacks = create_callbacks(adaptive_callback)
+_, compiled_callbacks = ToyCompiler().compile(program, original_callbacks)
+
+# The returned compiled_callbacks contains wrapped versions:
+# When the wrapped adaptive_callback returns a kernel,
+# Kernel("q", [Mix("q")]) is transformed to Kernel("q", [H("q")])
+\end{minted}
+
+This JIT mechanism preserves the semantic meaning of callbacks across instruction set boundaries while adapting implementation details to match the target instruction set. The original callback functions remain untouched, but they are wrapped in adapters that perform the necessary transformations.
+
+\subsection{Compiler-Injected Callbacks}
+
+Beyond transforming existing callbacks, qstack compilers can inject new callbacks into programs. This capability is crucial for implementing error correction, where a decoding step must process multiple physical measurements to produce a logical result:
+
+\begin{minted}[fontsize=\footnotesize]{python}
+# Original program with a simple callback
+original_program = Program.from_string("""
+allocate q:
+  h q
+measure process_result
+""")
+
+# Define the callback
+def process_result(measurement):
+    # Process the measurement result
+    return None
+
+# After applying a repetition code compiler
+callbacks = create_callbacks(process_result)
+error_corrected_program, error_corrected_callbacks = RepetitionCompiler().compile(original_program, callbacks)
+# Results in a program with an injected decode callback and transformed callbacks
+\end{minted}
+
+The repetition code compiler injects a \texttt{decode} callback that performs majority voting on physical qubit measurements, executing first before passing its result to the original callback:
+
+\begin{minted}[fontsize=\scriptsize]{python}
+# Original callback chain
+process_result
+
+# After repetition code transformation
+decode | _rep3-trivial_:process_result
+\end{minted}
+
+In this notation, \texttt{decode | \_rep3-trivial\_:process\_result} shows that \texttt{decode} executes first before passing results to the transformed original callback. The \texttt{\_rep3-trivial\_:} prefix indicates that any kernel returned by \texttt{process\_result} will undergo JIT compilation by the repetition compiler.
+
+\subsection{Callback Composition}
+
+When multiple compilers are applied sequentially, their callback transformations compose systematically, with each compiler wrapping the existing callback chain and potentially injecting its own callbacks:
+
+\begin{minted}[fontsize=\scriptsize]{python}
+# Original callback
+original_callback
+
+# After first compiler (e.g., ToyCompiler)
+_toy2cliffords_:original_callback
+
+# After second compiler (e.g., RepetitionCompiler)
+decode | _rep3-trivial_:_toy2cliffords_:original_callback
+
+# After another RepetitionCompiler (nested error correction)
+decode | _rep3-trivial_:decode | _rep3-trivial_:_rep3-trivial_:_toy2cliffords_:original_callback
+\end{minted}
+
+This transformation ensures each compilation layer applies in the correct order while preserving semantics. The execution follows this pattern:
+
+\begin{enumerate}
+\item Injected callbacks execute first (newest first)
+\item For each callback in the chain:
+  \begin{itemize}
+  \item If the callback returns nothing, execution proceeds to the next callback
+  \item If the callback returns a kernel, that kernel undergoes JIT compilation through the appropriate transformation chain
+  \end{itemize}
+\end{enumerate}
+
+This composition enables sophisticated transformations like nested error correction, where logical qubits from one error correction layer are encoded using multiple physical qubits at the next layer.
+
+\subsection{Runtime Behavior}
+
+The execution flow of a compiled program with error correction illustrates how callback compilation functions in practice:
+
+\begin{enumerate}
+\item The quantum program executes and measures multiple physical qubits
+\item Measurement results are pushed onto the measurement stack
+\item The first callback (\texttt{decode}) performs majority voting on measurements
+\item The \texttt{decode} callback pushes the logical measurement result onto the stack
+\item The transformed original callback processes the logical measurement
+\item If this callback returns a new kernel, it undergoes JIT compilation (e.g., expanding a logical qubit operation to multiple physical qubits)
+\item The compiled kernel executes as the next step in the quantum program
+\end{enumerate}
+
+This approach maintains clear separation between the logical quantum program and its physical implementation, allowing programmers to focus on algorithm logic without addressing error correction or hardware-specific implementation details. Unlike most quantum programming frameworks that treat classical processing as a separate post-execution step, qstack integrates classical processing directly into the program's execution flow, enabling unified transformation of both quantum operations and classical control logic. Additionally, qstack's callback design is language-agnostic—callbacks operate on a simple interface of consuming measurement results and potentially returning kernel objects—which allows implementation in any programming language and enables polyglot quantum applications with clear separation between abstract specification and implementation details.
