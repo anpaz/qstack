@@ -28,6 +28,37 @@ The qstack implementation consists of several interrelated components:
 \item \textbf{Jupyter Integration}: The implementation provides integration with IPython/Jupyter notebooks, enabling interactive development and visualization of quantum programs through cell magics.
 \end{enumerate}
 
+Figure \ref{fig:codesize} shows the size of different components in our implementation, measured in lines of Python code. The entire framework is relatively compact at approximately 1,375 lines, with error correction components representing the largest subsystem (299 lines). This demonstrates that quantum programming abstractions with error correction can be implemented efficiently while supporting all the features described in this paper, including compositional compilation and automatic adaptation of callbacks across abstraction levels.
+
+\begin{figure}[ht]
+\centering
+\scriptsize
+\begin{tabular}{lr}
+\hline
+\textbf{Component} & \textbf{Lines of Code} \\
+\hline
+Error Correction (Rep3 + Steane) & 299 \\
+Parser & 194 \\
+Abstract Syntax Tree & 133 \\
+Noise Modeling & 110 \\
+Emulator & 99 \\
+Instruction Sets & 96 \\
+Machine/Execution Engine & 93 \\
+Classic Processor & 87 \\
+Compiler Framework & 71 \\
+Processor Abstractions & 39 \\
+Program Representation & 27 \\
+Jupyter Integration & 26 \\
+Other & 75 \\
+\hline
+\textbf{Total} & \textbf{1375} \\
+\hline
+\end{tabular}
+\normalsize
+\caption{Size of qstack implementation components in lines of code}
+\label{fig:codesize}
+\end{figure}
+
 \subsection{Program Representation and Execution}
 
 In the qstack model, a program consists of a top-level kernel that may contain nested sub-kernels, forming a hierarchical structure. Each kernel consists of:
@@ -46,18 +77,11 @@ The qstack compiler architecture transforms programs between different instructi
 
 When a compiler processes a program, it traverses the AST and applies the appropriate handlers to each instruction, producing a new program that preserves the original semantics while potentially changing the physical implementation details. This preserves the compositional nature of qstack programs while enabling adaptation to different hardware platforms or incorporating error correction capabilities.
 
-A key aspect of the compilation process is the handling of classical callbacks. Since these callbacks can generate new kernels dynamically at runtime, the compiler must ensure that any kernel returned by a callback is also properly compiled. This is achieved through a callback wrapping mechanism where each source callback is transformed into a target callback that:
-\begin{enumerate}
-\item Invokes the original callback function with the provided parameters
-\item Checks if the result is a new kernel
-\item If so, recursively compiles that kernel before returning it
-\end{enumerate}
-
-This recursive compilation of dynamically generated kernels ensures that the semantics of the program are preserved across all possible execution paths, even those that only become apparent during runtime. This is essential for maintaining the correctness of error correction protocols, which often rely on dynamic decision-making based on measurement outcomes.
+As detailed in Section~\ref{sec:callbacks}, the compilation framework employs a callback wrapping pattern that ensures any dynamically generated kernels are properly compiled. This approach maintains program semantics across all possible execution paths, even those that only become apparent during runtime—a critical requirement for implementing error correction protocols.
 
 \subsection{Noise Modeling}
 
-The qstack framework includes a noise modeling system that applies quantum noise during simulation. The noise model defines an interface for retrieving Kraus operators associated with quantum operations. The framework provides:
+The qstack framework includes a noise modeling system that applies quantum noise during simulation. Noise is modeled via Kraus operators as explained in \cite{wilde2013quantum, nielsen&chuang}. The noise model defines an interface for retrieving Kraus operators associated with quantum operations. The framework provides:
 
 \begin{itemize}
 \item \textbf{Noiseless Channel}: An ideal quantum channel with no noise, represented by a single Kraus operator (the identity matrix)
