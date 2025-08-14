@@ -16,7 +16,7 @@ $$CX = I \otimes RZ(-\pi/2) \circ I \otimes U_1(\pi/2, \pi) \circ RZ(-\pi/2) \ot
 
 For these instructions, the complete compilation chain shows how the same Bell state program can be expressed at three different levels. Starting from qstack's toy instruction set, compiling to the canonical instruction set, and then compiling to Quantinuum's hardware-specific instruction set:
 
-\begin{minted}[fontsize=\footnotesize]{ruby}
+\begin{minted}{ruby}
 # Toy instruction set (intuitive)
 allocate q1 q2:
   mix q1

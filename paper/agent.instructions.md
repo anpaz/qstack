@@ -10,6 +10,7 @@ Some time the paper may contain errors, and you will need to correct them. Other
 - The paper should be free of grammatical and spelling errors.
 - The audience of the paper is researchers on Programming Languages, with little to now knowledge of quantum computing.
 - The tone in the paper should be objective and direct.
+- Avoid em-dashes.
 - The paper should include a clear introduction that outlines the research question and objectives.
 - The paper should include a literature review that summarizes relevant research in the field.
 - The paper should include a conclusion that summarizes the main findings and implications of the research.

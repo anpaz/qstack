@@ -79,12 +79,12 @@ def decode_nested_repetition_code(measured_bits):
 
 This example illustrates the key difference: while both frameworks can apply composition of quantum transformations, qstack automatically adapts classical decoding logic when composing compilers, whereas Qiskit requires developers to manually implement and connect the nested decoding logic. This manual adaptation increases in complexity with each additional layer of error correction.
 
-\subsection{Real-time vs. Post-processing Correction}
+\subsection{Mid-circuit vs. Post-processing Correction}
 
 Beyond the structural differences in how decoder transformations are composed, the frameworks also differ fundamentally in their execution models and when error correction can be applied:
 
 \begin{itemize}
-\item \textbf{qstack}: Implements real-time error correction during circuit evaluation, allowing decoded results to influence subsequent quantum operations.
+\item \textbf{qstack}: Implements mid-circuit error correction during evaluation, allowing decoded results to influence subsequent quantum operations.
 
 \item \textbf{Qiskit}: Implements error correction as post-processing after circuit execution completes, aligning with current hardware constraints but limiting interactive error correction capabilities.
 \end{itemize}
@@ -107,9 +107,9 @@ measured_bits = int(list(counts.keys())[0])
 result = decode_nested_repetition_code(measured_bits)  # Manual post-processing
 \end{minted}
 
-The benefits of real-time correction become particularly critical for long-running quantum circuits where errors can propagate and compound if not corrected promptly. For such circuits, waiting until the end of execution to apply corrections is not feasible, as errors that occur early in the computation can spread to other qubits, potentially rendering the entire computation invalid. We implemented this approach using the Steane $[7,1,3]$ code where the compiler automatically inserts syndrome extraction circuits after each logical instruction. When errors are detected from syndrome measurements, the system immediately injects appropriate Pauli operations to correct errors before subsequent quantum operations are performed. This real-time correction is essential for maintaining quantum state integrity throughout extended computations.
+The benefits of mid-circuit correction become particularly critical for long-running quantum circuits where errors can propagate and compound if not corrected promptly. For such circuits, waiting until the end of execution to apply corrections is not feasible, as errors that occur early in the computation can spread to other qubits, potentially rendering the entire computation invalid. We implemented this approach using the Steane $[7,1,3]$ code where the compiler automatically inserts syndrome extraction circuits after each logical instruction. When errors are detected from syndrome measurements, the system immediately injects appropriate Pauli operations to correct errors before subsequent quantum operations are performed. This mid-circuit correction is essential for maintaining quantum state integrity throughout extended computations.
 
-While similar functionality can be implemented in Qiskit for the Steane code in particular, as its correction scheme is simple enough to be implemented using basic expressions on the syndrome bits, this is not feasible when working with advanced error correction schemes like Surface Code~\cite{fowler2012surfacecode} or 4-D Toric code~\cite{aasen2025topologically}, which require iterative or machine learning-based decoders. These sophisticated decoders present particular challenges in frameworks without native support for real-time classical feedback and dynamic quantum instruction insertion.
+While similar functionality can be implemented in Qiskit for the Steane code in particular, as its correction scheme is simple enough to be implemented using basic expressions on the syndrome bits, this is not feasible when working with advanced error correction schemes like Surface Code~\cite{fowler2012surfacecode} or 4-D Toric code~\cite{aasen2025topologically}, which require iterative or machine learning-based decoders. These sophisticated decoders present particular challenges in frameworks without native support for mid-circuit classical feedback and dynamic quantum instruction insertion.
 
 
 \subsection{Summary of Framework Differences}
