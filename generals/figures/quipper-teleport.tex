@@ -1,0 +1,26 @@
+\begin{figure}[t]
+\begin{minted}[fontsize=\small,frame=single]{haskell}
+-- Quipper teleportation example
+teleport :: (Qubit, Qubit, Qubit) -> Circ (Qubit, Qubit, Qubit)
+teleport (alice, bob, msg) = do
+  -- Create entanglement between alice and bob
+  alice <- hadamard alice
+  bob <- qnot bob `controlled` alice
+  
+  -- Alice's Bell measurement
+  msg <- qnot msg `controlled` alice
+  msg <- hadamard msg
+  
+  -- Measure and get classical bits
+  (m1, msg) <- measure msg
+  (m2, alice) <- measure alice
+  
+  -- Classical control: conditionally apply corrections to bob
+  bob <- controlled m2 (gate_X bob)
+  bob <- controlled m1 (gate_Z bob)
+  
+  return (alice, bob, msg)
+\end{minted}
+\caption{Quantum teleportation in Quipper. The \texttt{controlled} keyword behaves differently for quantum vs. classical bits: when \texttt{m1} and \texttt{m2} are classical measurement results, gates are included in the circuit only if the bit equals 1. Dynamic lifting allows measurement results to guide circuit generation.}
+\label{fig:quipper-teleport}
+\end{figure}

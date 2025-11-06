@@ -1,0 +1,43 @@
+\begin{figure}[t]
+\begin{minted}[fontsize=\footnotesize,frame=single]{llvm}
+; QIR teleportation example (adaptive profile)
+define void @Teleport__body(%Qubit* %msg, %Qubit* %target) {
+entry:
+  %alice = call %Qubit* @__quantum__rt__qubit_allocate()
+  
+  ; Create entanglement between alice and target
+  call void @__quantum__qis__h__body(%Qubit* %alice)
+  call void @__quantum__qis__cnot__body(%Qubit* %alice, %Qubit* %target)
+  
+  ; Alice's Bell measurement
+  call void @__quantum__qis__cnot__body(%Qubit* %msg, %Qubit* %alice)
+  call void @__quantum__qis__h__body(%Qubit* %msg)
+  
+  ; Measure and get classical results
+  %m1 = call %Result* @__quantum__qis__mz__body(%Qubit* %msg)
+  %m2 = call %Result* @__quantum__qis__mz__body(%Qubit* %alice)
+  
+  ; Classical control: branch on measurement results
+  %cond1 = call i1 @__quantum__qis__read_result__body(%Result* %m2)
+  br i1 %cond1, label %then1, label %cont1
+  
+then1:
+  call void @__quantum__qis__x__body(%Qubit* %target)
+  br label %cont1
+  
+cont1:
+  %cond2 = call i1 @__quantum__qis__read_result__body(%Result* %m1)
+  br i1 %cond2, label %then2, label %cont2
+  
+then2:
+  call void @__quantum__qis__z__body(%Qubit* %target)
+  br label %cont2
+  
+cont2:
+  call void @__quantum__rt__qubit_release(%Qubit* %alice)
+  ret void
+}
+\end{minted}
+\caption{Quantum teleportation lowered to QIR (adaptive profile). Quantum operations are represented as calls to standardized QIS functions (e.g., \texttt{\_\_quantum\_\_qis\_\_h\_\_body}, \texttt{\_\_quantum\_\_qis\_\_cnot\_\_body}). Quantum data is represented as opaque pointers (\texttt{\%Qubit*}, \texttt{\%Result*}), while classical control uses standard LLVM constructs (\texttt{br i1}, basic blocks). The adaptive profile permits branching on measurement results, enabling dynamic quantum-classical feedback.}
+\label{fig:qir-teleport}
+\end{figure}

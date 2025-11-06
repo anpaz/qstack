@@ -1,0 +1,46 @@
+\section{Introduction}
+
+Quantum computing promises exponential speedups for certain problems by exploiting superposition and entanglement~\cite{shor1997,wecker-reactions,cao2018potential,gidney2025factor2048bitrsa,resourceestimation-beverland2022assessing}. Yet writing reliable quantum software remains deeply challenging. Quantum programs are difficult to debug because each instruction updates probability amplitudes across all possible outcomes, and any measurement collapses the state, destroying the very information needed for inspection. 
+Testing is equally limited: most quantum algorithms produce probabilistic results, requiring repeated runs to build statistical confidence. Because outputs are inherently nondeterministic and the input space grows exponentially, testing provides only limited assurance even in classical systems, and quantum computation simply amplifies this challenge. As a result, formal verification becomes essential for establishing correctness.
+
+
+Quantum hardware itself adds further complexity. Different technologies (such as trapped ions~\cite{DeCross_2025}, superconducting circuits~\cite{google2025quantum}, majoranas~\cite{microsoft2025interferometric}, and neutral atoms~\cite{bluvstein2024logical}) realize quantum computation in distinct physical ways. Each provides its own native instruction set, reflecting the specific gate primitives supported by the hardware. The physical layout also matters: only certain pairs of qubits can directly interact, constraining how entangling operations are scheduled. Finally, all technologies are inherently noisy, and the types and rates of faults vary widely across implementations. As in classical computing, managing this hardware heterogeneity and noise requires systematic abstraction.
+
+A standard or canonical instruction set abstracts away device-specific details, enabling programs to target multiple hardware platforms. Developers often assume idealized conditions such as all-to-all qubit connectivity, leaving the mapping to physical layouts for later stages. Quantum error correction (QEC) further strengthens this abstraction by encoding data across patches of many qubits, making logical operations more resilient to noise. From a programmer's perspective, these abstractions allow them to use perfectly behaved standard gates with all-to-all connectivity.
+
+Yet these abstractions introduce a deep compilation challenge. Each transformation can radically alter a program's structure: for instance, a single logical CNOT on error-corrected qubits may expand into hundreds of physical gates with intermediate measurements and classical feedback. Classical control compounds this difficulty, as even simple protocols like teleportation require measurement-based branching, and error correction depends on real-time feedback from classical systems. A realistic compiler must therefore reason about both quantum and classical data across multiple abstraction layers, making correctness difficult to establish.
+
+This complexity makes quantum compilers difficult to build and harder to trust. A single faulty transformation can silently alter program meaning, producing errors indistinguishable from hardware noise. Testing is insufficient, as outcomes are probabilistic and nondeterministic. Formal verification offers stronger guarantees but remains rare in practice. The verified compiler VOQC~\cite{Hietala_2021} embeds quantum semantics within Coq, ensuring correctness but requiring deep expertise and scaling poorly due to matrix-based reasoning over exponentially large states. More scalable approaches such as Giallar~\cite{tao2022giallar} use rewrite rules to check circuit equivalence, but these break down for programs involving measurements, feedback, or multiple abstraction levels. Moreover, most existing compilers treat QEC as a special-purpose layer rather than a first-class abstraction within the compilation pipeline, preventing correctness proofs from spanning logical and physical representations.
+
+These challenges seem to demand a choice: either verify correctness rigorously at exponential cost, or scale efficiently without formal guarantees. However, this dilemma rests on an assumption, that verification must reason about quantum states directly. The key insight of this work is that correctness can instead be expressed over circuit structure. By defining formal semantics that describe how circuits transform logical information without expanding state vectors, we can reason about correctness efficiently while maintaining rigor. This enables proofs that compiler passes preserve meaning while avoiding exponential simulation costs, and it applies uniformly to hybrid quantum-classical programs and to QEC-protected circuits.
+
+This thesis addresses these challenges by designing and implementing a compiler framework that integrates verification directly into the compilation process. Instead of verifying an entire compiler after construction, each compiler pass includes built-in checks that its transformations preserve program meaning. Verification thus becomes incremental and compositional, scaling naturally with program structure and extending across abstraction layers, including those introduced by QEC.
+
+\paragraph{Thesis Statement.}
+Verified compilation of quantum programs (including those with mid-circuit measurements, classical feedback, and quantum error correction) can be achieved compositionally by embedding structural correctness checks directly into each compiler pass, unifying formal assurance and practical compiler design across abstraction layers.
+
+\vspace{2em}
+
+This work makes the following contributions:
+
+\begin{itemize}
+  \item \textbf{A unified intermediate representation (IR).}  
+  The IR supports multiple abstraction layers within the same program, treating error correction as a first-class hardware abstraction rather than a special-case extension. Programs can target physical or logical qubits interchangeably.
+
+  \item \textbf{Classical–quantum interaction model.} The project defines a model that treats classical control as opaque callbacks, separating quantum semantics from classical computation while still supporting dynamic feedback. This separation simplifies reasoning about hybrid programs.
+
+  \item \textbf{A compiler framework with built-in verification.}  Each compiler pass incorporates verification through forward-simulation and translation-validation techniques, integrating correctness directly into the compilation process rather than treating it as a separate validation step.
+  
+  \item \textbf{Formal semantics across abstraction layers.}  
+  The IR defines compositional semantics that enable local proofs of correctness, ensuring transformations preserve meaning without full simulation.
+  
+  \item \textbf{Scalable verification techniques.}  
+  Structural reasoning replaces matrix-based analysis, supporting programs with mid-circuit measurements, hybrid control, and QEC across multiple qubits.
+  
+  \item \textbf{Implementation and evaluation.}  
+  A prototype compiler demonstrates verified compilation through multiple abstraction layers, from standard circuits to hardware-level implementations.
+\end{itemize}
+
+By embedding verification directly into compilation, this work unifies formal assurance and practical compiler design. It provides a foundation for scalable, architecture-aware quantum compilers that remain trustworthy as quantum programs and hardware systems grow in complexity.
+
+The remainder of this proposal is organized as follows: Section~2 surveys related work in quantum languages, intermediate representations, and compiler verification. Section~3 presents the qstack framework and its core design principles. Section~4 describes the proposed work for this thesis. Section~5 explains how the work will be evaluated and concludes with a discussion of the scope of the work and future directions.

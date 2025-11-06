@@ -1,0 +1,29 @@
+\begin{figure}[t]
+\begin{minted}[fontsize=\small,frame=single]{rust}
+// Silq teleportation, corrected
+def teleport(msg: B, target: B) : B {
+    alice := 0:B;  // allocate |0>
+
+    // create entanglement (not qfree)
+    alice := H(alice);
+    (alice, target) := CNOT(alice, target);
+
+    // Alice's Bell measurement
+    (msg, alice) := CNOT(msg, alice);
+    msg := H(msg);
+
+    // classical results
+    m1 := measure(msg);     // m1: !B
+    m2 := measure(alice);   // m2: !B
+
+    // classical control using measured bits
+    if m2 == 1 { target := X(target); }
+    if m1 == 1 { target := Z(target); }
+
+    return target;
+    // msg and alice were consumed by measure, so nothing to clean up
+}
+\end{minted}
+\caption{Quantum teleportation in Silq. The type \texttt{!B} denotes a classical bit that can be copied and used in classical control. Variables like \texttt{alice} and \texttt{msg} are automatically uncomputed when they go out of scope because their transformations are qfree. The \texttt{measure} operation converts quantum \texttt{B} to classical \texttt{!B}.}
+\label{fig:silq-teleport}
+\end{figure}

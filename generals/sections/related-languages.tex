@@ -1,0 +1,141 @@
+\subsection{Quantum Languages and Intermediate Represenations}
+
+
+Research on quantum programming languages has evolved along two main axes: 
+(1) how much abstraction a language provides to programmers, and 
+(2) how it manages the boundary between classical and quantum computation. 
+Across these axes, we can trace a progression from early circuit-construction frameworks, through statically typed, high-level imperative languages, to modern attempts that blend classical and quantum semantics within a unified model. 
+This section summarizes representative approaches illustrating these trajectories.
+
+One of the earliest and most influential high-level languages is \textbf{Quipper}~\cite{green2013quipper}. 
+Implemented as an embedded domain-specific language in \textbf{Haskell}, Quipper allows programmers to describe quantum computations using familiar functional constructs while relying on the host language for classical control and meta-programming. 
+A Quipper program is not directly executed on a quantum device: it is a \emph{circuit generator} that, when evaluated by the Haskell interpreter, produces a quantum circuit data structure. 
+This circuit can then be optimized, serialized, or executed on a backend simulator or device.
+
+Quipper’s core abstractions are minimal:
+\begin{itemize}
+  \item \textbf{Data types:} classical bits, qubits, gates, and boxed subcircuits.
+  \item \textbf{Monad for circuit construction:} the \texttt{Circ} monad represented circuit-building computations.
+  \item \textbf{Control:} a single quantum control construct, the \texttt{controlled} keyword, used to apply a gate conditionally on a classical or quantum bit. During execution, only this gate-level control is available; all other control flow occurs during circuit generation.
+\end{itemize}
+
+This design reflects the \emph{QRAM model}, where a classical controller orchestrates quantum operations. 
+Its simplicity and explicit separation between classical meta-programming and quantum circuit generation made Quipper an ideal platform for expressing large-scale algorithms such as Quantum Fourier Transform, Shor’s algorithm, and simulation of physical systems. 
+Quipper demonstrates that high-level, host-language embedding could scale to circuits with millions of gates, even though its execution model remained fully classical outside of gate control.
+
+Building on the experience of circuit-generation frameworks, Q\#~\cite{qsharp} introduced one of the first stand-alone quantum programming languages with a full compilation and execution model. Earlier stand-alone efforts such as QCL~\cite{omer2005classical} and Scaffold~\cite{ScaffCC} explored similar directions, but Q\# was the first to support automatic generation of adjoint and controlled variants together with structured lifetime management. It also introduced practical tooling, including diagnostic primitives like \texttt{DumpMachine} and a lightweight unit-test framework for validating small programs.
+
+Q\# enforces a strict separation between classical and quantum computation through its type system while supporting practical abstractions such as:
+\begin{itemize}
+  \item \textbf{Quantum operations and classical functions:} functions are purely classical and deterministic, while operations may act on qubits and produce quantum effects.
+  \item \textbf{Automatic generation of adjoint and controlled variants:} developers only specify the forward definition, and the compiler automatically derives both adjoint and controlled versions when possible.
+  \item \textbf{Scoped qubit lifetime management:} qubits are allocated with \texttt{use} or \texttt{borrow}, ensuring they are released automatically when their lifetime ends.
+  \item \textbf{Structured uncomputation:} the \texttt{within}/\texttt{apply} pattern provides explicit uncomputation scopes, ensuring reversibility and preventing accidental measurement or loss of coherence.
+  \item \textbf{Classical control flow:} loops and conditionals operate only on classical data, preserving a clean boundary between classical decision logic and quantum evolution.
+\end{itemize}
+
+This design defines a disciplined hybrid computation model: classical code manages orchestration and control, while quantum operations define unitary transformations. 
+Its semantics remain close to the QRAM architecture but within a statically verified, first-class language.
+
+As high-level quantum programming matured, new languages began exploring richer quantum abstractions that attempt to blur the classical–quantum boundary. 
+\textbf{Silq}~\cite{silq} introduced \emph{safe, automatic uncomputation}---a mechanism allowing temporary quantum variables to be implicitly “cleaned up” without explicit programmer intervention. 
+Its type system tracks which values remain entangled and ensures reversibility of operations without manual uncompute calls. 
+Silq’s design philosophy sought to make quantum programming feel “classical” by unifying the treatment of classical and quantum data, but this unification also leaked into the syntax, introducing constructs like \texttt{!N} and \texttt{N} for classical and quantum versions of a variable. 
+Rather than simplifying reasoning, these distinctions made programs harder to read and reason about. 
+Although the semantics enforce safety, the resulting type system is intricate, combining linearity, ownership, and entanglement tracking.
+
+Silq’s approach shows that many reversible computation patterns (such as the cleanup of ancillae in algorithms like Bernstein–Vazirani) can be handled automatically, but also illustrates the limits of abstraction: as one hides the quantum–classical distinction, the underlying computational effects become more opaque.
+
+
+\textbf{Qunity}~\cite{qunity:Voichick_2023} gives quantum control first-class status.  
+Control flow can depend on quantum data without measurement, so branches may execute coherently in superposition.  
+A small core calculus enforces linearity and reversibility, and its type system ensures that coherent control is well defined.  
+General recursion and function definitions are omitted because it conflicts with linearity and reversibility: non-terminating or non-unitary functions cannot be represented within a unitary semantics.  
+
+To regain expressiveness, Qunity introduced a \emph{surface meta-language} built on top of the core\cite{compiling_qunity_2025}.  
+This meta-language adds recursion, user-defined data types, and higher-level abstractions, but it is evaluated classically and operates outside the coherent fragment.  
+Its role is to generate, compose, or structurally manipulate Qunity programs rather than to execute them coherently.  
+This separation keeps the core reversible and analyzable while still supporting practical programming constructs through meta-level evaluation.
+
+Qunity’s type system allows the compiler to statically determine where operations remain reversible and where measurement—and therefore classical control—is required.  
+However, as in Silq, this typing discipline leaks into the syntax itself.  For example, Qunity provides several pattern-matching forms that differ in how they treat coherence:
+\begin{itemize}
+  \item \texttt{ctrl}: coherent control over possibly irreversible computations, allowed only when branches act on orthogonal subspaces and satisfy erasure conditions that prevent residual entanglement; preserves superposition.
+  \item \texttt{pmatch}: pure, symmetric pattern match over orthogonal patterns; reversible and coherence-preserving.
+  \item \texttt{ematch}: erasing match that preserves coherence when erasability conditions hold (the erased data is provably recoverable or irrelevant); otherwise disallowed in coherent contexts.
+  \item \texttt{match}: classical match that may discard data and collapses superposition.
+\end{itemize}
+These constructs make the boundary between classical and coherent control explicit at each branch point.
+
+While this explicitness preserves soundness, it shifts the burden of reasoning about coherence to the developer, making programs more verbose and sometimes harder to read—a central usability tension in the design.
+
+\vspace{2em}
+
+As higher-level languages explored these abstractions, another line of work focused on \emph{intermediate representations} that capture quantum and classical interactions close to hardware. 
+
+\textbf{OpenQASM~3}~\cite{openqasm3} extends a simple quantum assembly language (QASM) family of intermediate representations originally designed to describe quantum circuits at the gate level.  
+The original QASM was an informal text format for listing gate operations used in textbooks like \cite{nielsen&chuang}, later refined into \emph{OpenQASM~2}\cite{openqasm2}, which introduced a simple grammar and minimal classical features, focusing entirely on circuit-level descriptions.  
+\emph{OpenQASM~3} generalizes this model by incorporating richer classical computation, timing primitives, and pulse-level instructions, with the goal of supporting real-time interaction between classical control and quantum hardware.
+
+Its core logical circuits syntax defines:
+\begin{itemize}
+  \item \textbf{Classical datatypes:} \texttt{bit} and \texttt{bool}, together with new numeric types (\texttt{int}, \texttt{float}, \texttt{angle}, and \texttt{complex}) introduced in version~3 to enable real-time arithmetic and parameterized control.
+  \item \textbf{Quantum datatypes:} \texttt{qubit} and quantum registers.
+  \item \textbf{Quantum gates:} built-in single- and multi-qubit gates (e.g., \texttt{x}, \texttt{y}, \texttt{z}, \texttt{h}, \texttt{cx}, \texttt{rz}), measurement via \texttt{measure}, and reinitialization via \texttt{reset}.
+  Starting with version~3, all gates are defined in terms of a single base gate \texttt{U}, whose semantics cover arbitrary single-qubit unitaries.  
+  A standard library of canonical gates (e.g., \texttt{x}, \texttt{cx}, \texttt{rz}) is provided as built-in definitions over \texttt{U}.
+\end{itemize}
+
+Beyond pure circuit specification, OpenQASM~3 adds several constructs for classical and timing behavior:
+\begin{itemize}
+  \item \textbf{Classical expressions and assignments:} arithmetic, logical, and comparison operators restricted to a small, implementation-oriented subset. More general computation can be delegated to host code via \texttt{extern}, which implements near-time control by invoking classical functions between gates evaluation.
+  \item \textbf{Control flow:} loops and conditional branches that may depend on measurement outcomes.
+  \item \textbf{Timing primitives:} explicit scheduling with \texttt{delay}, \texttt{duration}, and timing annotations (\texttt{@t}) for device-level coordination.
+  \item \textbf{Pulse-level primitives:} low-level operations that specify hardware control pulses, enabling descriptions of physical circuits rather than only logical ones.
+\end{itemize}
+
+While OpenQASM~3 is often described as a multi-level IR, this layering primarily spans logical (gate-level) and physical (pulse-level) program descriptions, rather than distinct quantum instruction sets.  
+Its expanded control structures, numeric types, and timing model were largely shaped by IBM’s hardware and control architecture, reflecting pragmatic rather than purely language-theoretic design choices.  
+The result is a unified but hardware-oriented language that bridges circuit compilation, hardware instructions, and real-time device control within a single syntactic framework.
+
+
+
+
+As OpenQASM~3 defines a textual, multi-level language, the \textbf{Quantum Intermediate Representation (QIR)}~\cite{qir-spec} serves as its low-level, compiler-oriented counterpart. 
+QIR is an extension of the LLVM Intermediate Representation designed to represent quantum programs in a form suitable for optimization and backend compilation. 
+It provides a standardized way for quantum frontends to target diverse hardware backends through a common IR layer, allowing compilers, simulators, and runtime systems to interoperate.
+
+QIR defines two main execution \emph{profiles}:
+\begin{itemize}
+  \item The \textbf{Base profile} restricts programs to straight-line quantum code ending in measurement, suitable for precompiled circuits without feedback.
+  \item The \textbf{Adaptive profile} extends this to allow mid-circuit measurements, classical branching, and data-dependent feedback on qubits.
+\end{itemize}
+Profiles constrain the allowed LLVM instructions, control flow, and runtime intrinsics to ensure compatibility with specific device capabilities. 
+The design separates platform-independent quantum semantics from hardware-specific implementations, letting compilers generate profile-compliant QIR modules and letting backends interpret or translate them into native instruction sets. 
+Extensions such as \texttt{Reset}, \texttt{Integer}, and \texttt{FloatingPoint} add incremental support for mixed classical–quantum computation.
+
+\vspace{2em}
+
+While languages like OpenQASM~3 and QIR aim to generalize across hardware and execution models, \textbf{Stim}~\cite{gidney2021stim} targets a narrower but crucial domain: efficient simulation of stabilizer circuits used in quantum error correction.
+Stim is designed not as a general programming language but as a \emph{fast stabilizer-circuit simulator}. 
+Stim focuses on a subset of quantum computation—\emph{Stabilizer circuits}, consisting of Cliffords gates with measurements and classically controlled Pauli corrections—which can be simulated efficiently on classical hardware.
+
+Clifford circuits are built from gates in the \{H, S, CNOT\} set, which preserve the stabilizer structure of quantum states. 
+They are not universal for quantum computation, since they cannot generate arbitrary unitary transformations (most notably, the T gate is missing), but they form the foundation of most quantum error correction protocols. 
+Because they admit an efficient classical simulation through tableau representations, Clifford circuits strike a balance between expressivity and scalability.
+
+Stim’s language is intentionally minimalist:
+\begin{itemize}
+  \item No general variables or functions beyond the circuit structure itself.
+  \item Measurements produce classical outcomes that can control later gates, written as conditionals like \texttt{CX rec[-1] 1}, where \texttt{rec[-1]} references the most recent measurement result.
+  \item A \texttt{REPEAT} instruction allows replication of subcircuits, enabling loops without introducing dynamic control flow.
+\end{itemize}
+
+Because of this simplicity, Stim achieves extraordinary performance. 
+According to its authors, it can simulate a surface-code circuit with 20{,}000 qubits, 8 million gates, and 1 million measurements in about 15 seconds, and generate measurement samples at roughly 1~kHz. 
+These capabilities have made it the \emph{de facto} standard simulator for quantum error correction research. 
+Its efficiency stems from a carefully engineered tableau representation and from limiting expressivity to the stabilizer subset, which admits polynomial-time simulation. 
+Stim demonstrates the other extreme of the design spectrum: rather than raising abstraction, it narrows the domain to achieve scalability, providing essential infrastructure for verification, decoding, and fault-tolerance analysis in large-scale quantum error correction.
+
+\input{figures/languages-comparison}
+

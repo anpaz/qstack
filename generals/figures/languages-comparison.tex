@@ -1,0 +1,118 @@
+\begin{figure}[p]
+\centering
+\newcommand{\lcol}{0.52\linewidth}
+\newcommand{\rcol}{0.44\linewidth}
+
+% ---------- Row 1 ----------
+\begin{subfigure}[t]{\lcol}
+\centering
+\textbf{Quipper}
+\begin{minted}{haskell}
+bell :: Circ (Qubit,Qubit)
+bell = do
+  a <- qinit False; b <- qinit False
+  hadamard a
+  qnot_at b `controlled` a
+  return (a,b)
+
+with_computed bell $ \(a,b) -> do
+  qnot_at a `controlled` b
+  cdiscard (a,b)
+\end{minted}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{\rcol}
+\centering
+\textbf{Qunity}
+\begin{minted}{text}
+-- ASCII-only surface style
+def deutsch(f : Bit -> Bit) : Bit =
+  let x = plus in
+  ctrl f(x) [
+    0 -> x ;
+    1 -> { gphase(pi); }
+  ];
+  had x;
+  return x;
+end
+\end{minted}
+\end{subfigure}
+
+\vspace{2em}
+
+% ---------- Row 2 (left only) ----------
+\begin{subfigure}[t]{\linewidth}
+\raggedright
+\textbf{Q\#}
+\begin{minted}{csharp}
+operation CRy(theta : Double, ctrl : Qubit, tgt : Qubit)
+  : Unit is Adj + Ctl {
+    (Controlled Ry)([ctrl], (theta, tgt));
+}
+
+operation PrepareBell() : Unit {
+    use (q0, q1) = (Qubit(), Qubit());
+    H(q0);
+    CNOT(q0, q1);
+}
+\end{minted}
+\end{subfigure}
+
+\vspace{2em}
+
+% ---------- Row 3 ----------
+\begin{subfigure}[t]{\lcol}
+\centering
+\textbf{OpenQASM 3}
+\begin{minted}{c}
+OPENQASM 3.0;
+qubit q[2];
+
+gate x(a) { U(pi, 0, pi) a; }
+gate h(a) { U(pi/2, 0, pi) a; gphase(-pi/4); }
+
+h q[0];
+ctrl @ x q[0], q[1];   // CNOT via modifier
+\end{minted}
+
+\end{subfigure}\hfill
+\begin{subfigure}[t]{\rcol}
+\centering\textbf{Stim}
+\begin{minted}{text}
+H 0
+H 1
+MPP X0*X1
+DETECTOR rec[-1]
+OBSERVABLE_INCLUDE(0) rec[-1]
+\end{minted}
+\end{subfigure}
+
+\vspace{2em}
+
+
+% ---------- Full-width bottom ----------
+\begin{subfigure}[t]{\linewidth}
+\raggedright
+\textbf{QIR}
+\begin{minted}{llvm}
+%q0 = call %Qubit* @__quantum__rt__qubit_allocate()
+%q1 = call %Qubit* @__quantum__rt__qubit_allocate()
+
+call void @__quantum__qis__h__body(%Qubit* %q0)
+call void @__quantum__qis__cnot__body(%Qubit* %q0, %Qubit* %q1)
+
+call void @__quantum__rt__qubit_release(%Qubit* %q1)
+call void @__quantum__rt__qubit_release(%Qubit* %q0)
+\end{minted}
+\end{subfigure}
+
+\caption{
+Six minimal snippets foregrounding each approach to representing circuits:
+(a) Quipper’s boxed subcircuits and controlled combinators;
+(b) Qunity’s coherent control over quantum data;
+(c) Q\# functors for controlled/adjoint variants;
+(d) OpenQASM~3 gate definitions and modifiers;
+(e) Stim’s stabilizer format with parity measurements and detectors;
+(f) QIR’s LLVM calls to quantum intrinsics.
+}
+\label{fig:lang-contrast-6}
+\end{figure}

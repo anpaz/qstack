@@ -1,0 +1,29 @@
+\begin{figure}[t]
+\begin{minted}[fontsize=\small,frame=single,framesep=2mm]{text}
+# Teleportation in Stim
+# Qubit 0: message qubit (initialized to |0⟩)
+# Qubit 1: Alice's EPR qubit
+# Qubit 2: Bob's EPR qubit
+
+# Create EPR pair between Alice (q1) and Bob (q2)
+H 1
+CNOT 1 2
+
+# Alice entangles message qubit with her EPR qubit
+CNOT 0 1
+H 0
+
+# Alice measures both qubits
+M 0 1
+
+# Bob applies corrections based on measurement results
+# rec[-1] is measurement of qubit 1 (most recent)
+# rec[-2] is measurement of qubit 0 (second most recent)
+CX rec[-1] 2
+CZ rec[-2] 2
+
+# Result: qubit 2 now holds the original state of qubit 0
+\end{minted}
+\caption{Teleportation implemented in Stim's assembly-style circuit language. Measurement results are referenced using \texttt{rec[-k]} indices, where \texttt{rec[-1]} refers to the most recent measurement. Conditional Pauli corrections (\texttt{CX rec[-1] 2}) are applied only when the referenced measurement outcome is 1, implementing real-time classical feedback within the stabilizer formalism.}
+\label{fig:stim-teleport}
+\end{figure}

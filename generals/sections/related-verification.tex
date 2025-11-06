@@ -1,0 +1,122 @@
+\subsection{Verification of Quantum Programs and Compilers}
+\label{sec:verification}
+
+Verifying the correctness of quantum programs is essential as circuits grow in complexity and manual reasoning or testing becomes infeasible. 
+Testing, the standard practice in classical software engineering, fails in the quantum setting for both theoretical and practical reasons. 
+As Rovara et al.\ show in their framework for debugging quantum programs~\cite{rovara2025framework}, even identifying that an error occurred is difficult, let alone determining its cause. 
+The authors argue that debugging quantum software is fundamentally more difficult than classical debugging for several reasons:
+
+\begin{enumerate}
+  \item A single quantum operation affects the entire system state due to entanglement.
+  \item Measurement collapses superposition, making it impossible to inspect intermediate states nondestructively.
+  \item The global state space grows exponentially with the number of qubits, making full simulation intractable.
+\end{enumerate}
+
+Their system introduces assertion-like constructs that can check limited properties of quantum states, such as orthogonality or separability, but these checks require access to the full quantum state through simulation. As a result, they are only practical for very small programs and cannot be used to test or debug realistic quantum circuits. This reflects a broader limitation of testing itself: even in classical software, nondeterminism and the combinatorial explosion of inputs prevent exhaustive validation—quantum programs simply magnify the problem. Because quantum states cannot be inspected without measurement, and measurement destroys the information being observed, formal reasoning remains the only reliable path to establishing correctness.
+
+
+\vspace{1em}
+
+One of the first steps toward proving correctness in the quantum setting came with \textbf{Quantum Hoare Logic (QHL)}~\cite{ying2019hoare}. 
+QHL extends classical Hoare logic\cite{hoare1969axiomatic}  to the quantum domain, introducing preconditions and postconditions expressed as Hermitian operators rather than Boolean predicates.
+A Hoare triple of the form $\{A\}\,P\,\{B\}$ expresses that executing program~$P$ transforms an input state satisfying observable~$A$ into a state satisfying~$B$.
+This allows reasoning about programs algebraically rather than through explicit simulation.
+While elegant, early formulations of QHL were limited to closed quantum systems without measurement or classical control.
+Later work\cite{feng2021quantum} extended the logic to handle partial measurements and mixed quantum–classical states, but scalability remained a challenge.
+These logics laid the conceptual foundation for formal reasoning about quantum programs, but they stopped short of providing verified compilers that could connect high-level programs to low-level circuits.
+
+\vspace{1em}
+
+The first verified compiler in this space is \textbf{VOQC}~\cite{Hietala_2021}, which builds on these ideas to verify quantum circuit transformations in the proof assistant Coq. 
+VOQC introduces two embedded languages, QWIRE and SQIR, that represent circuits at different abstraction levels and defines circuit semantics via their corresponding matrices. 
+Assertions about circuit equivalence are then expressed as matrix equalities, allowing the use of formal proofs in Coq.
+To show that compiler passes preserve semantics, VOQC adopts the same \emph{forward simulation} principle used in classical verified compilers such as \textbf{CompCert}~\cite{leroy2009compcert}. 
+In forward simulation, one proves that each step of a compiled program corresponds to one or more steps of the source program that preserve observable behavior.
+Given source and target semantics $\rightarrow_S$ and $\rightarrow_T$, we define a relation~$R$ such that:
+\[
+  s_S \;R\; s_T \;\wedge\; s_S \rightarrow_S s_S'
+  \;\Rightarrow\;
+  \exists s_T'.\; s_T \rightarrow_T^* s_T' \wedge s_S' \;R\; s_T' .
+\]
+If the source semantics is deterministic, then every terminating source execution has a matching target execution that produces an equivalent observable result.
+This provides a modular and compositional proof structure: each compiler pass is verified independently, and correctness composes across passes.
+VOQC thus establishes the first fully verified quantum optimizing compiler, directly extending the CompCert tradition into the quantum domain.
+
+Despite its strong formal guarantees, VOQC faces two major limitations.
+First, because equivalence is expressed as equality between $2^n \times 2^n$ matrices, verification scales poorly beyond a handful of qubits.
+Second, its deep embedding in Coq makes it cumbersome to develop and experiment with real-world circuits or compiler passes.
+These challenges motivated more pragmatic approaches to verification.
+
+\vspace{1em}
+
+\textbf{Giallar}~\cite{tao2022giallar} takes a pragmatic turn by targeting the \texttt{Qiskit} compiler, one of the most widely used quantum programming environments.
+Rather than defining a new language or embedding circuits in a proof assistant, Giallar verifies the correctness of existing compiler passes directly.
+Its verification model is structured around two complementary ideas:
+
+\begin{enumerate}
+  \item \textbf{Verified rewrite rules:} it define circuit rewrite rules (e.g., gate commutation, decomposition, or cancellation) which are individually proved correct once and for all in Coq.
+  \item \textbf{Pass verification:} a compiler pass is correct if its transformation can be expressed entirely as a sequence of these verified rewrites.
+\end{enumerate}
+
+This approach reduces the problem of verifying large compiler passes to checking whether their transformations decompose into trusted rewrite steps.
+If the input circuit can be transformed into the output circuit through these rules, equivalence follows immediately.
+The method scales far better than matrix-based equivalence checking because it relies on syntactic and structural reasoning rather than full state representations.
+Beyond verifying quantum transformations, Giallar also analyzes the \emph{classical} control logic of compiler passes.
+By symbolically executing control flow and constraints in combination with the Z3 solver, it detects mismatches between the intended and actual behavior of compiler passes.
+In their evaluation, the authors verified $44$ out of $56$ passes in \texttt{Qiskit}, uncovering several previously unknown bugs.
+Unsupported cases include randomized or heuristic optimizations, approximate synthesis, and pulse-level transformations, which lie outside the formal model.
+
+\vspace{1em}
+
+\vspace{1em}
+
+All the approaches described so far reason in the Schrödinger picture, where programs are defined by how they transform quantum \emph{states}. 
+This representation becomes costly as circuit size grows, since each $n$-qubit state requires tracking $2^n$ amplitudes. 
+An alternative is to reason in the \emph{Heisenberg picture}, where programs act on \emph{observables} instead. 
+This shift replaces state evolution with operator transformation and forms the basis of \textbf{Hoare Meets Heisenberg: A Lightweight Logic for Quantum Programs}~\cite{sundaram2022hoare}.
+
+Formally, in the Schrödinger picture applying a unitary~$U$ to a quantum state~$\rho$ transforms it as
+\[
+  \rho' = U\rho U^\dagger,
+\]
+while in the Heisenberg picture, an observable~$O$ evolves as
+\[
+  O' = U^\dagger O U.
+\]
+Because $\mathrm{Tr}(\rho' O) = \mathrm{Tr}(\rho O')$, both perspectives yield the same measurement statistics, but the Heisenberg view allows reasoning over observables instead of exponentially large states.
+
+This shift makes reasoning about programs symbolic rather than numeric. 
+Instead of simulating how a quantum state evolves step by step, the logic tracks how each operation transforms observables and postconditions. 
+Correctness is established by checking that the given precondition~$A$ implies the weakest precondition obtained by propagating the postcondition~$B$ backward through the inverse of each gate.
+
+For example, consider verifying a Hadamard gate swaps the $Z$ and $X$ measurement bases, two Hoare triples are considered:
+\[
+\{Z\}\,H\,\{X\}
+\qquad\text{and}\qquad
+\{X\}\,H\,\{Z\}.
+\]
+Each specifies a precondition (the observable before the gate) and a postcondition (the observable after it). 
+Verification proceeds by propagating each postcondition backward through the inverse of the gate. 
+Since $H^\dagger X H = Z$ and $H^\dagger Z H = X$, both triples hold—confirming that the Hadamard exchanges the $Z$ and $X$ measurement bases as expected.
+
+
+This backward reasoning avoids simulating state evolution altogether: it manipulates the symbolic form of measurement operators directly. 
+
+Because Clifford gates map Pauli operators to other Paulis, the entire process reduces to algebraic manipulation of Pauli strings, which scales linearly with circuit size. 
+This idea closely mirrors the approach used by stabilizer simulators such as \textbf{Stim}~\cite{gidney2021stim}, which track Pauli transformations rather than amplitude vectors to achieve large-scale efficiency.
+
+\vspace{1em}
+
+The same Heisenberg-based reasoning is further formalized and generalized in \textbf{Stabilizer Circuit Verification}~\cite{kliuchnikov2023stabilizer}.
+This framework verifies equivalence between circuits—including those with measurement and classical feedback—by comparing how they transform stabilizer generators and classical outcomes, rather than quantum states.
+A circuit’s behavior is captured by its \emph{logical action}, describing how logical operators of a code (such as $X_L$ or $Z_L$) are mapped to new ones.
+For example, in a three-qubit repetition code, the logical operator $Z_L = Z_1Z_2Z_3$ represents the parity of all three qubits.
+An encoding circuit might map $Z$ to $Z_1Z_2Z_3$, while a decoding circuit performs the inverse.
+Two circuits are logically equivalent if they induce the same transformation on all stabilizers and measurement outcomes.
+
+Under the mild restriction that classical control depends only on the \emph{parity} of prior measurements, these transformations can be computed efficiently using matrices over~$\mathbb{F}_2$, avoiding the exponential branching of arbitrary control.
+This representation enables verification of circuits far beyond the reach of full-state simulation, including lattice-surgery operations, code encoders and decoders, and inter-code transformations.
+Although motivated by quantum error correction, the method generalizes naturally: any circuit can be seen as acting on a logical code.
+Even a single-qubit physical circuit implements the trivial $[[1,1,1]]$ code—one logical qubit encoded into one physical qubit.
+From this perspective, every circuit performs a logical action, and verifying transformations means confirming that these actions are identical.
+This unifies physical and logical verification: the same reasoning used to check code-switching or fault-tolerant operations also applies to compiler transformations and circuit optimizations.

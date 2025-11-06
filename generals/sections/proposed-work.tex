@@ -1,0 +1,85 @@
+\section{Proposed Work}
+
+For this thesis I propose to build a \textbf{verified compiler framework} for quantum programs grounded in the \textbf{operational semantics of \texttt{qstack}}.  
+The goal is to formally validate the correctness of both \textbf{instruction-level} and \textbf{whole-circuit} compiler passes without relying on interactive theorem provers.  
+Instead, the project will use a combination of \textbf{stabilizer-based logical-action verification} and \textbf{density-matrix equivalence checking} to automatically establish semantic preservation.  
+For scalability, we prefer the former, so we will develop a tool to determine whether a circuit belongs to the stabilizer formalism.
+
+\subsection{Language Design}
+
+We will define a \textbf{minimal quantum language} derived from OpenQASM~3 that preserves the same \textbf{quantum/classical separation} as \texttt{qstack} while removing features that complicate formal reasoning, such as dynamic allocation and timing control.  
+The retained constructs include:
+\begin{itemize}
+    \item A single universal \textbf{base gate};
+    \item \textbf{User-defined composite gates} built from existing ones;
+    \item \textbf{Static classical and quantum registers};
+    \item \textbf{Gate application}, \textbf{measurement}, and \textbf{reset};
+    \item \textbf{Conditionals} based on XORs of classical bits; and
+    \item \textbf{\texttt{extern}} declarations for opaque operations.
+\end{itemize}
+
+This subset remains expressive enough to encode all \texttt{qstack} kernels and the \textbf{stabilizer circuits} defined in~\cite{kliuchnikov2023stabilizer}.  
+It provides a compact foundation for formal semantics and automated verification.
+
+\subsection{Formal Semantics}
+
+The formal semantics will be inspired on the \textbf{small-step operational semantics} of \texttt{qstack}.  
+A program configuration consists of:
+\begin{itemize}
+    \item A \textbf{quantum state} represented as a density matrix $\rho$;
+    \item A \textbf{mapping} from logical qubit identifiers to physical indices; and
+    \item A \textbf{classical store} containing deterministic registers and callback state.
+\end{itemize}
+
+Gate applications correspond to \textbf{unitary superoperators}, measurements collapse the relevant qubit and update the store, and callbacks may determine continuation through classical control.  
+This semantics supports reasoning about both low-level physical transformations and high-level logical behavior under error correction.
+
+As in \texttt{qstack}, evaluation of \texttt{extern} functions will be treated as opaque: the compiler assumes they return a list of quantum instructions but does not attempt to verify them.  
+The output of callbacks will not be verified as part of the compilation process; I expect this is not a blocker since they should typically be used to handle only error-correction feedback, not core program semantics.
+
+\subsection{Compiler Framework}
+
+The compiler will be structured around two categories of passes that differ in both scope and verification method. Local, instruction-level passes will be statically verified once, while global, whole-circuit passes will rely on \emph{translation validation}.
+
+\paragraph{Instruction-level passes.}
+These are \emph{local transformations} that operate on one instruction at a time.  
+Each pass defines a rule that replaces a specific instruction pattern with an equivalent one.  
+For example, a canonicalization pass may replace every occurrence of \(H\) with the sequence \(S\!-\!SX\!-\!S\), leaving all other gates unchanged.  
+These transformations are defined syntactically over single gates and are designed to preserve semantics in all contexts.  
+Instruction-level passes include canonicalization, gate decomposition, and introduction of encoded (logical) instructions.  
+Because each rule acts locally, these passes compose naturally to form larger compilation pipelines.
+
+\paragraph{Whole-circuit passes.}
+These are \emph{global transformations} that operate on an entire circuit at once.  
+They may restructure or synthesize large regions of code.  
+Typical examples include circuit optimization, scheduling, and layout mapping.  
+Since these passes transform the full circuit in a single step, they are verified through direct equivalence checking between the input and output circuits rather than by composition of local proofs.
+
+\subsection{Verification Methodology}
+
+The verification methodology follows directly from this division between local and global transformations.
+Instruction-level transformations admit static proofs of correctness because their effects are local and context-independent. In contrast, whole-circuit passes may restructure programs globally, making static proofs impractical; these are validated per compilation run using \textbf{translation validation}, which checks that the transformed circuit is equivalent to its input.
+
+\paragraph{Instruction-level passes.}
+Each instruction-level pass is verified in two stages:
+
+\begin{enumerate}
+  \item \textbf{Local equivalence proof.}  
+  For the transformation under consideration (e.g., \(H \rightarrow S\!-\!SX\!-\!S\)), I'll prove that both sides have identical denotations using  \textbf{stabilizer verification} to show both circuits produce the same tableau transformation on the Pauli group.
+
+  \item \textbf{Lifting to global correctness.}  
+  Once local equivalence is established, a \textbf{forward-simulation argument} based on the operational semantics is used to prove that applying this transformation to every matching instance throughout a program preserves the program’s overall semantics.  
+  Since each step preserves semantics, their composition preserves correctness for the entire compiled circuit.
+\end{enumerate}
+
+These passes are verified once, statically, as part of the compiler definition.
+
+\paragraph{Whole-circuit passes.}
+For transformations that rewrite or synthesize an entire circuit, verification is performed by direct \textbf{circuit equivalence checking} similarly by applying \textbf{stabilizer verification} when both input and output are Stabilizer circuits, by comparing their induced logical actions on the Pauli group
+
+Because these transformations are verified as a single step, forward simulation is not required.  
+Instead, we will use translation validation to check the equivalence of the full input and output circuits. 
+
+\vspace{2em}
+
+The focus of this thesis will be verification of stabilizer circuits. Verification of non-stabilizer circuits is possible by extending this framework using density-matrix or superoperator equivalence checking. However, this component will serve as a stretch goal, exploring how the same verification principles can generalize beyond stabilizer-based reasoning.

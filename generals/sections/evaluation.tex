@@ -1,0 +1,97 @@
+s\section{Methodology and Evaluation}
+
+I will evaluate the framework by designing and implementing a verified compiler that transforms quantum programs across multiple abstraction layers.  
+The methodology is divided into three main phases: defining instruction sets, building compilers between them, and verifying correctness using the techniques described in the previous section.
+
+\subsection{Instruction Set Design}
+
+The first step will be to design the instruction sets for each abstraction layer, from high-level logical gates to hardware-specific primitives.
+
+\paragraph{High-level circuits.}
+At the highest level, I will use a canonical gate set similar to the \textbf{QIR base profile}, including standard gates such as Pauli operations,  \(I\), \(X\), \(Z\), arbitrary rotations, \(RX\), \(RY\), \(RZ\), and basic 2 qubit gates, like \(CX\), and \(CZ\).  
+This set will serve as the logical, unencoded representation used by all programs prior to error correction.
+
+\paragraph{Error-correction codes.}
+Each quantum error-correcting code defines its own \textbf{instruction set (IS)} that reflects the list of logical primitives it exposes.  
+Each IS will be universal, but the exposed primitives differ based on the encoding structure, for example:
+\begin{itemize}
+    \item \textbf{Steane code \code{7,1,3}:} encodes one logical qubit per patch.  
+    Its instruction set will include 1-qubit logical operations (\(X\), \(Z\), \(H\)) and 2-qubit logical operations (\(CX\), \(CZ\)).
+    \item \textbf{\code{4,2,2} code}: encodes two logical qubits per patch.  
+    It exposes logical two-qubit operations such as \(HH\), \(CX\), \(IX\), and \(ZI\), but does not include single-qubit operations like \(X\) or \(Z\).
+    \item \textbf{Surface code}: exposes lattice-surgery primitives such as \emph{split}, \emph{merge}, and \emph{move}, rather than explicit Pauli operations.  
+    This reflects the physical operations used to implement logical computation on topological architectures.
+\end{itemize}
+
+The process of relating standard gate operations to the corresponding error-corrected primitives is known as \textbf{synthesis}.  
+In general, synthesis is non-trivial, but for this project I will implement only trivial examples to illustrate the process.
+
+\paragraph{Intermediate \code{1,1,1} code.}
+I will also define an instruction set corresponding to a simple \code{1,1,1} code.  
+This code will use a \textbf{Clifford+T} gate set and act as a \emph{generic hardware abstraction layer}.  It is basically a subset of the standard instruction set.
+It will primarily serve as an intermediate compilation target when defining circuits that implement logical operations for other QEC codes.
+
+\paragraph{Hardware instruction sets.}
+Finally, I will define instruction sets that reflect the physical primitives of real hardware:
+\begin{itemize}
+    \item \textbf{Ion-trap hardware gates}, including Mølmer–Sørensen (\(R_{ZZ}\)) and local rotation operations;
+    \item \textbf{Neutral-atom hardware gates}, based on Rydberg blockade operations and native entangling gates.
+\end{itemize}
+These instruction sets will serve as final hardware-specific targets in the compilation chain.
+
+\subsection{Compiler Construction}
+
+Once all instruction sets are defined, I will build a family of compilers that map programs between these abstraction layers:
+\begin{itemize}
+    \item \textbf{Standard $\rightarrow$ QEC primitives:}  
+    I will implement proof-of-concept synthesizers for each QEC code that translate high-level gates into their corresponding encoded operations.
+    \item \textbf{QEC codes $\rightarrow$ \code{1,1,1}:}  
+    I will use the \code{1,1,1} instruction set as a \emph{common intermediate layer} before targeting hardware-specific instruction sets.  
+    This ensures a uniform representation for all encoded circuits prior to hardware mapping.
+    \item \textbf{\code{1,1,1} $\rightarrow$ Hardware (Neutral or Ion):}  
+    I will implement translation passes that adapt the generic Clifford+T representation to the primitives supported by each hardware platform.
+\end{itemize}
+
+Each compiler will be implemented as a \textbf{list of verified passes}, where each pass handles a specific primitive.  
+This modular design makes it possible to verify each transformation individually and reuse proofs across different compilers.  
+For compilers that operate on full circuits (such as \emph{Standard $\rightarrow$ QEC primitives}), I will include automated verification mechanisms that compare the input and output circuits directly to ensure semantic equivalence.
+
+\subsection{Evaluation Plan}
+
+After all compilers are implemented, I will evaluate the framework on multiple representative compilation chains.  
+These will include at least:
+\begin{itemize}
+    \item Standard $\rightarrow$ Steane $\rightarrow$ \code{1,1,1} $\rightarrow$ Ions,
+    \item Standard $\rightarrow$ \code{4,2,2} $\rightarrow$ \code{3,1,2} $\rightarrow$  \code{1,1,1} $\rightarrow$ Neutral atoms.
+    \item Surface code  $\rightarrow$  \code{1,1,1},
+\end{itemize}
+
+The goal of these experiments is to demonstrate that verified passes compose correctly and that the final compiled circuits preserve the semantics of their high-level descriptions across all abstraction layers.
+
+We will not try to test all combinations, though. 
+Because compiling to the Surface code instruction set is substantial work (see \cite{litinski2019game}), I will write programs directly using the Surface code primitives (lattice surgery operations) for these experiments.
+
+
+\subsection{Faulty Passes}
+
+I will implement a small set of intentionally faulty compiler passes to confirm that the verification machinery detects errors. At minimum, I will include:
+
+\begin{itemize}
+    \item An instruction-level pass that \emph{generates an incorrect decomposition};
+    \item A syndrome-extraction routine with an \emph{incorrect circuit};
+    \item A logical-instruction encoder with an \emph{incorrect implementation};
+    \item An optimization pass that \emph{incorrectly removes gates}.
+\end{itemize}
+
+
+
+
+\subsection{Scope and Limitations}
+
+I will focus exclusively on the correctness of circuit-level compilation and encoded transformations.  
+Classical constructs such as functions, loops, or higher-level control structures will not be included in this initial implementation---these can be added later as surface meta-language without changing the core semantics.
+I will also not implement full compiler passes for scheduling or optimization, as these topics fall outside the scope of this work, though the same verification framework should support them in future extensions.
+
+As mentioned earlier, the focus will be verification of stabilizer circuits. Verification of non-stabilizer circuits will serve as a stretch goal.
+
+The final outcome will be a verified compiler that demonstrates correctness across multiple abstraction layers and target hardware models, establishing a foundation for scalable and compositional verification of quantum program compilation.

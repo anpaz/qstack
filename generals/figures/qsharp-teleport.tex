@@ -1,0 +1,25 @@
+\begin{figure}[t]
+\begin{minted}[fontsize=\small,frame=single]{csharp}
+// Q# teleportation example
+operation Teleport(msg : Qubit, target : Qubit) : Unit {
+    using (alice = Qubit()) {
+        // Create entanglement between alice and target
+        H(alice);
+        CNOT(alice, target);
+        
+        // Alice's Bell measurement
+        CNOT(msg, alice);
+        H(msg);
+        
+        let m1 = M(msg);
+        let m2 = M(alice);
+        
+        // Classical control: apply corrections based on measurements
+        if (m2 == One) { X(target); }
+        if (m1 == One) { Z(target); }
+    }
+}
+\end{minted}
+\caption{Quantum teleportation in Q\#. The \texttt{using} statement allocates qubits initialized to $\ket{0}$ and automatically deallocates them. Classical measurements produce \texttt{Result} values (\texttt{Zero} or \texttt{One}) that can be used in ordinary \texttt{if} statements, with the type system enforcing separation between quantum operations and classical functions.}
+\label{fig:qsharp-teleport}
+\end{figure}

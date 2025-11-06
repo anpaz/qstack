@@ -1,0 +1,154 @@
+\section{\texttt{qstack}}
+\label{sec:qstack}
+
+\newcommand{\keval}{\Rightarrow }
+\newcommand{\qeval}{\mapsto_q }
+\newcommand{\ceval}{\mapsto_c }
+
+\texttt{qstack} is a project developed to explore and validate many of the concepts that this thesis builds upon. 
+It demonstrates that a quantum circuits language with opaque classical control is not only possible, but simplifies reasoning about programs across different abstraction levels. 
+By defining computation purely in terms of quantum instructions, \texttt{qstack} provides a minimal yet expressive foundation with well-defined quantum semantics and a clean, abstract interface to classical control through opaque callbacks, independent of any hardware or instruction set.
+
+
+\subsection{Language Model}
+
+\texttt{qstack} is designed around the idea that every quantum computation can be expressed as a composition of simple \emph{quantum kernels}. 
+Each kernel describes a self-contained computation that allocates a qubit, performs a sequence of quantum instructions, measures that qubit, and finally calls a classical function that determines what to do next. 
+This cycle  of \texttt{allocate} $\rightarrow$ \texttt{compute} $\rightarrow$ \texttt{measure} $\rightarrow$ \texttt{callback}, defines a complete execution model that requires no classical expressions within the language itself. 
+The result is a purely quantum core with exact and compositional semantics.
+
+A \texttt{qstack} program consists of nested kernels. 
+The general form of a kernel is:
+
+\begin{minted}{ruby}
+allocate q:
+  instructions
+measure callback
+\end{minted}
+
+Here, \texttt{allocate q} introduces a new qubit initialized to the $\ket{0}$ state. 
+The body contains one or more quantum instructions or nested kernels. 
+The kernel ends with a measurement of the corresponding allocated qubit and passes the classical measurement result to a callback function, implemented externally (for instance, in Python). 
+By default, the keyword \texttt{measure} without arguments uses the callback \texttt{collect}, which stores measurement results in a classical stack. 
+
+Because every kernel measures its allocated qubit, \texttt{qstack} programs follow a strict stack discipline for resource management: qubits are allocated and deallocated in last-in, first-out order. 
+This keeps allocation, measurement, and control flow local, avoiding programmer-visible global state and any classical manipulation of values (though the semantics maintains an internal mapping of qubit identifiers to positions).
+
+\subsection{Example}
+
+A minimal program that demonstrates dynamic control flow is the repeat-until-success (RUS) pattern, where computation continues until a measurement yields a desired outcome:
+
+\begin{minted}{ruby}
+allocate q1:
+  allocate q2:
+    mix q2
+    entangle q2 q1
+
+  measure collect
+measure repeat_until_zero
+\end{minted}
+
+The \texttt{repeat\_until\_zero} callback is a classical function that inspects the most recent measurement and decides whether to continue the computation. 
+If the result is~1, it returns a new kernel identical to the original; otherwise, it let's the program to continue by returning \texttt{None} and the program terminates. 
+This illustrates how probabilistic control flow can be expressed entirely within quantum semantics, with the callback mechanism acting as an opaque bridge to classical computation.
+
+
+\subsection{Formal Semantics}
+
+\texttt{qstack} defines a complete small-step operational semantics that specifies how programs evolve during execution. 
+A program configuration is represented as $(C, S, (|\psi\rangle, m))$, where:
+\begin{itemize}
+    \item $C$ is the stack of active kernels and their associated callbacks,
+    \item $S$ is the classical store (opaque to the semantics),
+    \item $(|\psi\rangle, m)$ is the current quantum state vector and the mapping of logical qubit identifiers to their positions in the state.
+\end{itemize}
+
+Program execution proceeds as a sequence of transitions:
+\[
+C, S, (|\psi\rangle, m) \keval C', S', (|\psi'\rangle, m')
+\]
+where $\keval$ denotes one small-step of evaluation.
+
+The semantics is defined by four inference rules, describing how kernels are started, how gates are applied, and how kernels complete execution with or without continuation.
+
+\vspace{1em}
+
+\noindent
+\textbf{Start-kernel:} allocates a new qubit in the $\ket{0}$ state, extends the state vector, and begins execution of the kernel’s instruction list. 
+\vspace{-1em}
+\begin{center}
+\begin{mathpar}
+\inferrule[start-kernel]
+{ }
+{ ((q_k:I_k:cb_k): I, cb):C', S, (\ket{\psi^n}, m)  \keval (I_k, cb_k):(I, cb):C', S, (\ket{\psi^{n}} \otimes \ket{0},\ m[q_k \mapsto n])  }
+\end{mathpar}
+\end{center}
+
+\noindent
+\textbf{Quantum-gate:} applies the unitary operator associated with the current gate to its target qubits. 
+The quantum state $\ket{\psi}$ is updated by applying the lifted unitary $U_{gate}$ to the indices indicated by the mapping $m$. 
+\vspace{-1em}
+\begin{center}
+\begin{mathpar}
+\inferrule[quantum-gate]
+{  }
+{ (\mathtt{gate\_id}(q_0, \ldots, q_j): I', cb):C', S, (\ket{\psi}, m) \keval (I', cb):C', S, (U_\mathtt{gate\_id}^{(m[q_0], \ldots, m[q_j])}\ket{\psi}, m)  }
+\end{mathpar}
+\end{center}
+
+
+
+\noindent
+\textbf{End-of-kernel-done:} handles the completion of a kernel when its instruction list is empty.  
+The top qubit is measured, and the resulting classical bit is passed to the callback that returns no further kernel, execution proceeds by removing the completed kernel from the stack and continuing with the next element.
+\vspace{-1em}
+\begin{center}
+\begin{mathpar}
+\inferrule[end-of-kernel-done]
+{  
+    \|\psi^{n}\|_{n-1} \mapsto b, \ket{\psi'} \\ 
+    m =   m' \uplus  [q \mapsto n-1]  \\
+    f_{cb}(b,S) \mapsto \varnothing, S'  }
+{ ([], cb):C', S, (\ket{\psi^n}, m) \keval C', S', (\ket{\psi'}, m') }
+\end{mathpar}
+\end{center}
+
+\noindent
+\textbf{End-of-kernel-continue:} also applies when a kernel has no remaining instructions.  
+The top qubit is measured and the result is passed to the callback, which in this case returns a new kernel.  
+That new kernel is immediately placed on top of the execution stack and evaluated, extending the quantum state with a fresh $\ket{0}$ qubit.
+\vspace{-1em}
+\begin{center}
+\begin{mathpar}
+\inferrule[end-of-kernel-continue]
+{ \|\psi^{n}\|_{n-1} \mapsto b, \ket{\psi'} \\
+    m =   m' \uplus  [q \mapsto n-1]  \\
+    f_{cb}(b,S) \mapsto (q_k:I_k:cb_k), S'  }
+{ ([], cb):C', S, (\ket{\psi^n}, m) \keval (I_k, cb_k):C', S',  (\ket{\psi'} \otimes \ket{0},\ m'[q_k \mapsto n-1])  }
+\end{mathpar}
+\end{center}
+
+
+\smallskip
+Together, these rules define the complete lifecycle of a kernel---allocation, computation, measurement, and continuation---capturing the precise operational behavior of \texttt{qstack} programs.
+
+
+\subsection{Compositional Compilation and Error Correction}
+
+A key result of the \texttt{qstack} project is that this kernel model naturally supports compositional compilation. 
+Each compiler phase acts as a transformation on quantum programs: it may change the instruction set or insert additional operations, but the resulting program is still evaluated under the same operational semantics. 
+That is, every compiled program remains a valid \texttt{qstack} program whose behavior is defined by the same small-step rules for allocation, gate application, measurement, and callback execution. 
+This uniform semantic framework allows different compiler passes to be combined modularly, even if the transformations they apply are substantial.
+
+Callbacks make this process systematic. 
+Since callbacks are treated as opaque classical functions, the compiler does not inspect or modify their internal logic. 
+When a transformation changes how measurements are represented—for example, when an error-correcting code expands a single logical measurement into several physical ones—the compiler automatically \emph{wraps} each callback with an adapter function. 
+This wrapper decodes the measurement results into the form expected by the original callback and recompiles any kernels that the callback dynamically generates. 
+Through this mechanism, callbacks remain compatible across compilation layers, and all resulting programs continue to execute according to the same formal semantics.
+
+Using this infrastructure, \texttt{qstack} implements complete compilers for quantum error correction codes, including the three-qubit repetition code~\cite{nielsen&chuang} and the Steane [[7,1,3]] code~\cite{steane1996error}. 
+The repetition compiler expands single-qubit operations into triple encodings with majority-vote decoding, while the Steane compiler injects stabilizer measurement routines, syndrome extraction, and decoding logic. 
+Both integrate into an end-to-end compilation pipeline that begins with \texttt{qstack}'s toy instruction set, applies one or more levels of concatenated error correction, and finally targets hardware-specific instruction sets such as those used by trapped-ion devices. 
+Each compilation step produces a new \texttt{qstack} program evaluated under the same semantics, enabling reasoning about compiler correctness within a single, coherent execution model.
+
+

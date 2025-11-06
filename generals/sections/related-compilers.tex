@@ -1,0 +1,39 @@
+\subsection{Compilers for Quantum Programs}
+
+
+\textbf{Qiskit}~\cite{javadiabhari2024quantumcomputingqiskit} is often introduced as a Python-embedded domain-specific language for constructing quantum circuits, but this is only its surface layer. The language front end is primarily a wrapper for OpenQASM, while Qiskit’s main contribution lies in its modular compiler and execution stack. 
+
+Its core abstractions include the following components:
+
+\begin{enumerate}
+  \item \textbf{Circuits:} the fundamental data structure representing quantum computations. Circuits can be serialized to formats such as OpenQASM or QIR.
+  \item \textbf{Transpiler framework:} a retargetable system that converts circuits into device-specific forms. Compiler transformations are expressed as ordered sequences of \emph{passes}, grouped within \emph{pass managers}.
+  \item \textbf{Passes and pass managers:} each pass can perform tasks such as high-level synthesis, qubit routing, or low-level optimizations like gate commutation and cancellation.
+  \item \textbf{Target model:} encapsulates hardware-specific properties including the instruction set, qubit connectivity, timing constraints, and error rates. This model guides synthesis, mapping, and scheduling.
+  \item \textbf{Execution primitives:} abstractions such as the \texttt{Sampler} and \texttt{Estimator} define a unified execution interface across simulators and physical devices, supporting parameter binding, expectation-value estimation, and built-in error mitigation.
+\end{enumerate}
+
+
+Qiskit also provides mechanisms for dynamic circuits, allowing classical conditions and mid-circuit measurements, and uses Rust-based implementations for performance-critical passes. Beyond its language surface, Qiskit functions as a flexible, pass-based compiler infrastructure that integrates analysis, optimization, and backend targeting.
+
+\textbf{QVM}~\cite{qvm2024} builds on this infrastructure and demonstrates how new abstractions can extend circuit compilation. It introduces the idea of \emph{Gate Virtualization}, where selected two-qubit gates are replaced by sequences of single-qubit operations and classical post-processing. This allows large circuits to be split into smaller fragments that can run on limited hardware or across multiple devices.
+
+To manage this, QVM defines a new intermediate representation called the \emph{Virtual Circuit IR (VC-IR)}. It augments Qiskit’s circuit model with virtual gates and explicit fragments, making boundaries and dependencies visible to the compiler. Dedicated passes handle circuit cutting, dependency reduction, and qubit reuse. Each fragment runs separately, and the runtime recombines results using classical correlations. The approach increases effective qubit capacity and maintains logical equivalence, showing how Qiskit’s pass system can support partitioned, hybrid computation.
+
+\vspace{1em}
+
+\textbf{Automated Synthesis of Fault-Tolerant State Preparation Circuits for Quantum Error-Correction Codes}~\cite{peham2025automated} is part of the \textbf{MQT-QECC} project~\cite{wille2024mqt}, a toolkit developed at Technical University Munich (TUM) for automating the design of quantum error-correction circuits. The paper focuses on how to automatically build reliable circuits that prepare encoded logical states. In quantum computing, \textif{fault tolerance} means that a circuit continues to work correctly even when some gates or qubits fail—specifically, a single physical error must not spread and cause multiple logical errors. The authors propose a synthesis method that enforces this property by design: it automatically generates both a preparation circuit and a verification step that together ensure any single fault is detected. The circuit repeats the preparation and verification until it passes all checks, guaranteeing correctness. This approach produces efficient circuits for common error-correcting codes and illustrates how compiler tools can directly enforce physical reliability, not just optimize performance.
+
+
+\vspace{1em}
+
+\textbf{A Game of Surface Codes}~\cite{litinski2019game} introduces a visual and structured way to describe computation using \textie{surface codes}, one of the most practical forms of quantum error correction. A surface code arranges qubits on a 2D grid where groups of qubits collectively store a single logical qubit, continuously detecting and correcting physical errors through stabilizer measurements. Because surface codes can tolerate high error rates and fit well with planar hardware layouts, they are considered a leading approach for scalable quantum computing.
+
+Instead of describing programs as sequences of gates, the paper models computation as the manipulation of rectangular \emph{patches} on this grid. Logical operations are carried out by merging, splitting, and deforming these patches, a process known as \textit{lattice surgery}. Each operation corresponds to a simple measurement pattern, making the logic both spatial and temporal.
+
+The paper also outlines how this geometric computation could be compiled in stages: first by mapping logical gates to surgery primitives, then by arranging them in space and time to respect hardware constraints. In doing so, it proposes a multi-pass view of compilation—moving from abstract operations to concrete, fault-tolerant layouts—and provides a clear blueprint for how future compilers can bridge the gap between logical algorithms and physical surface-code implementations.
+
+\textbf{Lattice Surgery Compilation Beyond the Surface Code}~\cite{herzog2025latticesurgerycompilationsurface} turns that blueprint into an operational compiler. It generalizes lattice-surgery compilation to multiple topological codes through the notion of a \emph{code substrate}.
+A substrate defines allowed surgery operations and connectivity constraints for a given code, represented as a routing graph. Compilation becomes the task of mapping a logical Clifford+T circuit onto this graph, generating valid measurement sequences and space–time layouts.
+Unlike Litinski’s conceptual work, this paper delivers an implementation within the MQT framework. It takes standard logical circuits—often in OpenQASM or similar form—and emits JSON-based schedules and layouts.
+While still limited to stabilizer-based computations, it demonstrates how geometric compilation can be automated and extended across code families. 

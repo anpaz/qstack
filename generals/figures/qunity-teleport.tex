@@ -1,0 +1,27 @@
+\begin{figure}[t]
+\begin{minted}[fontsize=\small,frame=single]{haskell}
+-- Qunity teleportation example (surface syntax)
+teleport : Qubit ⊗ Qubit ⊗ Qubit → Qubit ⊗ Qubit ⊗ Qubit
+teleport = λ(msg, alice, target).
+  -- Create entanglement
+  let (alice, target) = CNOT (H alice, target) in
+  
+  -- Alice's Bell measurement
+  let (msg, alice) = CNOT (msg, alice) in
+  let msg = H msg in
+  
+  -- Effectful measurement (converts to classical)
+  ematch (measure msg) {
+    left()  => ematch (measure alice) {
+      left()  => (msg, alice, target),
+      right() => (msg, alice, X target)
+    },
+    right() => ematch (measure alice) {
+      left()  => (msg, alice, Z target),
+      right() => (msg, alice, Z (X target))
+    }
+  }
+\end{minted}
+\caption{Quantum teleportation in Qunity. The type \texttt{Qubit} $\equiv$ \texttt{Unit} $\oplus$ \texttt{Unit} represents a qubit as a sum type with a flag qubit separating $\ket{0}$ (left) and $\ket{1}$ (right) subspaces. The \texttt{ematch} construct performs effectful measurement that collapses superposition, branching classically on the result. Each branch applies different corrections, but all paths must preserve linearity.}
+\label{fig:qunity-teleport}
+\end{figure}
