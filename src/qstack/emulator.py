@@ -30,11 +30,10 @@ class StateVectorEmulator(QPU):
         for inst in instructions:
             if inst.matrix is None:
                 assert inst.factory is not None, f"Invalid instruction {inst.name}"
-                capture = inst
 
-                def operation_maker(**args) -> Operation:
-                    noiseless_op = capture.factory(**args)
-                    kraus_matrices = self.noise_channel.get_kraus_matrices(capture)
+                def operation_maker(captured_inst=inst, **args) -> Operation:
+                    noiseless_op = captured_inst.factory(**args)
+                    kraus_matrices = self.noise_channel.get_kraus_matrices(captured_inst)
                     return Operation([K @ noiseless_op for K in kraus_matrices])
 
                 operations[inst.name.lower()] = operation_maker
