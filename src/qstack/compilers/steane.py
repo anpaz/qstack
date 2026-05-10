@@ -180,6 +180,20 @@ class SteaneCompiler(Compiler):
             compiler_callbacks={Correct_X, Correct_Z, Decode},
         )
 
+    def decode(self, context):
+        outcome = np.array([context.consume() for _ in range(7)])
+        check1 = int(np.dot(outcome, np.array([1, 1, 0, 1, 1, 0, 0])) % 2)
+        check2 = int(np.dot(outcome, np.array([1, 0, 1, 1, 0, 1, 0])) % 2)
+        check3 = int(np.dot(outcome, np.array([0, 1, 1, 1, 0, 0, 1])) % 2)
+        syndrome = (check1, check2, check3)
+        fault = syndrome_table.get(syndrome)
+        logger.debug(f"outcome: {outcome}, syndrome: {syndrome}, correction: {fault}")
+
+        if fault is not None:
+            outcome[fault] = (outcome[fault] + 1) % 2
+
+        context.collect(int(np.sum(outcome) % 2))
+
     def compile_kernel(self, kernel: Kernel):
         # Build list: prepare_zero + instructions
         instructions = []
@@ -216,15 +230,10 @@ class SteaneCompiler(Compiler):
             # Use Kernel.allocate to create nested structure for 7 physical qubits
             qubits = [f"{kernel.target}.{i}" for i in range(7)]
 
-            # Create the nested kernel structure with Decode callback on the innermost level
-            innermost_kernel = Kernel.allocate(*qubits, instructions=instructions, callback=Decode())
-
-            # Attach final callback if needed
-            final_callback = self.compile_callback(kernel.callback)
-            if final_callback:
-                return Kernel(target=None, instructions=[innermost_kernel], callback=final_callback)
-            else:
-                return innermost_kernel
+            # If there's an original callback, the wrapped version (via wrap_callbacks)
+            # already includes decode. Otherwise, use standalone Decode.
+            callback = self.compile_callback(kernel.callback) or Decode()
+            return Kernel.allocate(*qubits, instructions=instructions, callback=callback)
         else:
             # No targets, just return kernel with instructions and callback
             final_callback = self.compile_callback(kernel.callback)

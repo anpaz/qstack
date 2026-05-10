@@ -39,6 +39,15 @@ class TrivialRepetitionCompiler(Compiler):
             compiler_callbacks={Decode},
         )
 
+    def decode(self, context):
+        m0 = context.consume()
+        m1 = context.consume()
+        m2 = context.consume()
+        if m0 + m1 + m2 > 1:
+            context.collect(1)
+        else:
+            context.collect(0)
+
     def compile_kernel(self, kernel: Kernel):
         # Build list of compiled instructions
         instructions = []
@@ -53,15 +62,10 @@ class TrivialRepetitionCompiler(Compiler):
             # Use Kernel.allocate to create nested structure for 3 physical qubits
             qubits = [f"{kernel.target}.{i}" for i in range(3)]
 
-            # Create the nested kernel structure with Decode callback on the innermost level
-            innermost_kernel = Kernel.allocate(*qubits, instructions=instructions, callback=Decode())
-
-            # Attach final callback if needed
-            final_callback = self.compile_callback(kernel.callback)
-            if final_callback:
-                return Kernel(target=None, instructions=[innermost_kernel], callback=final_callback)
-            else:
-                return innermost_kernel
+            # If there's an original callback, the wrapped version (via wrap_callbacks)
+            # already includes decode. Otherwise, use standalone Decode.
+            callback = self.compile_callback(kernel.callback) or Decode()
+            return Kernel.allocate(*qubits, instructions=instructions, callback=callback)
         else:
             # No targets, just return kernel with instructions and callback
             final_callback = self.compile_callback(kernel.callback)
