@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: qstack-mlir
+Version: 0.0.1
+Summary: MLIR/xdsl implementation of the qstack IR + OpenQASM 3 surface.
+Requires-Python: >=3.12
+Requires-Dist: xdsl==0.64.0
+Requires-Dist: numpy>=1.26
+Provides-Extra: qasm
+Requires-Dist: openqasm3[parser]==1.0.1; extra == "qasm"
+Provides-Extra: emulator
+Requires-Dist: qsharp>=1.0; extra == "emulator"
+Provides-Extra: dev
+Requires-Dist: pytest==9.0.3; extra == "dev"

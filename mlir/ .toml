@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qstack-mlir"
+version = "0.0.1"
+description = "MLIR/xdsl implementation of the qstack IR + OpenQASM 3 surface."
+requires-python = ">=3.12"
+dependencies = [
+    "xdsl==0.64.0",
+    "numpy>=1.26",
+    "lark>=1.2",
+]
+
+[project.optional-dependencies]
+emulator = ["qsharp>=1.0"]
+dev = ["pytest==9.0.3"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

@@ -1,0 +1,11 @@
+xdsl==0.64.0
+numpy>=1.26
+
+[dev]
+pytest==9.0.3
+
+[emulator]
+qsharp>=1.0
+
+[qasm]
+openqasm3[parser]==1.0.1

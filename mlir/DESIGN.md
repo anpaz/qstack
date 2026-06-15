@@ -41,7 +41,7 @@ Today a callback may return a freshly constructed `Kernel` at run time, which th
 Decoder invocation moves out of being a hidden mechanism embedded in a wrapped callback and becomes an explicit `qstack.decode @sym` op inserted by the QEC pass. Where the decoder runs, on which bits, and what it produces are fully transparent in the IR. See §4.3.3.
 
 **(f) Make qubit borrowing explicit.**
-The kernel signature is extended to declare not only the bits it produces, but also the qubits it _borrows_ — qubits it uses without allocating, which it must therefore thread back as results. Allocations move from a single `QubitId | None` field to a count `a` of entry-block arguments. Borrowed qubits, today invisible in the kernel header and referenced from the body by outer-scope `QubitId` strings, become an explicit operand list of length `b` returned alongside the bits. The resulting signature `(qubit × b) → (bit × a, qubit × b)` is what enables linearity at the kernel boundary and gives the verifier a mechanically checkable contract for whole-kernel analysis. See §4.2.
+The kernel signature is extended to declare not only the bits it produces, but also the qubits it _borrows_ — qubits it uses without allocating, which it must therefore thread back as results. Allocations move from a single `QubitId | None` field to a count `a` of entry-block arguments. Borrowed qubits, today invisible in the kernel header and referenced from the body by outer-scope `QubitId` strings, become **captured outer-scope SSA values that must be threaded back as the `b` trailing qubit results**. The resulting signature `() → (bit × a, qubit × b)` is what enables linearity at the kernel boundary and gives the verifier a mechanically checkable contract for whole-kernel analysis: every captured outer qubit has its single use inside the body, and the only way for that use to be satisfied at the boundary is for the body to thread the qubit back out. The kernel op itself has no qubit operands; `b` is read off the result list. See §4.2.
 
 ---
 
@@ -69,14 +69,15 @@ func.func private @repeat_until_one(%b: !qstack.bit) attributes { qstack.selecto
 // the outcome is 1 — at which point the borrowed qubit has collapsed to |1>.
 func.func @prepare_one(%q0: !qstack.qubit) -> !qstack.qubit {
 
-  // Kernel surfaces its measurement: 1 allocation, 1 bit out, 1 borrow threaded.
-  %m, %q0_inner = qstack.kernel(%q0) {
+  // Kernel surfaces its measurement: 1 allocation, 1 bit out, captures %q0
+  // and threads it back.
+  %m, %q0_inner = qstack.kernel {
   ^bb0(%q1: !qstack.qubit):
     %q0a       = cliffords.h  %q0
     %q0b, %q1a = cliffords.cx %q0a, %q1
     %meas      = qstack.measure %q1a
     qstack.return %meas, %q0b
-  }
+  } : () -> (!qstack.bit, !qstack.qubit)
 
   // Selection lives at function scope, consumes the surfaced bit, picks a
   // continuation. Both continuations have uniform signature (qubit) -> qubit.
@@ -92,12 +93,12 @@ func.func @prepare_one(%q0: !qstack.qubit) -> !qstack.qubit {
 // Top-level driver: allocate q0 in |0>, run @prepare_one to land it in |1>,
 // measure. The returned bit is provably 1.
 func.func @main() -> !qstack.bit {
-  %b = qstack.kernel() {
+  %b = qstack.kernel {
   ^bb0(%q0: !qstack.qubit):
     %q0_one = func.call @prepare_one(%q0) : (!qstack.qubit) -> !qstack.qubit
     %m      = qstack.measure %q0_one
     qstack.return %m
-  }
+  } : () -> !qstack.bit
   func.return %b : !qstack.bit
 }
 ```
@@ -113,7 +114,7 @@ The IR introduces two types: `!qstack.qubit` (a linear handle to a qubit registe
 
 Each gate consumes qubit operands and produces fresh qubit results. The post-gate names (`%q0a`, `%q0b`, `%q1a`) refer to the same physical qubits as their predecessors, just at a later point in the computation. The chain of SSA names threading through gates is the IR's representation of register lifetime.
 
-The `qstack.kernel` op scopes an allocation. Its entry block lists allocated qubits as block arguments; borrowed qubits are listed as kernel operands and referenced from the body by their enclosing-scope names. Inside `@prepare_one`, the kernel allocates `%q1` (one block argument) and borrows `%q0` (one operand). It measures `%q1`, returns the resulting bit `%meas` together with the threaded-back `%q0b`. The signature is `(qubit) -> (bit, qubit)`: one allocation produces one surfaced bit; the borrow returns to the caller.
+The `qstack.kernel` op scopes an allocation. Its entry block lists allocated qubits as block arguments; borrowed qubits are not declared on the op — the body simply captures them from the enclosing SSA scope, and linearity forces them to be threaded back as kernel results. Inside `@prepare_one`, the kernel allocates `%q1` (one block argument) and captures `%q0` from the enclosing function. It measures `%q1`, returns the resulting bit `%meas` together with the threaded-back `%q0b`. The signature is `() -> (bit, qubit)`: one allocation produces one surfaced bit; the captured qubit returns to the caller as the trailing qubit result.
 
 `qstack.measure` is the only core op that consumes a qubit without producing one; it yields a `!qstack.bit`. Kernels surface their measurement bits as results: every allocated qubit is measured exactly once inside the body, and the resulting bits appear in the kernel's result list. Reading the kernel signature is enough to know how many measurements happened inside.
 
@@ -122,6 +123,86 @@ The `qstack.kernel` op scopes an allocation. Its entry block lists allocated qub
 Control flow over surfaced bits is the function body's job, not the kernel's. The kernel is reserved for the allocation lifecycle; the selection on its surfaced bit naturally lives one scope above.
 
 Recursion happens through a symbol reference (`@prepare_one`), not through a runtime-synthesized kernel. A QEC pass that rewrites `@prepare_one`'s body therefore picks up the rewrite on every recursive invocation automatically.
+
+### 2.3 The same example after the 3-bit repetition code
+
+To show what a QEC pass produces in this IR, here is `@prepare_one` after compilation with a trivial bit-flip repetition code: each logical qubit becomes three physical qubits, each Clifford gate becomes its transversal copy, and each logical measurement becomes three physical measurements routed through a `qstack.decode @majority_vote` decoder. The selector and its continuation menu are unchanged — they are host-language artifacts the pass does not touch.
+
+```mlir
+// Identity continuation, now threading three physical qubits per logical qubit.
+func.func @id(%q0: !qstack.qubit, %q1: !qstack.qubit, %q2: !qstack.qubit)
+    -> (!qstack.qubit, !qstack.qubit, !qstack.qubit) {
+  func.return %q0, %q1, %q2 : !qstack.qubit, !qstack.qubit, !qstack.qubit
+}
+
+// Host-language selector: unchanged. It still consumes one logical bit;
+// the pass routes physical bits through @majority_vote before reaching it.
+func.func private @repeat_until_one(%b: !qstack.bit) attributes { qstack.selector }
+
+// Majority-vote decoder for the 3-bit repetition code: 3 physical bits in,
+// 1 logical bit out. Inserted by the QEC pass; body lives in the host language.
+func.func private @majority_vote(!qstack.bit, !qstack.bit, !qstack.bit) -> !qstack.bit
+    attributes { qstack.decoder }
+
+// Encoded @prepare_one. Borrowed logical qubit -> 3 borrowed physical qubits;
+// 1 allocated logical ancilla -> 3 allocated physical ancillas; 1 surfaced
+// logical bit -> 3 surfaced physical bits + one decode.
+func.func @prepare_one(%q0a: !qstack.qubit, %q0b: !qstack.qubit, %q0c: !qstack.qubit)
+    -> (!qstack.qubit, !qstack.qubit, !qstack.qubit) {
+
+  // Kernel signature: () -> (bit x 3, qubit x 3).
+  // 3 allocations (ancilla triple); the data triple %q0a, %q0b, %q0c is
+  // captured from the enclosing function and threaded back.
+  %m_a, %m_b, %m_c, %q0a', %q0b', %q0c' =
+      qstack.kernel {
+    ^bb0(%q1a: !qstack.qubit, %q1b: !qstack.qubit, %q1c: !qstack.qubit):
+      // Transversal H on the data triple.
+      %q0a_h = cliffords.h %q0a
+      %q0b_h = cliffords.h %q0b
+      %q0c_h = cliffords.h %q0c
+
+      // Transversal CX, one pair per physical qubit.
+      %q0a_x, %q1a_x = cliffords.cx %q0a_h, %q1a
+      %q0b_x, %q1b_x = cliffords.cx %q0b_h, %q1b
+      %q0c_x, %q1c_x = cliffords.cx %q0c_h, %q1c
+
+      // One physical measurement per allocated ancilla.
+      %m_a_phys = qstack.measure %q1a_x
+      %m_b_phys = qstack.measure %q1b_x
+      %m_c_phys = qstack.measure %q1c_x
+
+      qstack.return %m_a_phys, %m_b_phys, %m_c_phys,
+                    %q0a_x,    %q0b_x,    %q0c_x
+  } : () -> (!qstack.bit, !qstack.bit, !qstack.bit,
+             !qstack.qubit, !qstack.qubit, !qstack.qubit)
+
+  // Decode the three physical bits into one logical bit. Inserted by the
+  // QEC pass so the selector below sees the same SSA bit it saw pre-encoding.
+  %m_logical = qstack.decode @majority_vote(%m_a, %m_b, %m_c)
+      : (!qstack.bit, !qstack.bit, !qstack.bit) -> !qstack.bit
+
+  // Selector and menu are byte-for-byte the same as in 2.1; only the
+  // declared continuation signature widened to match the encoded functions.
+  %cont = qstack.select @repeat_until_one(b = %m_logical)
+      continuations { done = @id, retry = @prepare_one }
+      : (!qstack.qubit, !qstack.qubit, !qstack.qubit)
+        -> (!qstack.qubit, !qstack.qubit, !qstack.qubit)
+  %q0a_out, %q0b_out, %q0c_out =
+      func.call_indirect %cont(%q0a', %q0b', %q0c')
+        : (!qstack.qubit, !qstack.qubit, !qstack.qubit)
+          -> (!qstack.qubit, !qstack.qubit, !qstack.qubit)
+
+  func.return %q0a_out, %q0b_out, %q0c_out
+      : !qstack.qubit, !qstack.qubit, !qstack.qubit
+}
+```
+
+Four things are worth noting about the result:
+
+1. **The selector and its menu are unchanged.** `@repeat_until_one` still takes a single `!qstack.bit`. The pass inserts `qstack.decode @majority_vote` upstream of it so that the bit it consumes is, structurally, the same logical bit it consumed before — this is the point of (e) in §1.2.
+2. **Recursion through the symbol survives the pass.** The `retry` entry still names `@prepare_one`; because `@prepare_one`'s body was rewritten in place, the recursive call automatically invokes the encoded version. No menu rewriting was needed.
+3. **The kernel invariants still hold.** Three allocations, three surfaced bits, three captured qubits threaded back — `() → (bit × 3, qubit × 3)`. The structural contract of §4.2.1 is preserved by construction; a transversal rewrite that dropped a measurement or a thread would fail the verifier (the dropped capture would have zero uses).
+4. **`@id` widened mechanically.** A logical-to-physical signature widening is a per-function rewrite over qstack-typed parameters; nothing about `@id`'s body changed beyond threading three values instead of one.
 
 ---
 
@@ -178,50 +259,47 @@ A kernel is an allocation scope: it allocates qubits, operates on them, measures
 The signature was introduced in §1.2(f):
 
 ```
-qstack.kernel(qubit × b) -> (bit × a, qubit × b)
+qstack.kernel : () -> (bit × a, qubit × b)
 ```
 
-with `a` allocations and `b` borrows.
+with `a` allocations and `b` borrows. The kernel op has no qubit operands; `a` is the entry-block argument count and `b` is the number of qubit results. Borrowed qubits are not declared on the op — they appear naturally as references to enclosing-scope SSA values inside the body, and linearity forces them to be threaded back as the trailing qubit results.
 
 #### 4.2.1 Signature and invariants
 
-Two invariants govern every `qstack.kernel`:
+The sole structural invariant of every `qstack.kernel` is:
 
 - **Bits equal allocations.** The kernel produces exactly `a` `!qstack.bit` results, one per allocation. Equivalently, every allocated qubit is measured exactly once inside the body.
-- **Borrows in equal borrows out.** The `b` qubits passed as operands are threaded back as the `b` trailing qubit results. Allocated qubits never appear in the result list.
 
-The combinations `n_bits ≠ a` and `qubit_results ≠ b` are forbidden. This is the stack-discipline invariant from which qstack takes its name.
+The "borrows in equal borrows out" rule is no longer a separate check: borrowing is captured implicitly, and linearity of `!qstack.qubit` already forces every captured outer qubit to be threaded back out as a trailing qubit result. A kernel that fails to thread back a captured qubit is rejected by the linearity verifier, not by a kernel-specific rule. This is the stack-discipline invariant from which qstack takes its name.
 
 | `a` | `b` | Meaning                                                        |
 | --- | --- | -------------------------------------------------------------- |
 | 0   | 0   | Empty kernel (rare).                                           |
-| 0   | n   | Pure unitary scope (gates on borrowed qubits, no measurement). |
+| 0   | n   | Pure unitary scope (gates on captured qubits, no measurement). |
 | 1   | n   | Classical allocate-and-measure scope; produces one bit.        |
 | k   | n   | Multi-qubit allocate-and-measure scope; produces `k` bits.     |
 
 #### 4.2.2 Allocations and borrows
 
-Allocations appear as block arguments of the body's entry block: `a` block arguments, one per allocated qubit. Borrows appear as operands of the kernel op itself: `b` operands, listed in the same order as the trailing qubit results. The body sees both sets as ordinary SSA values; the distinction is only that allocations originate at the entry block and borrows originate outside the kernel.
+Allocations appear as block arguments of the body's entry block: `a` block arguments, one per allocated qubit. Borrows have no explicit declaration — they are simply enclosing-scope `!qstack.qubit` SSA values referenced inside the body. The body sees both as ordinary SSA values; the only operational distinction is the origin (entry block vs. enclosing scope). Because `!qstack.qubit` is single-use, every captured outer qubit has its single use inside the body, and the only way the body can satisfy that use _and_ leave the kernel boundary linearity-clean is to thread the qubit back as one of the trailing qubit results.
 
 A two-ancilla syndrome extraction illustrates the full shape:
 
 ```mlir
-%s1, %s2, %data1', %data2' = qstack.kernel(%data1, %data2) {
+%s1, %s2, %data1', %data2' = qstack.kernel {
 ^bb0(%a1: !qstack.qubit, %a2: !qstack.qubit):
-  // entangle ancillas with %data1, %data2, then measure ancillas
+  // entangle ancillas with the captured %data1, %data2, then measure ancillas
   %m1 = qstack.measure %a1_final
   %m2 = qstack.measure %a2_final
   qstack.return %m1, %m2, %data1_final, %data2_final
-}
+} : () -> (!qstack.bit, !qstack.bit, !qstack.qubit, !qstack.qubit)
 ```
 
-Two allocations (block arguments), two borrows (operands referenced inline), two bits, two threaded qubits.
+Two allocations (block arguments), two captures (`%data1`, `%data2` referenced from the enclosing scope), two bits, two threaded qubits.
 
-The only `!qstack.qubit` values visible inside a kernel are (a) its block arguments and (b) the qubits listed as kernel operands. A qubit defined in an enclosing scope but not named in the operand list is not in scope inside the body — there is no implicit capture of qubits. The kernel's qubit footprint is therefore readable from its signature alone.
+The `!qstack.qubit` values visible inside a kernel are (a) its block arguments and (b) any enclosing-scope qubit values whose single use occurs inside the body. The kernel's qubit footprint is therefore readable from its result list (`b` trailing qubits) and from a scan of which outer SSA values are captured — there is no separate operand list to consult.
 
-Listing a borrowed qubit in the operand list is a scope declaration, not a use: the qubit's single linear use is the one inside the body.
-
-`!qstack.bit` values from the enclosing scope may be referenced freely inside a kernel — they do not appear in the operand list — but each such reference counts as the single use of that bit. A bit captured by a kernel cannot also be used outside the kernel.
+`!qstack.bit` values from the enclosing scope may be referenced freely inside a kernel — each such reference counts as the single use of that bit, just like qubit captures. A bit captured by a kernel cannot also be used outside the kernel.
 
 ### 4.3 Core ops
 
@@ -378,3 +456,59 @@ A dedicated continuation type was considered as the result of `qstack.select`. I
 The core dialect intentionally has no array-of-qubits value type. Multiple qubits are carried as variadic operands and results; an op that takes `n` qubits has `n` SSA values of type `!qstack.qubit`. Aggregate types (`tensor`, `memref`, `vector`) carry storage and aliasing semantics that contradict linear qubit ownership; a tuple-like type would defeat per-element linearity tracking.
 
 Logical resources that naturally aggregate many physical qubits — surface-code patches, color-code blocks, concatenated qubits — are expressed as values of dedicated types in higher-level dialects (for example, `!surface.patch<d>`), with their own ops. A lowering pass expands such an aggregate value into its physical qubits inside a `qstack.kernel` when the IR drops to the physical level. The core qstack dialect remains free of aggregate qubit machinery.
+
+#### 4.5.7 Decode lives at function scope, not inside the kernel
+
+When a QEC pass expands one logical measurement into `k` physical measurements (§2.3), it has two structurally consistent places to put the `qstack.decode @majority_vote` it inserts:
+
+- **Function scope (chosen).** The kernel surfaces `k` physical bits; a `qstack.decode` at function scope consumes them and produces the logical bit that downstream selectors and captures see. Kernel signature widens to `(qubit × b) → (bit × k·a, qubit × b)`.
+- **Inside the kernel (rejected).** The kernel performs `k` physical measurements internally, runs `qstack.decode` inside its body, and surfaces a single logical bit. Kernel signature stays `(qubit × b) → (bit × a, qubit × b)` and the SSA name of the logical bit at the call site is unchanged across the pass.
+
+The decode-inside variant has one real ergonomic advantage: the selector's bit operand keeps the same SSA value before and after encoding, so the pass does not have to update any use of the old logical bit. The function-scope variant is chosen anyway for four reasons:
+
+1. **§4.2.1 stays a count-based invariant.** "Bits surfaced equals physical measurements performed" is a one-line verifier check. The decode-inside variant would force "surfaced bits may be any function of the body's measurements," replacing a structural count with a body walk.
+2. **Decode remains explicit at the level §1.2(e) intended.** Where the decoder runs, on which bits, and what it produces are visible at function scope — the same scope as `qstack.select`. Burying decode inside a region partially undoes the explicitness the op was introduced to provide.
+3. **Decoder rewrites are local symbol-table walks.** Passes that fuse decoders, swap majority-vote for a soft-information decoder, or schedule decoding concurrently with the next quantum round find every `qstack.decode` at function scope. The decode-inside variant would require descending into kernel bodies to find the same ops.
+4. **Layered encoding composes by sequential function-scope ops.** A second QEC layer on top of the first sees the same shape — physical bits surfaced, decoded above — and intercedes between layers without rewriting the inner kernel body.
+
+The accepted cost is a use-list rewrite at every consumer of the pre-encoding logical bit. This is standard MLIR rewriter territory (`replaceAllUsesWith` on the old SSA value once the decode is emitted) and falls on pass authors, not end users.
+
+#### 4.5.8 Decoders are first-class ops, not wrapped selectors
+
+A QEC pass that turns one logical measurement into `k` physical measurements has to put the decoder somewhere. The current Python qstack puts it inside a wrapper around the original selector: `wrap_callbacks` synthesizes a new host-language function `decode ∘ original_selector`, registers it under a fresh name, and rewrites the IR to invoke the wrapper instead of the original. The new dialect rejects this in favor of an explicit `qstack.decode` op (§4.3.3) inserted between the kernel's surfaced bits and the unchanged `qstack.select`.
+
+The choice rests on a structural property of the new IR that the current design does not have: **the compiler no longer takes callbacks as input or produces callbacks as output.**
+
+In the current Python qstack, the compiler's type signature is effectively
+
+```
+compile : (Kernel, CallbackSet) -> (Kernel', CallbackSet')
+```
+
+The claim that "callbacks are opaque host-language code untouched by compilation" is therefore only partially true: the compiler accepts the callback set as input, synthesizes new wrapper callbacks during compilation, and returns a different callback set that the runtime must use instead. A compiled kernel cannot be run against the user's original callback registry; the compiler-produced registry is part of the compilation artifact.
+
+In the new dialect, the compiler's signature is
+
+```
+compile : Module -> Module'
+```
+
+Callbacks (selectors and decoders) are host-language code referenced from the module by symbol name. The compiler does not receive their implementations, does not invoke them, does not synthesize replacements for them, and does not return a callback set. Callbacks are needed only at runtime, when the runtime trampoline resolves symbol references against the host's registry.
+
+This sharpens (d) and (e) of §1.2 into a single invariant:
+
+> **Callback preservation.** For every selector or decoder symbol `@s` that appears in the input module, `@s` appears with the same name and the same signature in the output module, referring to the same host-language implementation. The compiler may _add_ new selector or decoder symbol references to the output module — for instance, a QEC pass adding `@majority_vote` — but these are net-new symbols the user registers once per host program, not replacements that shadow user-authored ones.
+
+The contrast with the wrapping approach is sharp:
+
+| Property                                                  | Wrapping (current Python qstack)        | First-class decode op (new dialect)                                         |
+| --------------------------------------------------------- | --------------------------------------- | --------------------------------------------------------------------------- |
+| User selector symbol after compilation                    | Replaced by `@s__encoded`               | Unchanged: still `@s`                                                       |
+| User selector implementation invoked                      | Indirectly, inside wrapper              | Directly, by the runtime trampoline                                         |
+| Compiler input                                            | Module + callback registry              | Module only                                                                 |
+| Compiler output                                           | Module + new callback registry          | Module only                                                                 |
+| New callbacks needed at runtime                           | Replacements for user callbacks         | Net-new symbols (e.g., decoders)                                            |
+| Can compiled module run against user's original registry? | No, requires compiler-produced registry | Yes, plus registration of any net-new decoder symbols the passes introduced |
+| Decoder visible to other passes                           | No (opaque inside host wrapper)         | Yes (`qstack.decode` op at function scope)                                  |
+
+The accepted cost of the first-class approach is one extra core op (`qstack.decode`) and one extra symbol attribute (`qstack.decoder`). In exchange, the compiler becomes a pure module-to-module transformation; the callback registry remains an artifact of the host program rather than of compilation; and decoders join selectors as IR-visible structures that downstream passes can reason about.

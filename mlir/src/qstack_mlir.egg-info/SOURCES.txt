@@ -1,0 +1,11 @@
+README.md
+pyproject.toml
+src/qstack_mlir/__init__.py
+src/qstack_mlir.egg-info/PKG-INFO
+src/qstack_mlir.egg-info/SOURCES.txt
+src/qstack_mlir.egg-info/dependency_links.txt
+src/qstack_mlir.egg-info/requires.txt
+src/qstack_mlir.egg-info/top_level.txt
+src/qstack_mlir/dialect/__init__.py
+src/qstack_mlir/runtime/__init__.py
+src/qstack_mlir/surface/__init__.py

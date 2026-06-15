@@ -1,0 +1,90 @@
+// QSTACKQASM 0.1 — qstack surface language (lark grammar).
+//
+// QSTACKQASM is a qstack-owned dialect that shares its file extension
+// (.qasm) with OpenQASM 3.0 so editor highlighting carries over, but is
+// not a subset of QASM3 and is not compatible with QASM3 toolchains.
+//
+// Covers what `prepare_one.qasm` needs:
+//   - QSTACKQASM header, include
+//   - extern (decoder) and extern selector
+//   - def with qreg / bit / measure / gate-call / switch / call statement
+//   - top-level qreg / creg, gate-call, measure, def-call
+
+start: header include* decl* top_stmt*
+
+header: "QSTACKQASM" NUMBER ";"
+include: "include" STRING ";"
+
+?decl: extern_decl
+     | selector_decl
+     | def_decl
+
+extern_decl: "extern" IDENT "(" type_list ")" "->" type ";"
+selector_decl: "extern" "selector" IDENT "(" type_list ")" "->" type ";"
+
+def_decl: "def" IDENT "(" param_list? ")" return_type? block
+
+return_type: "->" type
+param_list: param ("," param)*
+param: type IDENT
+
+type: "qubit"    -> qubit_type
+    | "bit"     -> bit_type
+    | "int"     -> int_type
+type_list: (type ("," type)*)?
+
+block: "{" stmt* "}"
+
+?stmt: qreg_stmt
+     | bit_stmt
+     | creg_stmt
+     | apply_stmt
+     | measure_stmt
+     | switch_stmt
+
+// declarations & allocations inside blocks
+qreg_stmt: "qreg" IDENT "[" NUMBER "]" ";"
+creg_stmt: "creg" IDENT "[" NUMBER "]" ";"
+bit_stmt:  "bit"  IDENT ";"
+
+// gate or def application:  h q;     cx q, ancilla[0];   prepare_one q;
+// Parametric gates carry a parenthesised list of numeric arguments:
+//   skew(0.8) q;
+// Disambiguation between built-in gate and user-def call happens at
+// lowering time by looking the symbol up in the gate/def tables.
+apply_stmt: IDENT gate_params? qubit_arg ("," qubit_arg)* ";"
+gate_params: "(" gate_param ("," gate_param)* ")"
+gate_param: SIGNED_NUMBER
+
+// measurement:  measure q[0] -> c[0];   |   measure ancilla[0] -> m;
+measure_stmt: "measure" qubit_arg "->" bit_target ";"
+
+// switch (selector_call(b1, b2, ...)) { case 0: { ... } case 1: { ... } }
+switch_stmt: "switch" "(" selector_call ")" "{" case_arm+ "}"
+selector_call: IDENT "(" bit_args? ")"
+bit_args: bit_target ("," bit_target)*
+case_arm: "case" NUMBER ":" block
+
+// argument shapes
+?qubit_arg: IDENT                          -> qubit_ref
+          | IDENT "[" NUMBER "]"           -> qubit_index
+?bit_target: IDENT                         -> bit_ref
+           | IDENT "[" NUMBER "]"          -> bit_index
+
+// top-level statements: identical shape to in-block statements
+?top_stmt: qreg_stmt
+         | creg_stmt
+         | apply_stmt
+         | measure_stmt
+
+IDENT: /[A-Za-z_][A-Za-z0-9_]*/
+NUMBER: /[0-9]+(\.[0-9]+)?/
+SIGNED_NUMBER: /[+-]?[0-9]+(\.[0-9]+)?/
+STRING: /"[^"]*"/
+
+COMMENT: /\/\/[^\n]*/
+ML_COMMENT: /\/\*([^*]|\*(?!\/))*\*\//
+
+%ignore /[ \t\r\n]+/
+%ignore COMMENT
+%ignore ML_COMMENT
