@@ -140,3 +140,49 @@ _(None open.)_
 24. **Cliffords-to-H2 now uses the shared handler-registry pattern.** `CliffordsToH2Compiler` subclasses `BaseOpRewriter` and maps each canonical Clifford operation type to a dedicated handler, matching `ToyToCliffordsCompiler`. Multi-operation expansion remains handler-local: handlers build an ordered H2 sequence, replace the source SSA results with the sequence outputs, and erase the source op.
 
 25. **Local ISA rewriters skip function declarations.** `BaseOpRewriter` now walks only `func.func` definitions. Body-less selector and decoder declarations are symbol interfaces and contain no operations to rewrite.
+
+## 2026-06-14 — Steane [[7,1,3]] parity
+
+26. **Steane is a seven-wide destination-building QEC rewrite.** Every logical qubit SSA value expands to seven physical values across function signatures, calls, kernels, selectors, and invokes. Existing selector and decoder declarations remain unchanged, following the same callback-boundary rule as repetition-3.
+
+27. **Allocated logical qubits are prepared as encoded `|0>`.** The pass emits the legacy Steane preparation circuit (`H` on lanes 4, 5, and 6 followed by nine `CX` gates) before rewriting the source operations on each newly allocated seven-qubit block.
+
+28. **The supported logical gate set matches the current legacy Steane compiler.** `X`, `Z`, and `H` lower transversally, and `CX` lowers pairwise across two blocks. Other canonical Cliffords fail with `SteaneCompileError` instead of surviving as incorrectly unencoded operations.
+
+29. **Syndrome extraction is explicit quantum IR.** Each correction round allocates three ancillas in a nested `qstack.kernel`, extracts the three stabilizer bits, and threads the seven data qubits back. Bit-error and phase-error rounds use the same Hamming syndrome table and route through static correction menus containing identity plus one correction function per physical lane.
+
+30. **Steane corrects after preparation and after every logical gate.** This is deliberately more regular than the legacy scheduler, which inserts initial rounds and then rounds between non-final instructions. The regular schedule simplifies SSA ownership and ensures the final logical gate is also followed by correction.
+
+31. **Final logical measurement uses an explicit decoder.** Seven physical measurements leave the outer allocation kernel and feed `qstack.decode @steane_decode` at function scope. The decoder corrects one classical bit fault using the Steane syndrome and returns logical parity. `register_steane_callbacks` installs both this decoder and the three-bit syndrome selector.
+
+32. **Generated allocating kernels establish that nested allocation is useful IR.** Steane requires three temporary syndrome ancillas while seven encoded data qubits remain live. Source modules containing their own nested bit-producing kernels are still rejected by the pass; general source-kernel restructuring remains separate work.
+
+33. **Active correction currently selects inside the enclosing kernel.** The nested syndrome kernel returns its bits to the surrounding allocation body, where `qstack.select` and `qstack.invoke` choose and apply a correction continuation. The emulator and current verifier support this shape, but `DESIGN.md` describes selectors as function-scope operations. Lifting each correction boundary to function scope will require kernel splitting and is retained as design-alignment debt.
+
+34. **Steane support symbols are reserved and the pass is not yet self-composable.** The pass adds `@steane_decode`, `@steane_syndrome`, identity, and fourteen correction helpers. A source collision is rejected rather than shadowed. Applying Steane a second time currently encounters those reserved symbols and is intentionally unsupported.
+
+35. **Steane verification covers structure, behavior, and composition.** Tests exercise encoded logical zero and one, logical Bell correlation, all seven single-bit decoder faults, all syndrome labels, recursive selector preservation, explicit unsupported-gate rejection, and Steane-to-H2 execution. The complete MLIR suite passes 117 tests. `mlir/examples/6.steane.ipynb` provides the notebook counterpart.
+
+## 2026-06-14 — QEC operation dispatch consistency
+
+36. **Steane operation rewriting is handler-driven.** The function rewriter now maps every supported source operation type, including terminators and qstack control operations, to a dedicated handler. Unsupported operations use one centralized error path. The module-level pass remains custom because it widens symbols and coordinates generated support functions; only local operation dispatch adopts the registry pattern.
+
+37. **Handler-registry completeness is tested.** The Steane suite asserts the exact supported operation-type set, and the complete MLIR suite passes 118 tests after the dispatch refactor.
+
+## 2026-06-14 — Runtime observability parity
+
+38. **The MLIR emulator uses the existing `qstack` logger for execution tracing.** At `DEBUG`, it reports simulator restarts, gate evaluation with physical wire indices, measurement outcomes, selector inputs and choices, and decoder inputs and results. Logging remains silent by default and follows Python's built-in logging configuration, matching the original notebook workflow.
+
+39. **Steane callbacks log syndrome and decoding decisions.** The syndrome selector reports the measured syndrome and selected correction lane; the decoder reports the seven physical outcomes, computed syndrome, and corrected lane. This restores the original example's ability to expose both quantum evaluation and classical QEC decisions.
+
+40. **The Steane notebook shows the compiler transformation and a traced evaluation.** It prints each compiled MLIR module, enables `qstack` debug logging for one encoded Bell shot, then restores `INFO` before collecting histogram shots. The compiled IR is intentionally verbose: making allocation widening, transversal gates, syndrome kernels, static continuation menus, and decoding visible is part of the example's purpose.
+
+## 2026-06-14 — Notebook parity follow-up
+
+41. **The numbered notebook set targets examples 0 through 6; Qiskit is out of scope.** The Qiskit comparison notebook is intentionally not being ported to the MLIR implementation. Notebook parity means preserving each qstack example's teaching purpose with the MLIR architecture, not reproducing unrelated framework integrations.
+
+42. **The Bell notebook again starts at the Toy abstraction layer.** Now that the Toy dialect and emulator semantics exist, `0.bell.ipynb` uses `mix` and `entangle`, prints the lowered IR, shows one concrete shot, and then plots the Bell histogram. The previous claim that Toy was unported was stale.
+
+43. **Repeat-until-success demonstrates both runtime control and compilation.** `3.repeat_until_success.ipynb` implements a Toy `repeat_until_zero` protocol with a static continuation menu and host selector, enables `qstack` debug logging for one execution, then compiles the complete recursive program to Cliffords and displays the transformed IR. Unlike the legacy callback model, runtime callbacks do not return new quantum kernels; retry bodies are statically represented and compiler-visible.
+
+44. **The compilation notebook covers the implemented stack end to end.** `5.compile.ipynb` now prints and executes Toy, Clifford, H2, Rep3, Rep3-to-H2, and concatenated Rep3 modules, prints the Steane module, and traces one encoded execution. Independent branches clone the Clifford module because local ISA passes mutate in place while QEC passes return destination-built modules.

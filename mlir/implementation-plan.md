@@ -137,14 +137,14 @@ changes.
 The original Python prototype contains passes and ISAs not yet represented in
 the MLIR implementation.
 
-- [ ] Add the H2 ISA dialect and emulator semantics.
-- [ ] Port Cliffords-to-H2 lowering.
+- [x] Add the H2 ISA dialect and emulator semantics.
+- [x] Port Cliffords-to-H2 lowering.
 - [ ] Add the atoms ISA dialect and lowering if it remains part of the target
       design.
 - [ ] Port phase-flip repetition-3 lowering.
 - [ ] Demonstrate bit-flip plus phase-flip composition as the Shor code.
-- [ ] Port the Steane-code pass and decoder.
-- [ ] Add semantic-preservation tests across ISA and QEC pipelines.
+- [x] Port the Steane-code pass and decoder.
+- [x] Add semantic-preservation tests across ISA and QEC pipelines.
 
 ### Phase E: Decouple ISA semantics from the emulator
 
