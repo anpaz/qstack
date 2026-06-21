@@ -23,6 +23,7 @@ setup(
         "numpy",
         "matplotlib",
         "qsharp",
+        "stim",
     ],
     extras_require={
         "qiskit": ["qiskit", "qiskit-aer"],

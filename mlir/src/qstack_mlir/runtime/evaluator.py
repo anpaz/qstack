@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import numpy as np
 from xdsl.dialects.builtin import ModuleOp
 from xdsl.dialects.func import CallOp, FuncOp, ReturnOp as FuncReturnOp
 from xdsl.ir import Block, SSAValue
@@ -24,8 +23,9 @@ from qstack_mlir.dialect.core import (
     SelectOp,
     UnitaryGateOp,
 )
+from qstack_mlir.runtime.cpu import CPU
 from qstack_mlir.runtime.noise import NoiseChannel
-from qstack_mlir.runtime.processors import CPU, QPU
+from qstack_mlir.runtime.qpu import GateApplication, QPU, QPUProtocol
 from qstack_mlir.runtime.registry import CallbackRegistry
 
 
@@ -48,7 +48,7 @@ class ModuleEvaluator:
         module: ModuleOp | None = None,
         registry: CallbackRegistry | None = None,
         noise: NoiseChannel | None = None,
-        qpu: QPU | None = None,
+        qpu: QPUProtocol | None = None,
         cpu: CPU | None = None,
     ) -> None:
         self._num_qubits = num_qubits
@@ -128,7 +128,7 @@ class ModuleEvaluator:
 
     def _dispatch(self, op) -> None:
         if isinstance(op, UnitaryGateOp):
-            self._apply_unitary_op(op)
+            self._apply_gate_op(op)
             return
         if isinstance(op, MeasureOp):
             idx = self._env.pop(op.qubit)
@@ -165,7 +165,7 @@ class ModuleEvaluator:
 
     # ----------------------------------------------------- gate helpers
 
-    def _apply_unitary_op(self, op: UnitaryGateOp) -> None:
+    def _apply_gate_op(self, op: UnitaryGateOp) -> None:
         operands = list(op.operands)
         results = list(op.results)
         if len(operands) != len(results):
@@ -173,37 +173,24 @@ class ModuleEvaluator:
                 f"evaluator: gate {op.name} must thread the same number "
                 "of operands and results"
             )
-        unitary = op.unitary()
-        name = self._semantic_cache_key(op)
         if len(operands) == 1:
-            self._apply_1q(name, unitary, operands[0], results[0])
+            self._apply_1q(op, operands[0], results[0])
             return
         if len(operands) == 2:
-            self._apply_2q(name, unitary, operands[0], operands[1], results[0], results[1])
+            self._apply_2q(op, operands[0], operands[1], results[0], results[1])
             return
         raise NotImplementedError(
             f"evaluator: gate {op.name} has unsupported arity {len(operands)}"
         )
 
-    @staticmethod
-    def _semantic_cache_key(op: UnitaryGateOp) -> str:
-        values = []
-        for name, attr in sorted(op.properties.items()):
-            value = getattr(getattr(attr, "value", None), "data", attr)
-            values.append((name, value))
-        if not values:
-            return op.name.rsplit(".", 1)[-1]
-        return f"{op.name}{tuple(values)}"
-
-    def _apply_1q(self, name: str, unitary: np.ndarray, operand: SSAValue, result: SSAValue) -> None:
+    def _apply_1q(self, op: UnitaryGateOp, operand: SSAValue, result: SSAValue) -> None:
         idx = self._env.pop(operand)
-        self._qpu.apply_unitary(name, unitary, [idx])
+        self._qpu.apply_gate(GateApplication(op=op, qubits=(idx,)))
         self._env[result] = idx
 
     def _apply_2q(
         self,
-        name: str,
-        unitary: np.ndarray,
+        op: UnitaryGateOp,
         c_in: SSAValue,
         t_in: SSAValue,
         c_out: SSAValue,
@@ -211,12 +198,7 @@ class ModuleEvaluator:
     ) -> None:
         c_idx = self._env.pop(c_in)
         t_idx = self._env.pop(t_in)
-        # qsharp.noisy_simulator expects qubit list with target first when
-        # the operation matrix is written in standard "control ⊗ target"
-        # tensor order with little-endian wire indexing. Match the existing
-        # qstack evaluator convention.
-        qubits = [t_idx, c_idx]
-        self._qpu.apply_unitary(name, unitary, qubits)
+        self._qpu.apply_gate(GateApplication(op=op, qubits=(c_idx, t_idx)))
         self._env[c_out] = c_idx
         self._env[t_out] = t_idx
 

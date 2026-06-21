@@ -209,7 +209,92 @@ After that decision, implement the chosen v1 surface contract:
       this implementation plan aligned.
 - [ ] Add a short extension guide for new ISA dialects and QEC passes.
 
-## 6. Recommended next milestone
+## 6. Runtime QPU extensibility and STIM integration
+
+The runtime now has the right conceptual split for backend selection:
+`Machine` owns a QPU and CPU, while `ModuleEvaluator` owns MLIR walking and
+SSA/control-flow state. The next step is to make the QPU side extensible and
+teach the default machine to pick STIM for Clifford-only modules.
+
+### Phase F.1: Stabilize the QPU interface
+
+- [x] Introduce a structural `QPUProtocol` or abstract base class with the
+      current evaluator-facing methods:
+      `restart`, `allocate`, `release`, `measure`, and a gate-application hook.
+- [x] Keep `StateVectorQPU` as the renamed/current implementation of today's
+      `QPU`, preserving support for arbitrary unitary matrices and
+      `NoiseChannel`.
+- [x] Change `Machine(..., qpu=...)` so callers can select `"auto"`,
+      `"statevector"`, `"stim"`, or provide their own QPU instance. Reject
+      ambiguous combinations such as both a user-supplied QPU and `noise`.
+- [x] Keep `machine.qpu` public and concrete enough for tests/notebooks, but
+      type it against the protocol so external QPUs are first-class.
+
+### Phase F.2: Make gate dispatch backend-aware
+
+- [x] Replace evaluator calls of `qpu.apply_unitary(name, unitary, qubits)` with
+      `qpu.apply_gate(GateApplication(op, qubits))`.
+- [x] Keep matrix-oriented execution in `StateVectorQPU`, which calls
+      `op.unitary()` and preserves support for `apply_unitary`.
+- [x] Preserve the current two-qubit wire-order convention in `StateVectorQPU`,
+      while `StimQPU` receives operation-order qubits directly.
+
+### Phase F.3: Mark and detect Clifford-compatible modules
+
+- [x] Use dialect membership rather than STIM metadata: executable
+      `cliffords.*` gates are STIM-compatible; other executable
+      `UnitaryGateOp`s are not.
+- [x] Require Clifford-equivalent non-canonical gates such as Toy gates to be
+      lowered to the Clifford dialect before STIM auto-selection.
+- [x] Add `qstack_mlir.runtime.analysis.is_stim_compatible(module)` and
+      structured diagnostics for the first incompatible executable gate.
+
+### Phase F.4: Implement `StimQPU`
+
+- [x] Add `stim` as a required dependency, matching the runtime's required
+      simulator dependencies.
+- [x] Implement `StimQPU` with the same allocation/free-list semantics as the
+      state-vector QPU.
+- [x] Map qstack Clifford ops to native STIM operations and map
+      `qstack.measure` to Z-basis measurement with release/reset behavior that
+      matches today's QPU contract.
+- [x] Handle seeding deterministically enough for reproducible tests. If STIM's
+      exact seed semantics differ from the state-vector simulator, document the
+      reproducibility contract at the QPU boundary instead of promising
+      cross-backend identical random streams.
+- [x] Initially reject arbitrary `NoiseChannel` on `StimQPU`. Add Pauli/STIM
+      noise support later as a separate backend capability rather than forcing
+      Kraus noise through a stabilizer simulator.
+
+### Phase F.5: Default backend selection
+
+- [x] Add a `qpu="auto" | "statevector" | "stim"` selector to `Machine`, with
+      `"auto"` as the default.
+- [x] In `"auto"`, choose `StimQPU` when `is_stim_compatible(module)` is true
+      and no legacy `noise=` argument is present; otherwise choose
+      `StateVectorQPU`.
+- [x] In explicit `"stim"`, fail fast with a clear diagnostic if the module or
+      options are unsupported. Do not silently fall back when the user asked for
+      STIM.
+- [x] In explicit `"statevector"`, preserve today's behavior exactly.
+- [x] If a user supplies `qpu=...`, skip automatic selection entirely and pass
+      the supplied QPU through to `ModuleEvaluator`.
+
+### Phase F.6: Tests and examples
+
+- [x] Unit-test backend selection for Clifford-only, non-Clifford, explicit
+      STIM, explicit state-vector, and user-supplied QPU cases.
+- [x] Add a fake QPU test double proving `Machine` and `ModuleEvaluator` honor
+      externally supplied QPUs.
+- [x] Add parity coverage through the existing full MLIR suite, including Bell,
+      teleportation, recursive `prepare_one`, repetition-3, and Steane
+      Clifford workflows under auto-selected STIM where compatible.
+- [x] Add negative tests for parameterized/non-Clifford gates and legacy noise.
+- [ ] Update notebook/runtime docs to explain that Clifford-only programs use
+      STIM automatically, while arbitrary unitaries continue to use the
+      state-vector backend.
+
+## 7. Recommended next milestone
 
 The original repetition-3 milestone is complete:
 

@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 from xdsl.dialects.builtin import FunctionType, ModuleOp, SymbolRefAttr, UnitAttr
 from xdsl.dialects.func import FuncOp, ReturnOp as FuncReturn
@@ -6,7 +8,18 @@ from xdsl.ir import Block, Region
 from qstack_mlir.dialect import BitType, QubitType
 from qstack_mlir.dialect.cliffords import XOp
 from qstack_mlir.dialect.core import DecodeOp, KernelOp, MeasureOp, ReturnOp
-from qstack_mlir.runtime import CPU, QPU, Machine, Results, UnregisteredCallback
+from qstack_mlir.runtime import (
+    CPU,
+    QPU,
+    Machine,
+    Results,
+    StateVectorQPU,
+    StimQPU,
+    UnregisteredCallback,
+)
+from qstack_mlir.runtime.analysis import StimCompatibilityError
+from qstack_mlir.runtime.noise import NoiselessChannel
+from qstack_mlir.runtime.qpu import GateApplication
 from qstack_mlir.surface.lowering import lower
 from qstack_mlir.surface.parser import parse
 
@@ -22,6 +35,22 @@ qreg q[1];
 creg c[1];
 sx q[0];
 sx q[0];
+measure q[0] -> c[0];
+"""
+        )
+    )
+
+
+def _x_module():
+    return lower(
+        parse(
+            """
+QSTACKQASM 0.1;
+include "qstack/cliffords.inc";
+
+qreg q[1];
+creg c[1];
+x q[0];
 measure q[0] -> c[0];
 """
         )
@@ -76,3 +105,79 @@ def test_machine_defaults_to_empty_callback_registry() -> None:
 
     with pytest.raises(UnregisteredCallback, match="missing_decoder"):
         machine.single_shot()
+
+
+def test_machine_auto_selects_stim_for_clifford_module() -> None:
+    machine = Machine(_x_module(), num_qubits=1)
+
+    assert isinstance(machine.qpu, StimQPU)
+    assert machine.single_shot() == [1]
+
+
+def test_machine_logs_selected_qpu(caplog) -> None:
+    with caplog.at_level(logging.DEBUG, logger="qstack"):
+        Machine(_x_module(), num_qubits=1)
+        Machine(_sx_squared_module(), num_qubits=1)
+
+    assert "machine.qpu: selected StimQPU (requested=auto" in caplog.text
+    assert "machine.qpu: selected StateVectorQPU (requested=auto" in caplog.text
+
+
+def test_machine_auto_selects_statevector_for_non_clifford_module() -> None:
+    machine = Machine(_sx_squared_module(), num_qubits=1)
+
+    assert isinstance(machine.qpu, StateVectorQPU)
+    assert machine.single_shot() == [1]
+
+
+def test_machine_explicit_statevector_overrides_stim_compatible_module() -> None:
+    machine = Machine(_x_module(), num_qubits=1, qpu="statevector")
+
+    assert isinstance(machine.qpu, StateVectorQPU)
+    assert machine.single_shot() == [1]
+
+
+def test_machine_explicit_stim_rejects_non_clifford_module() -> None:
+    with pytest.raises(StimCompatibilityError, match="atoms.sx"):
+        Machine(_sx_squared_module(), num_qubits=1, qpu="stim")
+
+
+def test_machine_explicit_stim_rejects_legacy_noise_argument() -> None:
+    with pytest.raises(StimCompatibilityError, match="legacy NoiseChannel"):
+        Machine(_x_module(), num_qubits=1, qpu="stim", noise=NoiselessChannel())
+
+
+class _FakeQPU:
+    def __init__(self) -> None:
+        self.applied: list[str] = []
+        self.restarted = False
+
+    def restart(self) -> None:
+        self.restarted = True
+
+    def allocate(self) -> int:
+        return 0
+
+    def release(self, idx: int) -> None:
+        pass
+
+    def measure(self, idx: int) -> int:
+        return 1
+
+    def apply_gate(self, gate: GateApplication) -> None:
+        self.applied.append(gate.op.name)
+
+
+def test_machine_accepts_user_supplied_qpu() -> None:
+    qpu = _FakeQPU()
+    machine = Machine(_x_module(), num_qubits=1, qpu=qpu)
+
+    assert machine.qpu is qpu
+    assert machine.single_shot() == [1]
+    assert qpu.restarted
+    assert qpu.applied == ["cliffords.x"]
+
+
+def test_machine_rejects_user_supplied_qpu_with_noise() -> None:
+    with pytest.raises(ValueError, match="user-supplied qpu"):
+        Machine(_x_module(), num_qubits=1, qpu=_FakeQPU(), noise=NoiselessChannel())

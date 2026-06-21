@@ -214,3 +214,25 @@ _(None open.)_
 56. **`Machine.eval` is the repeated-execution API.** The temporary `Machine.shots` convenience method was removed to stay closer to the original qstack `Machine` shape. `Machine.single_shot` runs one function invocation, and `Machine.eval(..., shots=N)` returns `Results`; `Results.shots` remains only the count property.
 
 57. **The MLIR walking execution layer is `ModuleEvaluator`.** The evaluator is separate from `Machine` because walking MLIR is reusable infrastructure for execution and future compiler-pass validation. `Machine` remains the public hybrid quantum machine; `ModuleEvaluator` evaluates a module against the machine's QPU/CPU processors.
+
+## 2026-06-21 — STIM QPU backend
+
+58. **Gate matrices remain backend-neutral semantics.** Executable gate ops keep
+    defining `unitary()` as their mathematical meaning. Backend-specific
+    instruction selection is not stored on ops: `StateVectorQPU` consumes the
+    unitary matrix, while `StimQPU` maps `cliffords.*` op names to native STIM
+    `TableauSimulator` calls.
+
+59. **STIM compatibility is dialect-based in v1.** The runtime analysis treats
+    executable `cliffords.*` gates as STIM-compatible and treats other
+    executable `UnitaryGateOp`s as incompatible. Toy, H2, and atoms programs
+    must lower to the Clifford dialect before auto-selecting STIM.
+
+60. **`Machine(qpu="auto")` now auto-selects STIM for compatible Clifford IR.**
+    Explicit `qpu="stim"` fails fast for incompatible gates or any legacy
+    `noise=` argument. Explicit `qpu="statevector"` preserves the previous
+    matrix/Kraus path, and user-supplied QPU instances bypass auto-selection.
+
+61. **`stim` is a required runtime dependency.** STIM is imported directly by
+    the runtime, matching the existing direct simulator imports rather than
+    being an optional backend.

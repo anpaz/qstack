@@ -11,10 +11,11 @@ dependencies = [
     "xdsl==0.64.0",
     "numpy>=1.26",
     "lark>=1.2",
+    "qsharp>=1.0",
+    "stim>=1.13",
 ]
 
 [project.optional-dependencies]
-emulator = ["qsharp>=1.0"]
 dev = ["pytest==9.0.3"]
 
 [tool.setuptools.packages.find]

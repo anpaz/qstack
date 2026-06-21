@@ -1,4 +1,4 @@
-"""Classical and quantum processors used by the MLIR runtime."""
+"""State-vector QPU implementation."""
 
 from __future__ import annotations
 
@@ -7,11 +7,10 @@ import random
 
 import numpy as np
 from qsharp.noisy_simulator import Instrument, Operation, StateVectorSimulator
-from xdsl.dialects.func import FuncOp
 
-from qstack_mlir.dialect.core import DecodeOp, SelectOp
+from qstack_mlir.dialect.core import UnitaryGateOp
 from qstack_mlir.runtime.noise import NoiseChannel, NoiselessChannel
-from qstack_mlir.runtime.registry import CallbackRegistry
+from qstack_mlir.runtime.qpu import GateApplication
 
 logger = logging.getLogger("qstack")
 
@@ -25,12 +24,8 @@ _Z_INSTRUMENT = Instrument(
 )
 
 
-class QPU:
-    """Owns quantum state.
-
-    Qubit allocation, unitary application, measurement, reset, and quantum
-    noise are QPU responsibilities because they mutate or observe that state.
-    """
+class StateVectorQPU:
+    """Owns quantum state for matrix/Kraus simulation."""
 
     def __init__(
         self,
@@ -48,7 +43,7 @@ class QPU:
 
     def restart(self) -> None:
         seed = self._rng_seed if self._rng_seed is not None else random.randint(0, 2**31 - 1)
-        logger.debug("qpu.restart: %s", self._num_qubits)
+        logger.debug("statevector_qpu.restart: %s", self._num_qubits)
         self._sim = StateVectorSimulator(self._num_qubits, seed=seed)
         self._free = list(reversed(range(self._num_qubits)))
 
@@ -64,17 +59,39 @@ class QPU:
         if self._sim is None:
             raise RuntimeError("qpu has not been restarted")
         outcome = int(self._sim.sample_instrument(_Z_INSTRUMENT, [idx]))
-        logger.debug("qpu.measure: %s -> %s", idx, outcome)
+        logger.debug("statevector_qpu.measure: %s -> %s", idx, outcome)
         if outcome == 1:
             self._sim.apply_operation(self._gate_op("x", _RESET_X_MAT), [idx])
         self.release(idx)
         return outcome
 
+    def apply_gate(self, gate: GateApplication) -> None:
+        unitary = gate.op.unitary()
+        name = self._semantic_cache_key(gate.op)
+        qubits = list(gate.qubits)
+        if len(qubits) == 2:
+            # qsharp.noisy_simulator expects qubit list with target first when
+            # the operation matrix is written in standard "control ⊗ target"
+            # tensor order with little-endian wire indexing. The evaluator
+            # passes qubits in operation operand order.
+            qubits = [qubits[1], qubits[0]]
+        self.apply_unitary(name, unitary, qubits)
+
     def apply_unitary(self, name: str, unitary: np.ndarray, qubits: list[int]) -> None:
         if self._sim is None:
             raise RuntimeError("qpu has not been restarted")
-        logger.debug("qpu.eval: %s %s", name, qubits)
+        logger.debug("statevector_qpu.eval: %s %s", name, qubits)
         self._sim.apply_operation(self._gate_op(name, unitary), qubits)
+
+    @staticmethod
+    def _semantic_cache_key(op: UnitaryGateOp) -> str:
+        values = []
+        for name, attr in sorted(op.properties.items()):
+            value = getattr(getattr(attr, "value", None), "data", attr)
+            values.append((name, value))
+        if not values:
+            return op.name.rsplit(".", 1)[-1]
+        return f"{op.name}{tuple(values)}"
 
     def _gate_op(self, name: str, unitary: np.ndarray) -> Operation:
         dim = unitary.shape[0]
@@ -86,40 +103,3 @@ class QPU:
         op = Operation([K @ unitary for K in kraus])
         self._op_cache[key] = op
         return op
-
-
-class CPU:
-    """Owns classical runtime state and callback evaluation.
-
-    ``qstack.select`` and ``qstack.decode`` are CPU responsibilities because
-    they evaluate classical state through host-language callbacks.
-    """
-
-    def __init__(self, registry: CallbackRegistry | None = None) -> None:
-        self._registry = registry if registry is not None else CallbackRegistry()
-
-    def restart(self) -> None:
-        logger.debug("cpu.restart")
-
-    def select(self, op: SelectOp, bit_values: dict[str, int], funcs: dict[str, FuncOp]) -> FuncOp:
-        sym = op.callee.root_reference.data
-        fn = self._registry.get_selector(sym)
-        label = fn(**bit_values)
-        logger.debug("cpu.select: %s %s -> %s", sym, bit_values, label)
-        if label not in op.continuations.data:
-            raise RuntimeError(
-                f"selector @{sym} returned label {label!r} not in menu "
-                f"{list(op.continuations.data)}"
-            )
-        cont_sym = op.continuations.data[label]
-        cont_name = cont_sym.root_reference.data
-        if cont_name not in funcs:
-            raise RuntimeError(f"continuation @{cont_name} not in module")
-        return funcs[cont_name]
-
-    def decode(self, op: DecodeOp, args: list[int]) -> int:
-        sym = op.callee.root_reference.data
-        fn = self._registry.get_decoder(sym)
-        result = int(fn(*args))
-        logger.debug("cpu.decode: %s %s -> %s", sym, args, result)
-        return result
