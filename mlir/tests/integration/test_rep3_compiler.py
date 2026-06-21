@@ -96,7 +96,7 @@ def test_rep3_module_passes_verifier() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_rep3_emulator_runs_1000_shots_all_one() -> None:
+def test_rep3_runtime_runs_1000_shots_all_one() -> None:
     from qstack_mlir.runtime import CallbackRegistry, Machine
 
     out = compile_rep3(_module(FLIP_PROGRAM))
@@ -104,7 +104,7 @@ def test_rep3_emulator_runs_1000_shots_all_one() -> None:
     register_rep3_callbacks(reg)
 
     machine = Machine(out, num_qubits=4, registry=reg)
-    results = machine.shots("main", 1000)
+    results = machine.eval(shots=1000)
     assert all(
         r == [1] for r in results
     ), f"expected every shot to return [1], saw {sorted({tuple(r) for r in results})}"
@@ -329,7 +329,7 @@ def test_rep3_prepare_one_executes() -> None:
         out,
         num_qubits=6,
         registry=_prepare_one_registry(),
-    ).shots("main", 50)
+    ).eval(shots=50)
     assert all(result == [1] for result in results)
 
 
@@ -341,5 +341,5 @@ def test_rep3_twice_prepare_one_executes() -> None:
         out,
         num_qubits=18,
         registry=_prepare_one_registry(),
-    ).shots("main", 5)
+    ).eval(shots=5)
     assert all(result == [1] for result in results)

@@ -61,7 +61,7 @@ def test_compiled_module_still_verifies_and_runs() -> None:
     module = lower(parse(_TOY_BELL))
     compile_toy_to_cliffords(module)
     verify_module(module)
-    hist = dict(Machine(module, num_qubits=4).shots("main", 2000).histogram())
+    hist = dict(Machine(module, num_qubits=4).eval(shots=2000).histogram())
     # Same bell distribution as the original toy program.
     assert set(hist.keys()) <= {(0, 0), (1, 1)}
     for key in [(0, 0), (1, 1)]:

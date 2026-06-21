@@ -19,7 +19,7 @@ class DuplicateRegistration(Exception):
 
 
 class UnregisteredCallback(Exception):
-    """Raised when the emulator looks up a name that was never registered."""
+    """Raised when the CPU looks up a name that was never registered."""
 
 
 class CallbackRegistry:

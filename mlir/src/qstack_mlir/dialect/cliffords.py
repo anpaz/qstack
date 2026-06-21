@@ -29,7 +29,7 @@ Y_MAT = np.array([[0.0, -1.0j], [1.0j, 0.0]], dtype=complex)
 Z_MAT = np.array([[1.0, 0.0], [0.0, -1.0]], dtype=complex)
 S_MAT = np.array([[1.0, 0.0], [0.0, 1.0j]], dtype=complex)
 
-# Matrices are written in standard "control tensor target" basis. The emulator
+# Matrices are written in standard "control tensor target" basis. The runtime
 # handles the simulator's little-endian wire order when applying 2-qubit ops.
 CX_MAT = np.array(
     [

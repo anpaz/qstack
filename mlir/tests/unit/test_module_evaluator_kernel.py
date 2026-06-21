@@ -1,6 +1,6 @@
-"""Phase 2b tests: emulator for a single qstack.kernel.
+"""Phase 2b tests: evaluator for a single qstack.kernel.
 
-The minimal emulator walks one ``qstack.kernel`` op, allocates fresh
+The minimal evaluator walks one ``qstack.kernel`` op, allocates fresh
 physical qubits for each entry-block argument, dispatches Clifford gates
 through ``qsharp.noisy_simulator``, executes ``qstack.measure`` against a
 Z-instrument, and returns the kernel's results (bits + threaded qubits)
@@ -17,7 +17,7 @@ import pytest
 from qstack_mlir.dialect import BitType, QubitType
 from qstack_mlir.dialect.cliffords import CxOp, HOp, XOp
 from qstack_mlir.dialect.core import KernelOp, MeasureOp, ReturnOp
-from qstack_mlir.runtime.emulator import Emulator
+from qstack_mlir.runtime.evaluator import ModuleEvaluator
 
 
 def _kernel_x_then_measure() -> KernelOp:
@@ -70,23 +70,23 @@ class NoSemanticsOp(IRDLOperation):
 
 
 def test_identity_kernel_measures_zero() -> None:
-    emu = Emulator(num_qubits=4)
+    evaluator = ModuleEvaluator(num_qubits=4)
     for _ in range(20):
-        results = emu.run_kernel(_kernel_identity_measure())
+        results = evaluator.run_kernel(_kernel_identity_measure())
         assert results == [0]
 
 
 def test_x_kernel_measures_one() -> None:
-    emu = Emulator(num_qubits=4)
+    evaluator = ModuleEvaluator(num_qubits=4)
     for _ in range(20):
-        results = emu.run_kernel(_kernel_x_then_measure())
+        results = evaluator.run_kernel(_kernel_x_then_measure())
         assert results == [1]
 
 
 def test_bell_kernel_correlated() -> None:
-    emu = Emulator(num_qubits=4)
+    evaluator = ModuleEvaluator(num_qubits=4)
     for _ in range(50):
-        results = emu.run_kernel(_kernel_bell())
+        results = evaluator.run_kernel(_kernel_bell())
         assert len(results) == 2
         assert results[0] == results[1]
 
@@ -102,23 +102,23 @@ def test_compute_gate_without_unitary_semantics_fails_clearly() -> None:
     kernel = KernelOp(result_types=[BitType()], region=Region([blk]))
 
     with pytest.raises(NotImplementedError, match="test.no_semantics"):
-        Emulator(num_qubits=1).run_kernel(kernel)
+        ModuleEvaluator(num_qubits=1).run_kernel(kernel)
 
 
 def test_kernel_threads_captured_qubit_back() -> None:
     """Outer Block holds a qubit; pass it as a capture to the kernel.
 
     The kernel applies X to the captured qubit and threads it back; the
-    emulator measures it post-return to confirm the gate took effect.
+    evaluator measures it post-return to confirm the gate took effect.
     """
     # Build: kernel that takes 0 allocations, returns 1 qubit (threaded capture).
     # Body: %q_out = X %q_cap ; return %q_out
     # The capture is bound by `captures=[idx]` at run_kernel time.
     blk = Block(arg_types=[])
-    # The capture SSA value is synthesized by the emulator; the body
+    # The capture SSA value is synthesized by the evaluator; the body
     # references it via blk.parent... but for this test we build a
     # block that "captures" through an explicit outer block arg the
-    # emulator binds for us.
+    # evaluator binds for us.
     # Simpler shape: a kernel with an inner xform, but for capture wiring
     # we use a small outer Block and run the whole module.
     outer = Block(arg_types=[QubitType()])
@@ -138,7 +138,7 @@ def test_kernel_threads_captured_qubit_back() -> None:
     # The outer block itself doubles as a kernel (1 allocation, 1 bit out).
     outer_kernel = KernelOp(result_types=[BitType()], region=Region([outer]))
 
-    emu = Emulator(num_qubits=4)
+    evaluator = ModuleEvaluator(num_qubits=4)
     for _ in range(20):
-        results = emu.run_kernel(outer_kernel)
+        results = evaluator.run_kernel(outer_kernel)
         assert results == [1]

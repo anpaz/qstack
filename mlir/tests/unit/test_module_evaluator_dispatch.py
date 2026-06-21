@@ -1,4 +1,4 @@
-"""Phase 2c tests: cross-function dispatch in the emulator.
+"""Phase 2c tests: cross-function dispatch in the evaluator.
 
 Covers:
 
@@ -24,7 +24,7 @@ from qstack_mlir.dialect.core import (
     SelectOp,
 )
 from qstack_mlir.runtime import CallbackRegistry
-from qstack_mlir.runtime.emulator import Emulator
+from qstack_mlir.runtime.evaluator import ModuleEvaluator
 
 
 def test_func_call_runs_callee_body() -> None:
@@ -51,9 +51,9 @@ def test_func_call_runs_callee_body() -> None:
     main = FuncOp("main", FunctionType.from_lists([], [BitType()]), Region([mainouter]))
 
     module = ModuleOp([flip, main])
-    emu = Emulator(num_qubits=4, module=module)
+    evaluator = ModuleEvaluator(num_qubits=4, module=module)
     for _ in range(20):
-        assert emu.run_func("main") == [1]
+        assert evaluator.run_func("main") == [1]
 
 
 def _build_decode_module(reg: CallbackRegistry) -> ModuleOp:
@@ -100,9 +100,9 @@ def _build_decode_module(reg: CallbackRegistry) -> ModuleOp:
 def test_decode_invokes_python_decoder() -> None:
     reg = CallbackRegistry()
     module = _build_decode_module(reg)
-    emu = Emulator(num_qubits=4, module=module, registry=reg)
+    evaluator = ModuleEvaluator(num_qubits=4, module=module, registry=reg)
     for _ in range(10):
-        assert emu.run_func("main") == [1]
+        assert evaluator.run_func("main") == [1]
 
 
 def _build_select_invoke_module(reg: CallbackRegistry) -> ModuleOp:
@@ -163,6 +163,6 @@ def _build_select_invoke_module(reg: CallbackRegistry) -> ModuleOp:
 def test_select_invoke_routes_through_python_selector() -> None:
     reg = CallbackRegistry()
     module = _build_select_invoke_module(reg)
-    emu = Emulator(num_qubits=4, module=module, registry=reg)
+    evaluator = ModuleEvaluator(num_qubits=4, module=module, registry=reg)
     for _ in range(20):
-        assert emu.run_func("main") == [1]
+        assert evaluator.run_func("main") == [1]

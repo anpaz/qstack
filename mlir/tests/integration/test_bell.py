@@ -32,7 +32,7 @@ def test_bell_module_verifies() -> None:
 def test_bell_statistics() -> None:
     module = lower(parse(BELL_PROGRAM))
     machine = Machine(module, num_qubits=4, registry=CallbackRegistry())
-    results = machine.shots("main", 4000)
+    results = machine.eval(shots=4000)
     hist = dict(results.histogram())
 
     # Only the two Bell outcomes should appear.

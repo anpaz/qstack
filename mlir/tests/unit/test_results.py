@@ -1,4 +1,4 @@
-"""Tests for the ``Results`` wrapper returned by ``Machine.shots``."""
+"""Tests for the ``Results`` wrapper returned by ``Machine.eval``."""
 
 from qstack_mlir.runtime.results import Results
 

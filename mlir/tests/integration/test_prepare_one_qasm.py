@@ -78,5 +78,5 @@ def test_prepare_one_runs_1000_shots_all_one() -> None:
 
     m = _module(PREPARE_ONE)
     machine = Machine(m, num_qubits=4, registry=reg)
-    results = machine.shots("main", 1000)
+    results = machine.eval(shots=1000)
     assert all(r == [1] for r in results)

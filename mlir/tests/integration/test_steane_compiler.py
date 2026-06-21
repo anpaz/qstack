@@ -95,13 +95,13 @@ def test_steane_prepares_encoded_zero_and_transversal_x() -> None:
         result == [0]
         for result in Machine(
             zero, num_qubits=10, registry=_registry(), seed=7
-        ).shots("main", 5)
+        ).eval(shots=5)
     )
     assert all(
         result == [1]
         for result in Machine(
             one, num_qubits=10, registry=_registry(), seed=7
-        ).shots("main", 5)
+        ).eval(shots=5)
     )
 
 
@@ -112,7 +112,7 @@ def test_steane_bell_state_preserves_logical_correlation() -> None:
         num_qubits=17,
         registry=_registry(),
         seed=11,
-    ).shots("main", 12)
+    ).eval(shots=12)
     assert {tuple(result) for result in results} <= {(0, 0), (1, 1)}
 
 
@@ -162,7 +162,7 @@ def test_steane_machine_reports_runtime_evaluation(caplog) -> None:
     with caplog.at_level(logging.DEBUG, logger="qstack"):
         result = Machine(
             module, num_qubits=10, registry=_registry(), seed=7
-        ).shots("main", 1)
+        ).eval(shots=1)
 
     assert result.data == [[1]]
     assert "restart: 10" in caplog.text
@@ -185,7 +185,7 @@ def test_steane_output_can_lower_to_h2_and_execute() -> None:
         num_qubits=10,
         registry=_registry(),
         seed=3,
-    ).shots("main", 1)
+    ).eval(shots=1)
     assert result.data == [[1]]
 
 

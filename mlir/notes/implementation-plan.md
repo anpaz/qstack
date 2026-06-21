@@ -146,19 +146,24 @@ the MLIR implementation.
 - [x] Port the Steane-code pass and decoder.
 - [x] Add semantic-preservation tests across ISA and QEC pipelines.
 
-### Phase E: Decouple ISA semantics from the emulator
+### Phase E: Decouple ISA semantics from the evaluator
 
 Gate semantics and surface gate recognition are currently hardcoded in Python
 tables. This is workable for the prototype but does not yet realize the
 per-dialect extensibility described in `DESIGN.md`.
 
-- [x] Define a dialect-level mechanism for emulator semantics and static gate
+- [x] Define a dialect-level mechanism for runtime semantics and static gate
       metadata.
 - [x] Make surface include files select ISA dialects and provide gate
       declarations.
 - [x] Resolve surface gates through the selected ISA instead of global
       hardcoded tables.
 - [x] Decide how parameterized gate attributes expose runtime matrices.
+- [x] Model `Machine` as a hybrid quantum machine composed of a QPU and CPU:
+      QPU owns quantum state; CPU owns classical state and evaluates
+      `select`/`decode`.
+- [x] Keep MLIR module walking in `ModuleEvaluator` so execution and future
+      compiler-pass validation can share traversal-oriented infrastructure.
 - [ ] Add an external dialect registration/discovery mechanism so packages
       outside `qstack_mlir` can provide ISA dialects and include files.
 - [ ] Add Pauli noise parity if it is still required from the original stack.

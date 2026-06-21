@@ -1,7 +1,7 @@
 """Phase 2a tests: host-language callback registry.
 
 The registry holds Python implementations of `qstack.selector` and
-`qstack.decoder` MLIR declarations, keyed by symbol name. The emulator
+`qstack.decoder` MLIR declarations, keyed by symbol name. The runtime
 looks up callables here when it walks `qstack.select` / `qstack.decode`.
 
 Two top-level decorators:

@@ -31,7 +31,7 @@ def test_bell_biased_module_verifies() -> None:
 def test_bell_biased_concentrates_on_one_one() -> None:
     module = lower(parse(_PROGRAM))
     machine = Machine(module, num_qubits=4)
-    hist = dict(machine.shots("main", 4000).histogram())
+    hist = dict(machine.eval(shots=4000).histogram())
     # Only the parallel Bell outcomes are reachable.
     assert set(hist.keys()) <= {(0, 0), (1, 1)}
     # bias=0.8 sends ~80% of the population to |11>.

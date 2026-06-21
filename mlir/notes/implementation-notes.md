@@ -22,14 +22,14 @@ Running log of every non-trivial decision, deviation from the spec, environment 
 
 - Pure-unitary nested kernels are rewritten recursively and covered by tests.
 - An allocating kernel nested lexically inside another kernel is not yet a promoted workflow. Its decoder would naturally be inserted in the enclosing kernel rather than at function scope; moving it to function scope requires restructuring or splitting the enclosing kernel. The current `prepare_one` recursion does not have this shape: it is a function call between separately scoped kernels and is fully supported.
-- The state-vector simulator allocates `2 ** num_qubits` amplitudes even though the runtime uses a free-list. Concatenated-code tests should therefore use the minimum live-wire budget: 6 wires for one repetition layer of `prepare_one`, and 18 for two layers. Passing a generously oversized wire count can make otherwise small tests extremely slow.
+- The state-vector simulator allocates `2 ** num_qubits` amplitudes even though the evaluator uses a free-list. Concatenated-code tests should therefore use the minimum live-wire budget: 6 wires for one repetition layer of `prepare_one`, and 18 for two layers. Passing a generously oversized wire count can make otherwise small tests extremely slow.
 
 ## Environment
 
 - **Venv:** `/Users/anpaz/Repos/.venv/qstack` (Python 3.12.7).
 - **Pinned deps (initial):**
   - `xdsl==0.64.0`
-  - `openqasm3[parser]==1.0.1` (pulls `antlr4-python3-runtime==4.13.2`)
+  - `openqasm3[parser]==1.0.1` (pulls `antlr4-python3-evaluator==4.13.2`)
   - `pytest==9.0.3`
 - **Not yet pinned in a `pyproject.toml`** — installs are bare `pip install` so far. Pinning will happen in Phase 0.3.
 
@@ -183,7 +183,7 @@ _(None open.)_
 
 42. **The Bell notebook again starts at the Toy abstraction layer.** Now that the Toy dialect and emulator semantics exist, `0.bell.ipynb` uses `mix` and `entangle`, prints the lowered IR, shows one concrete shot, and then plots the Bell histogram. The previous claim that Toy was unported was stale.
 
-43. **Repeat-until-success demonstrates both runtime control and compilation.** `3.repeat_until_success.ipynb` implements a Toy `repeat_until_zero` protocol with a static continuation menu and host selector, enables `qstack` debug logging for one execution, then compiles the complete recursive program to Cliffords and displays the transformed IR. Unlike the legacy callback model, runtime callbacks do not return new quantum kernels; retry bodies are statically represented and compiler-visible.
+43. **Repeat-until-success demonstrates both evaluator control and compilation.** `3.repeat_until_success.ipynb` implements a Toy `repeat_until_zero` protocol with a static continuation menu and host selector, enables `qstack` debug logging for one execution, then compiles the complete recursive program to Cliffords and displays the transformed IR. Unlike the legacy callback model, evaluator callbacks do not return new quantum kernels; retry bodies are statically represented and compiler-visible.
 
 44. **The compilation notebook covers the implemented stack end to end.** `5.compile.ipynb` now prints and executes Toy, Clifford, H2, Rep3, Rep3-to-H2, and concatenated Rep3 modules, prints the Steane module, and traces one encoded execution. Independent branches clone the Clifford module because local ISA passes mutate in place while QEC passes return destination-built modules.
 
@@ -195,16 +195,22 @@ _(None open.)_
 
 47. **Include declarations are validated against IRDLOps.** Lowering validates that every declared include gate has a matching op, matching property names, and matching linear qubit operand/result arity before emitting compute ops.
 
-48. **Compute semantics live on op classes via `unitary()`.** The emulator still handles qstack core/control-flow ops directly, but executable compute gates are dispatched structurally through their dialect op's `unitary()` method. Parameterized ops read their own IRDL properties when building runtime matrices.
+48. **Compute semantics live on op classes via `unitary()`.** `ModuleEvaluator` handles qstack core/control-flow ops directly, but executable compute gates are dispatched structurally through their dialect op's `unitary()` method. Parameterized ops read their own IRDL properties when building runtime matrices.
 
 49. **QSTACKQASM v1 supports multiple ISA includes with disjoint gate names.** Includes are merged into one surface gate table so programs can combine a base ISA with extension dialects. If two includes declare the same surface gate name, lowering rejects the program until a qualified-call syntax exists.
 
 50. **Atoms v1 is gate-level only.** The neutral-atom ISA exposes `atoms.rz`, `atoms.sx`, and `atoms.cz`, with `cliffords2atoms` lowering verified by matrix tests. Geometry, movement, blockade constraints, loss/leakage, scheduling, and other hardware-rich atom concerns are intentionally deferred.
 
-51. **Unitary matrix definitions are dialect-local.** The shared runtime contract is only the `UnitaryGateOp` protocol. Each ISA dialect owns its own matrix constants and parameterized matrix factories, so semantics do not accumulate in a central gate table.
+51. **Unitary matrix definitions are dialect-local.** The shared evaluator contract is only the `UnitaryGateOp` protocol. Each ISA dialect owns its own matrix constants and parameterized matrix factories, so semantics do not accumulate in a central gate table.
 
-52. **`UnitaryGateOp` lives with the core dialect contract.** The protocol is defined in `dialect/core.py` rather than a separate semantics module because it is the structural contract compute dialect ops implement for the qstack emulator.
+52. **`UnitaryGateOp` lives with the core dialect contract.** The protocol is defined in `dialect/core.py` rather than a separate semantics module because it is the structural contract compute dialect ops implement for qstack evaluator execution.
 
 53. **User `def` symbols shadow included ISA gates.** Surface lowering resolves a call against hoisted user definitions before consulting the merged include gate table. Includes provide the ambient gate vocabulary, but local program symbols take precedence when names collide.
 
 54. **ISA op lookup lives under the dialect package.** The dialect registry is `qstack_mlir.dialect.registry`; include resolution validates declarations through that registry and stores the resolved IRDL op type on each `GateDecl`. Lowering consumes the resolved declaration instead of consulting the registry directly.
+
+55. **`Machine` is the hybrid quantum machine.** `Machine` is composed of explicit `qpu` and `cpu` processors so qstack programs can mix quantum state evolution with classical callback-driven control. `QPU` owns quantum state; qubit allocation, unitary application, measurement, reset, and quantum noise are QPU responsibilities because they mutate or observe that state. `CPU` owns classical state; `qstack.select` and `qstack.decode` evaluation are CPU responsibilities because they consume classical data through host callbacks. `ModuleEvaluator` is the IR walker that coordinates SSA/control-flow and delegates processor-specific work.
+
+56. **`Machine.eval` is the repeated-execution API.** The temporary `Machine.shots` convenience method was removed to stay closer to the original qstack `Machine` shape. `Machine.single_shot` runs one function invocation, and `Machine.eval(..., shots=N)` returns `Results`; `Results.shots` remains only the count property.
+
+57. **The MLIR walking execution layer is `ModuleEvaluator`.** The evaluator is separate from `Machine` because walking MLIR is reusable infrastructure for execution and future compiler-pass validation. `Machine` remains the public hybrid quantum machine; `ModuleEvaluator` evaluates a module against the machine's QPU/CPU processors.

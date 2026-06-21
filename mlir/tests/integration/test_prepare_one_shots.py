@@ -3,7 +3,7 @@
 This is the integration milestone for Phase 2: take the IR produced by
 ``test_prepare_one_ir._build_module`` (DESIGN.md §2.1, exact shape),
 register the host-language ``@repeat_until_one`` selector, run @main
-``N`` times against the emulator, and assert every shot returns the
+``N`` times against the runtime, and assert every shot returns the
 bit ``1``.
 """
 
@@ -29,7 +29,7 @@ def _build_machine() -> Machine:
 
 def test_prepare_one_1000_shots_all_one() -> None:
     machine = _build_machine()
-    results = machine.shots("main", 1000)
+    results = machine.eval(shots=1000)
     assert all(
         r == [1] for r in results
     ), f"expected every shot to return [1], saw {sorted({tuple(r) for r in results})}"

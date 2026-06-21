@@ -1,7 +1,7 @@
-"""Noise channels for the qstack_mlir emulator.
+"""Noise channels for the qstack_mlir runtime.
 
 A :class:`NoiseChannel` produces a list of Kraus matrices for an operation
-of a given Hilbert-space dimension (``dim = 2**arity``).  The emulator
+of a given Hilbert-space dimension (``dim = 2**arity``).  The QPU
 composes these with each gate's unitary as
 ``Operation([K @ U for K in kraus])`` and lets the underlying
 ``qsharp.noisy_simulator`` sample a Kraus branch per gate application.
@@ -27,7 +27,7 @@ class NoiseChannel(ABC):
 
 
 class NoiselessChannel(NoiseChannel):
-    """Identity channel — equivalent to running the noiseless emulator."""
+    """Identity channel — equivalent to running the noiseless QPU."""
 
     def get_kraus_matrices(self, dim: int) -> list[np.ndarray]:
         return [np.eye(dim)]

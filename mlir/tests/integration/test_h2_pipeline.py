@@ -46,7 +46,7 @@ def test_toy_to_cliffords_to_h2_executes_bell_program() -> None:
     assert not _has_cliffords(module)
     assert any(isinstance(op, (U1Op, RzOp, ZzOp)) for op in module.walk())
 
-    histogram = dict(Machine(module, num_qubits=2).shots("main", 2000).histogram())
+    histogram = dict(Machine(module, num_qubits=2).eval(shots=2000).histogram())
     assert set(histogram) <= {(0, 0), (1, 1)}
     for outcome in ((0, 0), (1, 1)):
         assert 800 < histogram.get(outcome, 0) < 1200
@@ -59,7 +59,7 @@ def test_rep3_to_h2_executes() -> None:
 
     registry = CallbackRegistry()
     register_rep3_callbacks(registry)
-    results = Machine(module, num_qubits=3, registry=registry).shots("main", 100)
+    results = Machine(module, num_qubits=3, registry=registry).eval(shots=100)
     assert all(result == [1] for result in results)
     assert not _has_cliffords(module)
 
@@ -71,6 +71,6 @@ def test_repeated_rep3_to_h2_executes() -> None:
 
     registry = CallbackRegistry()
     register_rep3_callbacks(registry)
-    results = Machine(module, num_qubits=9, registry=registry).shots("main", 20)
+    results = Machine(module, num_qubits=9, registry=registry).eval(shots=20)
     assert all(result == [1] for result in results)
     assert not _has_cliffords(module)

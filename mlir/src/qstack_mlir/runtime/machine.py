@@ -1,8 +1,9 @@
-"""Thin shots-loop wrapper over the emulator.
+"""Hybrid quantum machine for qstack MLIR execution.
 
-A ``Machine`` bundles a ``ModuleOp`` and a ``CallbackRegistry`` with a
-fixed physical-qubit budget and exposes a ``shots(name, count)`` helper
-that runs ``func.func @name`` ``count`` times and collects the results.
+A ``Machine`` is composed of a QPU and CPU so programs can mix quantum
+state evolution with classical callback-driven control. It binds that
+processor pair to a ``ModuleOp`` and fixed physical-qubit budget, then
+exposes ``single_shot`` and ``eval`` helpers.
 """
 
 from __future__ import annotations
@@ -11,8 +12,9 @@ from typing import Any
 
 from xdsl.dialects.builtin import ModuleOp
 
-from qstack_mlir.runtime.emulator import Emulator
+from qstack_mlir.runtime.evaluator import ModuleEvaluator
 from qstack_mlir.runtime.noise import NoiseChannel
+from qstack_mlir.runtime.processors import CPU, QPU
 from qstack_mlir.runtime.registry import CallbackRegistry
 from qstack_mlir.runtime.results import Results
 
@@ -28,21 +30,33 @@ class Machine:
         noise: NoiseChannel | None = None,
     ) -> None:
         self._module = module
-        self._registry = registry
         self._num_qubits = num_qubits
-        self._seed = seed
-        self._noise = noise
+        self.qpu = QPU(num_qubits, seed=seed, noise=noise)
+        self.cpu = CPU(registry)
 
-    def shots(self, name: str, count: int, *, args: list[Any] | None = None) -> Results:
-        """Run ``@name`` ``count`` times. Returns a :class:`Results` wrapper."""
-        out: list[list[int | None]] = []
-        for _ in range(count):
-            emu = Emulator(
-                num_qubits=self._num_qubits,
-                module=self._module,
-                registry=self._registry,
-                seed=self._seed,
-                noise=self._noise,
-            )
-            out.append(emu.run_func(name, args=args))
-        return Results(out)
+    def single_shot(
+        self,
+        name: str = "main",
+        *,
+        args: list[Any] | None = None,
+    ) -> list[int | None]:
+        """Run ``@name`` once from a fresh simulator state."""
+        return self._evaluator().run_func(name, args=args)
+
+    def eval(
+        self,
+        name: str = "main",
+        *,
+        shots: int = 1000,
+        args: list[Any] | None = None,
+    ) -> Results:
+        """Run ``@name`` ``shots`` times and collect the returned bits."""
+        return Results([self.single_shot(name, args=args) for _ in range(shots)])
+
+    def _evaluator(self) -> ModuleEvaluator:
+        return ModuleEvaluator(
+            num_qubits=self._num_qubits,
+            module=self._module,
+            qpu=self.qpu,
+            cpu=self.cpu,
+        )

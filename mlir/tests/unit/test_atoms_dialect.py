@@ -11,7 +11,7 @@ from xdsl.printer import Printer
 from qstack_mlir.dialect import BitType, QStack, QubitType
 from qstack_mlir.dialect.atoms import Atoms, CzOp, RzOp, SxOp
 from qstack_mlir.dialect.core import KernelOp, MeasureOp, ReturnOp
-from qstack_mlir.runtime.emulator import Emulator
+from qstack_mlir.runtime.evaluator import ModuleEvaluator
 from qstack_mlir.surface.lowering import lower
 from qstack_mlir.surface.parser import parse
 
@@ -101,5 +101,5 @@ measure q[0] -> c[0];
         )
     )
     for _ in range(20):
-        assert Emulator(num_qubits=1, module=module).run_func("main") == [1]
+        assert ModuleEvaluator(num_qubits=1, module=module).run_func("main") == [1]
 

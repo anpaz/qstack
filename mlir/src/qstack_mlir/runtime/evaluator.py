@@ -1,27 +1,16 @@
-"""Phase 2 emulator: walks a qstack module and executes it.
+"""IR walker for qstack MLIR execution.
 
-This first version handles a single ``qstack.kernel`` and its body:
-
-* Clifford gates (``cliffords.{h,x,y,z,s,cx,cz}``) → ``qsharp.noisy_simulator``
-  ``Operation`` applies.
-* ``qstack.measure`` → ``sample_instrument`` against a Z-projector;
-  post-measure the qubit is reset to ``|0⟩`` and its physical index is
-  returned to the free pool.
-* ``qstack.return`` → produces the kernel's results (bits + threaded qubits).
-
-``func.call``, ``qstack.select``, ``qstack.invoke``, and ``qstack.decode``
-land in Phase 2c.
+``ModuleEvaluator`` coordinates SSA/control-flow execution. Quantum state
+evolution is delegated to ``QPU``; classical callback evaluation for
+``qstack.select`` and ``qstack.decode`` is delegated to ``CPU``.
 """
 
 from __future__ import annotations
 
-import logging
-import random
 from typing import Any
 
 import numpy as np
-from qsharp.noisy_simulator import Instrument, Operation, StateVectorSimulator
-from xdsl.dialects.builtin import ModuleOp, SymbolRefAttr
+from xdsl.dialects.builtin import ModuleOp
 from xdsl.dialects.func import CallOp, FuncOp, ReturnOp as FuncReturnOp
 from xdsl.ir import Block, SSAValue
 
@@ -35,30 +24,20 @@ from qstack_mlir.dialect.core import (
     SelectOp,
     UnitaryGateOp,
 )
-from qstack_mlir.runtime.noise import NoiseChannel, NoiselessChannel
+from qstack_mlir.runtime.noise import NoiseChannel
+from qstack_mlir.runtime.processors import CPU, QPU
 from qstack_mlir.runtime.registry import CallbackRegistry
 
-logger = logging.getLogger("qstack")
 
-_RESET_X_MAT = np.array([[0.0, 1.0], [1.0, 0.0]], dtype=complex)
-
-_Z_INSTRUMENT = Instrument(
-    [
-        Operation([[[1.0, 0.0], [0.0, 0.0]]]),
-        Operation([[[0.0, 0.0], [0.0, 1.0]]]),
-    ]
-)
+# ----------------------------------------------------------------- evaluator
 
 
-# ----------------------------------------------------------------- emulator
+class ModuleEvaluator:
+    """Evaluates qstack MLIR against a QPU/CPU processor pair.
 
-
-class Emulator:
-    """Walks qstack IR against a single ``StateVectorSimulator``.
-
-    The simulator has a fixed pool of ``num_qubits`` physical wires; the
-    emulator hands out indices from this pool when kernels allocate, and
-    returns them when measurements consume.
+    The evaluator owns the SSA environment and module control flow. Quantum
+    operations delegate to ``QPU``; classical callback operations delegate to
+    ``CPU``.
     """
 
     def __init__(
@@ -69,23 +48,19 @@ class Emulator:
         module: ModuleOp | None = None,
         registry: CallbackRegistry | None = None,
         noise: NoiseChannel | None = None,
+        qpu: QPU | None = None,
+        cpu: CPU | None = None,
     ) -> None:
         self._num_qubits = num_qubits
-        self._rng_seed = seed
         self._module = module
-        self._registry = registry
-        self._noise: NoiseChannel = noise if noise is not None else NoiselessChannel()
+        self._qpu = qpu if qpu is not None else QPU(num_qubits, seed=seed, noise=noise)
+        self._cpu = cpu if cpu is not None else CPU(registry)
         self._funcs: dict[str, FuncOp] = {}
         if module is not None:
             for op in module.body.ops:
                 if isinstance(op, FuncOp):
                     self._funcs[op.sym_name.data] = op
-        self._sim: StateVectorSimulator | None = None
-        self._free: list[int] = []
         self._env: dict[SSAValue, Any] = {}
-        # Cache of (gate_name, dim) -> Operation built with the channel's
-        # Kraus matrices composed onto the unitary.
-        self._op_cache: dict[tuple[str, int], Operation] = {}
 
     # ------------------------------------------------------ public API
 
@@ -117,19 +92,15 @@ class Emulator:
     # ------------------------------------------------------ internals
 
     def _restart(self) -> None:
-        seed = self._rng_seed if self._rng_seed is not None else random.randint(0, 2**31 - 1)
-        logger.debug("restart: %s", self._num_qubits)
-        self._sim = StateVectorSimulator(self._num_qubits, seed=seed)
-        self._free = list(reversed(range(self._num_qubits)))  # pop from end
+        self._cpu.restart()
+        self._qpu.restart()
         self._env = {}
 
     def _alloc(self) -> int:
-        if not self._free:
-            raise RuntimeError("emulator out of physical qubits")
-        return self._free.pop()
+        return self._qpu.allocate()
 
     def _release(self, idx: int) -> None:
-        self._free.append(idx)
+        self._qpu.release(idx)
 
     def _exec_kernel(self, kernel: KernelOp) -> list[SSAValue]:
         """Run kernel body; return the SSA values listed in qstack.return.
@@ -161,16 +132,7 @@ class Emulator:
             return
         if isinstance(op, MeasureOp):
             idx = self._env.pop(op.qubit)
-            outcome = self._sim.sample_instrument(_Z_INSTRUMENT, [idx])
-            logger.debug("outcome: %s", outcome)
-            # Reset to |0⟩ so the wire can be reused.  Reuse the cached
-            # (noisy or noiseless) X operation: in the noisy case the reset
-            # itself is subject to the same channel, which matches the
-            # legacy emulator's behaviour.
-            if outcome == 1:
-                self._sim.apply_operation(self._gate_op("x", _RESET_X_MAT), [idx])
-            self._release(idx)
-            self._env[op.result] = int(outcome)
+            self._env[op.result] = self._qpu.measure(idx)
             return
         if isinstance(op, KernelOp):
             # Nested kernel: execute and bind its results into our env.
@@ -199,7 +161,7 @@ class Emulator:
         if isinstance(op, DecodeOp):
             self._exec_decode(op)
             return
-        raise NotImplementedError(f"emulator: unsupported op {op.name}")
+        raise NotImplementedError(f"evaluator: unsupported op {op.name}")
 
     # ----------------------------------------------------- gate helpers
 
@@ -208,7 +170,7 @@ class Emulator:
         results = list(op.results)
         if len(operands) != len(results):
             raise NotImplementedError(
-                f"emulator: gate {op.name} must thread the same number "
+                f"evaluator: gate {op.name} must thread the same number "
                 "of operands and results"
             )
         unitary = op.unitary()
@@ -220,7 +182,7 @@ class Emulator:
             self._apply_2q(name, unitary, operands[0], operands[1], results[0], results[1])
             return
         raise NotImplementedError(
-            f"emulator: gate {op.name} has unsupported arity {len(operands)}"
+            f"evaluator: gate {op.name} has unsupported arity {len(operands)}"
         )
 
     @staticmethod
@@ -233,22 +195,9 @@ class Emulator:
             return op.name.rsplit(".", 1)[-1]
         return f"{op.name}{tuple(values)}"
 
-    def _gate_op(self, name: str, unitary: np.ndarray) -> Operation:
-        """Return a (cached) ``Operation`` for ``unitary`` under the noise channel."""
-        dim = unitary.shape[0]
-        key = (name, dim)
-        cached = self._op_cache.get(key)
-        if cached is not None:
-            return cached
-        kraus = self._noise.get_kraus_matrices(dim)
-        op = Operation([K @ unitary for K in kraus])
-        self._op_cache[key] = op
-        return op
-
     def _apply_1q(self, name: str, unitary: np.ndarray, operand: SSAValue, result: SSAValue) -> None:
         idx = self._env.pop(operand)
-        logger.debug("eval: %s [%s]", name, idx)
-        self._sim.apply_operation(self._gate_op(name, unitary), [idx])
+        self._qpu.apply_unitary(name, unitary, [idx])
         self._env[result] = idx
 
     def _apply_2q(
@@ -265,10 +214,9 @@ class Emulator:
         # qsharp.noisy_simulator expects qubit list with target first when
         # the operation matrix is written in standard "control ⊗ target"
         # tensor order with little-endian wire indexing. Match the existing
-        # qstack emulator convention.
+        # qstack evaluator convention.
         qubits = [t_idx, c_idx]
-        logger.debug("eval: %s %s", name, qubits)
-        self._sim.apply_operation(self._gate_op(name, unitary), qubits)
+        self._qpu.apply_unitary(name, unitary, qubits)
         self._env[c_out] = c_idx
         self._env[t_out] = t_idx
 
@@ -310,24 +258,8 @@ class Emulator:
             self._env[out_ssa] = self._env[ret_ssa]
 
     def _exec_select(self, op: SelectOp) -> None:
-        if self._registry is None:
-            raise RuntimeError("qstack.select requires a CallbackRegistry")
-        sym = op.callee.root_reference.data
-        fn = self._registry.get_selector(sym)
         kwargs = {name.data: int(self._env[bit]) for name, bit in zip(op.bit_names.data, op.bit_operands)}
-        label = fn(**kwargs)
-        logger.debug("select: %s %s -> %s", sym, kwargs, label)
-        if label not in op.continuations.data:
-            raise RuntimeError(
-                f"selector @{sym} returned label {label!r} not in menu " f"{list(op.continuations.data)}"
-            )
-        cont_sym = op.continuations.data[label]
-        cont_name = cont_sym.root_reference.data
-        if cont_name not in self._funcs:
-            raise RuntimeError(f"continuation @{cont_name} not in module")
-        # The op's result is the chosen FuncOp itself; qstack.invoke will
-        # call it. We park the FuncOp in env keyed by the result SSA value.
-        self._env[op.result] = self._funcs[cont_name]
+        self._env[op.result] = self._cpu.select(op, kwargs, self._funcs)
 
     def _exec_invoke(self, op: InvokeOp) -> None:
         fn = self._env.pop(op.callee)
@@ -339,14 +271,8 @@ class Emulator:
             self._env[out_ssa] = self._env[ret_ssa]
 
     def _exec_decode(self, op: DecodeOp) -> None:
-        if self._registry is None:
-            raise RuntimeError("qstack.decode requires a CallbackRegistry")
-        sym = op.callee.root_reference.data
-        fn = self._registry.get_decoder(sym)
         args = [int(self._env[b]) for b in op.bit_operands]
-        result = int(fn(*args))
-        logger.debug("decode: %s %s -> %s", sym, args, result)
         # Consume the bit operands (single-use).
         for b in op.bit_operands:
             del self._env[b]
-        self._env[op.result] = result
+        self._env[op.result] = self._cpu.decode(op, args)

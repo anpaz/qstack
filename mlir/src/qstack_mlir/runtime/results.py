@@ -1,9 +1,9 @@
-"""Shots-loop result container with histogram + plotting helpers.
+"""Repeated-evaluation result container with histogram + plotting helpers.
 
 Modeled on the legacy ``qstack.machine.Results`` so notebooks using the
 new MLIR runtime feel familiar:
 
-    results = machine.shots("main", 1000)
+    results = machine.eval(shots=1000)
     results.histogram()        # -> OrderedDict[tuple, int]
     results.plot_histogram()   # matplotlib bar chart
 """
