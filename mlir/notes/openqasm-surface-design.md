@@ -120,7 +120,7 @@ The include file contains:
 2. Body-less `gate` declarations for every op the ISA exposes (with their parameter lists and qubit arities).
 3. Optionally, body-less `extern` declarations for ISA-provided standard decoders.
 
-The user-facing surface is just `include`. The `#pragma` is the underlying mechanism and is not expected to appear in user-authored files. A file may include exactly one ISA `.inc`; multiple is a parse error.
+The user-facing surface is just `include`. The `#pragma` is the underlying mechanism and is not expected to appear in user-authored files. A file may include multiple ISA `.inc` files when their public gate names are disjoint, allowing a base ISA to compose with extension dialects such as magic-state mechanisms. If two includes declare the same surface gate name, lowering rejects the program until a qualified-call syntax exists.
 
 A common auxiliary include — `include "qstack/aux.inc";` — brings in the `reset` and `barrier` ops from the `qstack_aux` dialect (§5.4). ISAs that wish to support these ops opt in by including or re-exporting `aux`.
 

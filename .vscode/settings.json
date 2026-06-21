@@ -5,8 +5,12 @@
     "119"
   ],
   "python.testing.pytestArgs": [
-    "tests"
+    "tests",
+    "mlir/tests"
   ],
   "python.testing.unittestEnabled": false,
-  "python.testing.pytestEnabled": true
+  "python.testing.pytestEnabled": true,
+  "chat.tools.terminal.autoApprove": {
+    "pandoc": true
+  }
 }

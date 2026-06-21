@@ -186,3 +186,25 @@ _(None open.)_
 43. **Repeat-until-success demonstrates both runtime control and compilation.** `3.repeat_until_success.ipynb` implements a Toy `repeat_until_zero` protocol with a static continuation menu and host selector, enables `qstack` debug logging for one execution, then compiles the complete recursive program to Cliffords and displays the transformed IR. Unlike the legacy callback model, runtime callbacks do not return new quantum kernels; retry bodies are statically represented and compiler-visible.
 
 44. **The compilation notebook covers the implemented stack end to end.** `5.compile.ipynb` now prints and executes Toy, Clifford, H2, Rep3, Rep3-to-H2, and concatenated Rep3 modules, prints the Steane module, and traces one encoded execution. Independent branches clone the Clifford module because local ISA passes mutate in place while QEC passes return destination-built modules.
+
+## 2026-06-21 — Phase E ISA decoupling and atoms
+
+45. **Surface gate names now live only in include files.** The `.inc` files declare public QSTACKQASM gate names, parameter names, and qubit arity. Dialect files no longer need duplicate surface-name metadata.
+
+46. **The include-to-IR convention is `<isa>.<gate>`.** An include with `#pragma qstack.isa atoms; gate rz(theta) q;` resolves the surface call `rz(...)` to the IR op `atoms.rz`. The same surface spelling under `h2.inc` resolves to `h2.rz`.
+
+47. **Include declarations are validated against IRDLOps.** Lowering validates that every declared include gate has a matching op, matching property names, and matching linear qubit operand/result arity before emitting compute ops.
+
+48. **Compute semantics live on op classes via `unitary()`.** The emulator still handles qstack core/control-flow ops directly, but executable compute gates are dispatched structurally through their dialect op's `unitary()` method. Parameterized ops read their own IRDL properties when building runtime matrices.
+
+49. **QSTACKQASM v1 supports multiple ISA includes with disjoint gate names.** Includes are merged into one surface gate table so programs can combine a base ISA with extension dialects. If two includes declare the same surface gate name, lowering rejects the program until a qualified-call syntax exists.
+
+50. **Atoms v1 is gate-level only.** The neutral-atom ISA exposes `atoms.rz`, `atoms.sx`, and `atoms.cz`, with `cliffords2atoms` lowering verified by matrix tests. Geometry, movement, blockade constraints, loss/leakage, scheduling, and other hardware-rich atom concerns are intentionally deferred.
+
+51. **Unitary matrix definitions are dialect-local.** The shared runtime contract is only the `UnitaryGateOp` protocol. Each ISA dialect owns its own matrix constants and parameterized matrix factories, so semantics do not accumulate in a central gate table.
+
+52. **`UnitaryGateOp` lives with the core dialect contract.** The protocol is defined in `dialect/core.py` rather than a separate semantics module because it is the structural contract compute dialect ops implement for the qstack emulator.
+
+53. **User `def` symbols shadow included ISA gates.** Surface lowering resolves a call against hoisted user definitions before consulting the merged include gate table. Includes provide the ambient gate vocabulary, but local program symbols take precedence when names collide.
+
+54. **ISA op lookup lives under the dialect package.** The dialect registry is `qstack_mlir.dialect.registry`; include resolution validates declarations through that registry and stores the resolved IRDL op type on each `GateDecl`. Lowering consumes the resolved declaration instead of consulting the registry directly.

@@ -11,6 +11,8 @@ These tests exercise only the kernel body — no ``func.call``,
 """
 
 from xdsl.ir import Block, Region
+from xdsl.irdl import IRDLOperation, irdl_op_definition, operand_def, result_def
+import pytest
 
 from qstack_mlir.dialect import BitType, QubitType
 from qstack_mlir.dialect.cliffords import CxOp, HOp, XOp
@@ -56,6 +58,17 @@ def _kernel_bell() -> KernelOp:
     return KernelOp(result_types=[BitType(), BitType()], region=Region([blk]))
 
 
+@irdl_op_definition
+class NoSemanticsOp(IRDLOperation):
+    name = "test.no_semantics"
+
+    qubit = operand_def(QubitType)
+    result = result_def(QubitType)
+
+    def __init__(self, qubit):
+        super().__init__(operands=[qubit], result_types=[QubitType()])
+
+
 def test_identity_kernel_measures_zero() -> None:
     emu = Emulator(num_qubits=4)
     for _ in range(20):
@@ -76,6 +89,20 @@ def test_bell_kernel_correlated() -> None:
         results = emu.run_kernel(_kernel_bell())
         assert len(results) == 2
         assert results[0] == results[1]
+
+
+def test_compute_gate_without_unitary_semantics_fails_clearly() -> None:
+    blk = Block(arg_types=[QubitType()])
+    q = blk.args[0]
+    op = NoSemanticsOp(q)
+    blk.add_op(op)
+    meas = MeasureOp(operand=op.result)
+    blk.add_op(meas)
+    blk.add_op(ReturnOp(operands=[meas.result]))
+    kernel = KernelOp(result_types=[BitType()], region=Region([blk]))
+
+    with pytest.raises(NotImplementedError, match="test.no_semantics"):
+        Emulator(num_qubits=1).run_kernel(kernel)
 
 
 def test_kernel_threads_captured_qubit_back() -> None:

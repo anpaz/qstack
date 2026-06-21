@@ -31,6 +31,8 @@ from typing import Iterable
 from lark import Token, Tree
 from xdsl.dialects.builtin import (
     DictionaryAttr,
+    Float64Type,
+    FloatAttr,
     FunctionType,
     ModuleOp,
     StringAttr,
@@ -41,31 +43,8 @@ from xdsl.dialects.func import CallOp, FuncOp, ReturnOp as FuncReturn
 from xdsl.ir import Block, Operation, Region, SSAValue
 
 from qstack_mlir.dialect import BitType, QubitType
-from qstack_mlir.dialect.cliffords import CxOp, CzOp, HOp, SOp, XOp, YOp, ZOp
 from qstack_mlir.dialect.core import InvokeOp, KernelOp, MeasureOp, ReturnOp, SelectOp
-from qstack_mlir.dialect.h2 import RzOp, RzzOp, U1Op, ZzOp
-from qstack_mlir.dialect.toy import EntangleOp, FlipOp, MixOp, SkewOp
-
-_SINGLE_GATES = {
-    "h": HOp,
-    "x": XOp,
-    "y": YOp,
-    "z": ZOp,
-    "s": SOp,
-    "flip": FlipOp,
-    "mix": MixOp,
-}
-_TWO_GATES = {"cx": CxOp, "cz": CzOp, "entangle": EntangleOp, "zz": ZzOp}
-# Parametric single-qubit gates, dispatched separately because they take
-# a leading numeric argument list parsed as ``gate_params``.
-_PARAM_SINGLE_GATES = {"skew": (SkewOp, 1), "u1": (U1Op, 2), "rz": (RzOp, 1)}
-_PARAM_TWO_GATES = {"rzz": (RzzOp, 1)}
-_GATE_NAMES = (
-    set(_SINGLE_GATES)
-    | set(_TWO_GATES)
-    | set(_PARAM_SINGLE_GATES)
-    | set(_PARAM_TWO_GATES)
-)
+from qstack_mlir.surface.isa_includes import IncludeGateSet, resolve_includes
 
 
 # ---------------------------------------------------------------------------
@@ -135,12 +114,16 @@ class _Lower:
         self.module = ModuleOp([])
         self.defs: dict[str, FunctionType] = {}  # user-def signatures
         self.case_counter = 0  # for auto-generated continuation names
+        self.include_gates = IncludeGateSet(includes=(), gates={})
 
     # -- public ---------------------------------------------------------
 
     def lower(self, tree: Tree) -> ModuleOp:
         if tree.data != "start":
             raise ValueError(f"expected start tree, got {tree.data!r}")
+        self.include_gates = resolve_includes(
+            [ch for ch in tree.children if _is_tree(ch, "include")]
+        )
         # Pass 1: hoist user-def signatures so call-sites can resolve.
         for ch in tree.children:
             if _is_tree(ch, "def_decl"):
@@ -164,7 +147,7 @@ class _Lower:
                 self._build_def(ch)
             elif ch.data in {"qreg_stmt", "creg_stmt", "apply_stmt", "measure_stmt"}:
                 top_stmts.append(ch)
-            # header / include nodes are ignored: cliffords are built in.
+            # header / include nodes are handled before lowering source ops.
         if top_stmts:
             self._build_main(top_stmts)
         return self.module
@@ -440,47 +423,7 @@ class _Lower:
         arg_names = [_qubit_arg_name(a) for a in arg_trees]
         arg_ssa = [env.qubits[n] for n in arg_names]
 
-        if name in _SINGLE_GATES:
-            if params:
-                raise ValueError(f"gate {name!r} takes no parameters, got {len(params)}")
-            if len(arg_ssa) != 1:
-                raise ValueError(f"gate {name!r} expects 1 qubit, got {len(arg_ssa)}")
-            op = _SINGLE_GATES[name](arg_ssa[0])
-            block.add_op(op)
-            env.qubits[arg_names[0]] = op.result
-        elif name in _PARAM_SINGLE_GATES:
-            op_type, n_params = _PARAM_SINGLE_GATES[name]
-            if len(params) != n_params:
-                raise ValueError(
-                    f"gate {name!r} expects {n_params} parameters, got {len(params)}"
-                )
-            if len(arg_ssa) != 1:
-                raise ValueError(f"gate {name!r} expects 1 qubit, got {len(arg_ssa)}")
-            op = op_type(arg_ssa[0], *params)
-            block.add_op(op)
-            env.qubits[arg_names[0]] = op.result
-        elif name in _PARAM_TWO_GATES:
-            op_type, n_params = _PARAM_TWO_GATES[name]
-            if len(params) != n_params:
-                raise ValueError(
-                    f"gate {name!r} expects {n_params} parameters, got {len(params)}"
-                )
-            if len(arg_ssa) != 2:
-                raise ValueError(f"gate {name!r} expects 2 qubits, got {len(arg_ssa)}")
-            op = op_type(arg_ssa[0], arg_ssa[1], *params)
-            block.add_op(op)
-            env.qubits[arg_names[0]] = op.first_out
-            env.qubits[arg_names[1]] = op.second_out
-        elif name in _TWO_GATES:
-            if params:
-                raise ValueError(f"gate {name!r} takes no parameters, got {len(params)}")
-            if len(arg_ssa) != 2:
-                raise ValueError(f"gate {name!r} expects 2 qubits, got {len(arg_ssa)}")
-            op = _TWO_GATES[name](arg_ssa[0], arg_ssa[1])
-            block.add_op(op)
-            env.qubits[arg_names[0]] = op.results[0]
-            env.qubits[arg_names[1]] = op.results[1]
-        elif name in self.defs:
+        if name in self.defs:
             if params:
                 raise ValueError(f"def @{name} does not accept gate parameters")
             sig = self.defs[name]
@@ -491,8 +434,43 @@ class _Lower:
             block.add_op(call)
             for arg_name, out in zip(arg_names, call.results):
                 env.qubits[arg_name] = out
+        elif name in self.include_gates.gates:
+            op = self._build_gate_op(name, params, arg_ssa)
+            block.add_op(op)
+            for arg_name, result in zip(arg_names, op.results):
+                env.qubits[arg_name] = result
         else:
-            raise NotImplementedError(f"unknown apply target: {name!r}")
+            if not self.include_gates.gates:
+                raise NotImplementedError(
+                    f"unknown apply target {name!r}; no included ISA gates"
+                )
+            raise NotImplementedError(
+                f"unknown apply target {name!r}; gate is not declared by "
+                "any include"
+            )
+
+    def _build_gate_op(
+        self,
+        name: str,
+        params: list[float],
+        qubits: list[SSAValue],
+    ) -> Operation:
+        decl = self.include_gates.gates[name]
+        if len(params) != len(decl.params):
+            raise ValueError(
+                f"gate {name!r} expects {len(decl.params)} parameters, got {len(params)}"
+            )
+        if len(qubits) != decl.arity:
+            raise ValueError(f"gate {name!r} expects {decl.arity} qubits, got {len(qubits)}")
+        properties = {
+            param_name: FloatAttr(float(value), Float64Type())
+            for param_name, value in zip(decl.params, params)
+        }
+        return decl.op_type.create(
+            operands=qubits,
+            result_types=[QubitType()] * decl.arity,
+            properties=properties,
+        )
 
     def _lower_measure(self, s: Tree, block: Block, env: _Env) -> None:
         q_arg = s.children[0]

@@ -14,6 +14,9 @@ The skew op is the first parametric gate in the qstack-MLIR stack; its
 
 from __future__ import annotations
 
+import math
+
+import numpy as np
 from xdsl.dialects.builtin import Float64Type, FloatAttr
 from xdsl.ir import Dialect, SSAValue
 from xdsl.irdl import (
@@ -25,6 +28,29 @@ from xdsl.irdl import (
 )
 
 from qstack_mlir.dialect.core import QubitType
+
+
+SQRT_HALF = 2**-0.5
+H_MAT = np.array([[SQRT_HALF, SQRT_HALF], [SQRT_HALF, -SQRT_HALF]], dtype=complex)
+X_MAT = np.array([[0.0, 1.0], [1.0, 0.0]], dtype=complex)
+CX_MAT = np.array(
+    [
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0, 0.0],
+    ],
+    dtype=complex,
+)
+
+
+def skew_matrix(bias: float) -> np.ndarray:
+    """Legacy toy-ISA ``skew(bias)`` unitary."""
+
+    theta = 2 * math.asin(math.sqrt(float(bias)))
+    c = math.cos(theta / 2)
+    s = math.sin(theta / 2)
+    return np.array([[c, -1j * s], [-1j * s, c]], dtype=complex)
 
 
 class _ToySingleQubitGateOp(IRDLOperation):
@@ -41,12 +67,18 @@ class FlipOp(_ToySingleQubitGateOp):
 
     name = "toy.flip"
 
+    def unitary(self):
+        return X_MAT
+
 
 @irdl_op_definition
 class MixOp(_ToySingleQubitGateOp):
     """Hadamard under the toy ISA name."""
 
     name = "toy.mix"
+
+    def unitary(self):
+        return H_MAT
 
 
 @irdl_op_definition
@@ -70,6 +102,9 @@ class SkewOp(IRDLOperation):
             properties={"bias": FloatAttr(float(bias), Float64Type())},
         )
 
+    def unitary(self):
+        return skew_matrix(self.bias.value.data)
+
 
 @irdl_op_definition
 class EntangleOp(IRDLOperation):
@@ -91,6 +126,9 @@ class EntangleOp(IRDLOperation):
             operands=[control, target],
             result_types=[QubitType(), QubitType()],
         )
+
+    def unitary(self):
+        return CX_MAT
 
 
 Toy = Dialect(

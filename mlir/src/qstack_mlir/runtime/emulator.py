@@ -19,8 +19,6 @@ import logging
 import random
 from typing import Any
 
-import math
-
 import numpy as np
 from qsharp.noisy_simulator import Instrument, Operation, StateVectorSimulator
 from xdsl.dialects.builtin import ModuleOp, SymbolRefAttr
@@ -28,7 +26,6 @@ from xdsl.dialects.func import CallOp, FuncOp, ReturnOp as FuncReturnOp
 from xdsl.ir import Block, SSAValue
 
 from qstack_mlir.dialect import BitType, QubitType
-from qstack_mlir.dialect.cliffords import CxOp, CzOp, HOp, SOp, XOp, YOp, ZOp
 from qstack_mlir.dialect.core import (
     DecodeOp,
     InvokeOp,
@@ -36,43 +33,14 @@ from qstack_mlir.dialect.core import (
     MeasureOp,
     ReturnOp,
     SelectOp,
+    UnitaryGateOp,
 )
-from qstack_mlir.dialect.toy import EntangleOp, FlipOp, MixOp, SkewOp
-from qstack_mlir.dialect.h2 import RzOp, RzzOp, U1Op, ZzOp
 from qstack_mlir.runtime.noise import NoiseChannel, NoiselessChannel
 from qstack_mlir.runtime.registry import CallbackRegistry
 
 logger = logging.getLogger("qstack")
 
-# ---------------------------------------------------------------- gate table
-
-_SQRT_HALF = 2**-0.5
-_H_MAT = np.array([[_SQRT_HALF, _SQRT_HALF], [_SQRT_HALF, -_SQRT_HALF]], dtype=complex)
-_X_MAT = np.array([[0.0, 1.0], [1.0, 0.0]], dtype=complex)
-_Y_MAT = np.array([[0.0, -1.0j], [1.0j, 0.0]], dtype=complex)
-_Z_MAT = np.array([[1.0, 0.0], [0.0, -1.0]], dtype=complex)
-_S_MAT = np.array([[1.0, 0.0], [0.0, 1.0j]], dtype=complex)
-# qsharp.noisy_simulator little-endian wire ordering; we hand qubits as
-# [target, control] (see ``_apply_2q`` below) so the matrix is written in
-# standard "control \u2297 target" basis.
-_CX_MAT = np.array(
-    [
-        [1.0, 0.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0, 0.0],
-        [0.0, 0.0, 0.0, 1.0],
-        [0.0, 0.0, 1.0, 0.0],
-    ],
-    dtype=complex,
-)
-_CZ_MAT = np.array(
-    [
-        [1.0, 0.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0, 0.0],
-        [0.0, 0.0, 1.0, 0.0],
-        [0.0, 0.0, 0.0, -1.0],
-    ],
-    dtype=complex,
-)
+_RESET_X_MAT = np.array([[0.0, 1.0], [1.0, 0.0]], dtype=complex)
 
 _Z_INSTRUMENT = Instrument(
     [
@@ -80,39 +48,6 @@ _Z_INSTRUMENT = Instrument(
         Operation([[[0.0, 0.0], [0.0, 1.0]]]),
     ]
 )
-
-
-def _skew_matrix(bias: float) -> np.ndarray:
-    """Legacy toy-ISA ``skew(bias)`` unitary — matches
-    ``src/qstack/instruction_sets/toy.py:skew``."""
-    theta = 2 * math.asin(math.sqrt(float(bias)))
-    c = math.cos(theta / 2)
-    s = math.sin(theta / 2)
-    return np.array([[c, -1j * s], [-1j * s, c]], dtype=complex)
-
-
-def _u1_matrix(theta: float, phi: float) -> np.ndarray:
-    c = math.cos(theta / 2)
-    s = math.sin(theta / 2)
-    return np.array(
-        [
-            [c, -1j * np.exp(-1j * phi) * s],
-            [-1j * np.exp(1j * phi) * s, c],
-        ],
-        dtype=complex,
-    )
-
-
-def _rz_matrix(theta: float) -> np.ndarray:
-    return np.diag(
-        [np.exp(-1j * theta / 2), np.exp(1j * theta / 2)]
-    ).astype(complex)
-
-
-def _rzz_matrix(theta: float) -> np.ndarray:
-    phase = np.exp(-1j * theta / 2)
-    opposite = np.exp(1j * theta) * phase
-    return np.diag([phase, opposite, opposite, phase]).astype(complex)
 
 
 # ----------------------------------------------------------------- emulator
@@ -221,83 +156,8 @@ class Emulator:
     # ------------------------------------------------------ dispatch
 
     def _dispatch(self, op) -> None:
-        # Clifford gates: thread qubit indices unchanged.
-        if isinstance(op, HOp):
-            self._apply_1q("h", _H_MAT, op.qubit, op.result)
-            return
-        if isinstance(op, XOp):
-            self._apply_1q("x", _X_MAT, op.qubit, op.result)
-            return
-        if isinstance(op, YOp):
-            self._apply_1q("y", _Y_MAT, op.qubit, op.result)
-            return
-        if isinstance(op, ZOp):
-            self._apply_1q("z", _Z_MAT, op.qubit, op.result)
-            return
-        if isinstance(op, SOp):
-            self._apply_1q("s", _S_MAT, op.qubit, op.result)
-            return
-        if isinstance(op, CxOp):
-            self._apply_2q("cx", _CX_MAT, op.control, op.target, op.control_out, op.target_out)
-            return
-        if isinstance(op, CzOp):
-            self._apply_2q("cz", _CZ_MAT, op.control, op.target, op.control_out, op.target_out)
-            return
-        # ---- Toy ISA ----
-        if isinstance(op, FlipOp):
-            self._apply_1q("toy.flip", _X_MAT, op.qubit, op.result)
-            return
-        if isinstance(op, MixOp):
-            self._apply_1q("toy.mix", _H_MAT, op.qubit, op.result)
-            return
-        if isinstance(op, SkewOp):
-            bias = op.bias.value.data
-            # Cache key includes bias so different angles don't collide.
-            self._apply_1q(f"toy.skew({bias})", _skew_matrix(bias), op.qubit, op.result)
-            return
-        if isinstance(op, EntangleOp):
-            self._apply_2q("toy.entangle", _CX_MAT, op.control, op.target, op.control_out, op.target_out)
-            return
-        # ---- H2 ISA ----
-        if isinstance(op, U1Op):
-            theta = op.theta.value.data
-            phi = op.phi.value.data
-            self._apply_1q(
-                f"h2.u1({theta},{phi})",
-                _u1_matrix(theta, phi),
-                op.qubit,
-                op.result,
-            )
-            return
-        if isinstance(op, RzOp):
-            theta = op.theta.value.data
-            self._apply_1q(
-                f"h2.rz({theta})",
-                _rz_matrix(theta),
-                op.qubit,
-                op.result,
-            )
-            return
-        if isinstance(op, RzzOp):
-            theta = op.theta.value.data
-            self._apply_2q(
-                f"h2.rzz({theta})",
-                _rzz_matrix(theta),
-                op.first,
-                op.second,
-                op.first_out,
-                op.second_out,
-            )
-            return
-        if isinstance(op, ZzOp):
-            self._apply_2q(
-                "h2.zz",
-                _rzz_matrix(math.pi / 2),
-                op.first,
-                op.second,
-                op.first_out,
-                op.second_out,
-            )
+        if isinstance(op, UnitaryGateOp):
+            self._apply_unitary_op(op)
             return
         if isinstance(op, MeasureOp):
             idx = self._env.pop(op.qubit)
@@ -308,7 +168,7 @@ class Emulator:
             # itself is subject to the same channel, which matches the
             # legacy emulator's behaviour.
             if outcome == 1:
-                self._sim.apply_operation(self._gate_op("x", _X_MAT), [idx])
+                self._sim.apply_operation(self._gate_op("x", _RESET_X_MAT), [idx])
             self._release(idx)
             self._env[op.result] = int(outcome)
             return
@@ -342,6 +202,36 @@ class Emulator:
         raise NotImplementedError(f"emulator: unsupported op {op.name}")
 
     # ----------------------------------------------------- gate helpers
+
+    def _apply_unitary_op(self, op: UnitaryGateOp) -> None:
+        operands = list(op.operands)
+        results = list(op.results)
+        if len(operands) != len(results):
+            raise NotImplementedError(
+                f"emulator: gate {op.name} must thread the same number "
+                "of operands and results"
+            )
+        unitary = op.unitary()
+        name = self._semantic_cache_key(op)
+        if len(operands) == 1:
+            self._apply_1q(name, unitary, operands[0], results[0])
+            return
+        if len(operands) == 2:
+            self._apply_2q(name, unitary, operands[0], operands[1], results[0], results[1])
+            return
+        raise NotImplementedError(
+            f"emulator: gate {op.name} has unsupported arity {len(operands)}"
+        )
+
+    @staticmethod
+    def _semantic_cache_key(op: UnitaryGateOp) -> str:
+        values = []
+        for name, attr in sorted(op.properties.items()):
+            value = getattr(getattr(attr, "value", None), "data", attr)
+            values.append((name, value))
+        if not values:
+            return op.name.rsplit(".", 1)[-1]
+        return f"{op.name}{tuple(values)}"
 
     def _gate_op(self, name: str, unitary: np.ndarray) -> Operation:
         """Return a (cached) ``Operation`` for ``unitary`` under the noise channel."""

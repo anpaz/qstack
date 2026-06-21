@@ -7,6 +7,9 @@ module-level pass.
 
 from __future__ import annotations
 
+from typing import Protocol, runtime_checkable
+
+import numpy as np
 from xdsl.dialects.builtin import (  # noqa: F401  (ModuleOp re-exported indirectly)
     ArrayAttr,
     DictionaryAttr,
@@ -29,6 +32,14 @@ from xdsl.irdl import (
     var_result_def,
 )
 from xdsl.traits import HasParent, IsTerminator
+
+
+@runtime_checkable
+class UnitaryGateOp(Protocol):
+    """Protocol implemented by executable compute-gate ops."""
+
+    def unitary(self) -> np.ndarray:
+        """Return the op's unitary matrix in standard qubit order."""
 
 
 @irdl_attr_definition

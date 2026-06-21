@@ -139,8 +139,8 @@ the MLIR implementation.
 
 - [x] Add the H2 ISA dialect and emulator semantics.
 - [x] Port Cliffords-to-H2 lowering.
-- [ ] Add the atoms ISA dialect and lowering if it remains part of the target
-      design.
+- [x] Add the gate-level neutral-atom ISA dialect (`RZ`, `CZ`, `SX`) and
+      Cliffords-to-atoms lowering after Phase E decoupling.
 - [ ] Port phase-flip repetition-3 lowering.
 - [ ] Demonstrate bit-flip plus phase-flip composition as the Shor code.
 - [x] Port the Steane-code pass and decoder.
@@ -152,12 +152,15 @@ Gate semantics and surface gate recognition are currently hardcoded in Python
 tables. This is workable for the prototype but does not yet realize the
 per-dialect extensibility described in `DESIGN.md`.
 
-- [ ] Define a dialect-level mechanism for emulator semantics and static gate
+- [x] Define a dialect-level mechanism for emulator semantics and static gate
       metadata.
-- [ ] Make surface include files select an ISA and provide gate declarations.
-- [ ] Resolve surface gates through the selected ISA instead of global
+- [x] Make surface include files select ISA dialects and provide gate
+      declarations.
+- [x] Resolve surface gates through the selected ISA instead of global
       hardcoded tables.
-- [ ] Decide how parameterized gate attributes expose runtime matrices.
+- [x] Decide how parameterized gate attributes expose runtime matrices.
+- [ ] Add an external dialect registration/discovery mechanism so packages
+      outside `qstack_mlir` can provide ISA dialects and include files.
 - [ ] Add Pauli noise parity if it is still required from the original stack.
 
 ## 4. Surface-language work

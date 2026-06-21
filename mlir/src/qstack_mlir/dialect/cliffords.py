@@ -10,6 +10,7 @@ This is the smallest set that supports the current compiler stack:
 
 from __future__ import annotations
 
+import numpy as np
 from xdsl.ir import Dialect, SSAValue
 from xdsl.irdl import (
     IRDLOperation,
@@ -19,6 +20,35 @@ from xdsl.irdl import (
 )
 
 from qstack_mlir.dialect.core import QubitType
+
+
+SQRT_HALF = 2**-0.5
+H_MAT = np.array([[SQRT_HALF, SQRT_HALF], [SQRT_HALF, -SQRT_HALF]], dtype=complex)
+X_MAT = np.array([[0.0, 1.0], [1.0, 0.0]], dtype=complex)
+Y_MAT = np.array([[0.0, -1.0j], [1.0j, 0.0]], dtype=complex)
+Z_MAT = np.array([[1.0, 0.0], [0.0, -1.0]], dtype=complex)
+S_MAT = np.array([[1.0, 0.0], [0.0, 1.0j]], dtype=complex)
+
+# Matrices are written in standard "control tensor target" basis. The emulator
+# handles the simulator's little-endian wire order when applying 2-qubit ops.
+CX_MAT = np.array(
+    [
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0, 0.0],
+    ],
+    dtype=complex,
+)
+CZ_MAT = np.array(
+    [
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, -1.0],
+    ],
+    dtype=complex,
+)
 
 
 class _SingleQubitGateOp(IRDLOperation):
@@ -55,35 +85,56 @@ class _TwoQubitGateOp(IRDLOperation):
 class HOp(_SingleQubitGateOp):
     name = "cliffords.h"
 
+    def unitary(self):
+        return H_MAT
+
 
 @irdl_op_definition
 class XOp(_SingleQubitGateOp):
     name = "cliffords.x"
+
+    def unitary(self):
+        return X_MAT
 
 
 @irdl_op_definition
 class YOp(_SingleQubitGateOp):
     name = "cliffords.y"
 
+    def unitary(self):
+        return Y_MAT
+
 
 @irdl_op_definition
 class ZOp(_SingleQubitGateOp):
     name = "cliffords.z"
+
+    def unitary(self):
+        return Z_MAT
 
 
 @irdl_op_definition
 class SOp(_SingleQubitGateOp):
     name = "cliffords.s"
 
+    def unitary(self):
+        return S_MAT
+
 
 @irdl_op_definition
 class CxOp(_TwoQubitGateOp):
     name = "cliffords.cx"
 
+    def unitary(self):
+        return CX_MAT
+
 
 @irdl_op_definition
 class CzOp(_TwoQubitGateOp):
     name = "cliffords.cz"
+
+    def unitary(self):
+        return CZ_MAT
 
 
 Cliffords = Dialect(

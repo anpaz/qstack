@@ -3,7 +3,7 @@
 ## Elevator pitch
 
 **qstack is a construction kit for trustworthy quantum compilers.** Quantum error correction is what will make quantum
-computers reliable, but the compilers that produce it are huge, intricate, and impossible to test, and a single bug
+computers reliable, but the compilers that produce it are intricate, and impossible to test, as a single bug
 silently corrupts results in a way that looks exactly like hardware noise. qstack makes these compilers _provably
 correct_. Crucially, it also makes that trust **reusable**: a new error-correction code is a plug-in package, and when
 you stack codes together to make a stronger one, their correctness guarantees stack automatically. Verify the building
