@@ -1,4 +1,4 @@
-"""Noise channels for the qstack_mlir runtime.
+"""Noise channels for the qstack runtime.
 
 A :class:`NoiseChannel` produces a list of Kraus matrices for an operation
 of a given Hilbert-space dimension (``dim = 2**arity``).  The QPU

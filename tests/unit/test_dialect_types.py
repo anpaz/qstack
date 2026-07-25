@@ -10,7 +10,7 @@ from xdsl.printer import Printer
 
 
 def _ctx() -> Context:
-    from qstack_mlir.dialect import QStack
+    from qstack.dialect import QStack
 
     ctx = Context()
     ctx.load_dialect(Builtin)
@@ -45,7 +45,7 @@ def test_bit_type_roundtrip() -> None:
 
 
 def test_qubit_and_bit_are_distinct_types() -> None:
-    from qstack_mlir.dialect import BitType, QubitType
+    from qstack.dialect import BitType, QubitType
 
     assert QubitType() != BitType()
     assert QubitType() == QubitType()

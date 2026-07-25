@@ -8,7 +8,7 @@ from IPython.testing.globalipapp import start_ipython  # noqa: E402
 from IPython.core.getipython import get_ipython  # noqa: E402
 from xdsl.dialects.builtin import ModuleOp  # noqa: E402
 
-from qstack_mlir.jupyter import load_ipython_extension  # noqa: E402
+from qstack.jupyter import load_ipython_extension  # noqa: E402
 
 PREPARE_ONE = """
 QSTACKQASM 0.1;

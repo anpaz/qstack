@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from xdsl.dialects.builtin import ModuleOp
 
-from qstack_mlir.dialect.core import UnitaryGateOp
+from qstack.dialect.core import UnitaryGateOp
 
 
 @dataclass(frozen=True)

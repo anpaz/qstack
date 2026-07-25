@@ -47,7 +47,7 @@ class QubitType(ParametrizedAttribute, TypeAttribute):
     """`!qstack.qubit` — a linear handle to a qubit register.
 
     Single-use semantics are enforced by the module-level verifier
-    (`qstack_mlir.verifier`), not by xdsl's structural checks.
+    (`qstack.verifier`), not by xdsl's structural checks.
     """
 
     name = "qstack.qubit"

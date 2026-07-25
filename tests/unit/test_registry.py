@@ -17,7 +17,7 @@ Both also work bare (no name → use function `__name__`).
 
 import pytest
 
-from qstack_mlir.runtime import (
+from qstack.runtime import (
     CallbackRegistry,
     DuplicateRegistration,
     UnregisteredCallback,

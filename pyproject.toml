@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qstack"
+version = "1.0.0"
+description = "A stack-based quantum compiler framework built on xdsl."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Andres Paz", email = "anpaz@cs.washington.edu" },
+]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "lark>=1.2",
+    "matplotlib>=3.8",
+    "numpy>=1.26",
+    "qsharp>=1.0",
+    "stim>=1.13",
+    "xdsl==0.64.0",
+]
+
+[project.optional-dependencies]
+jupyter = ["ipython>=8"]
+dev = [
+    "build>=1.2",
+    "ipython>=8",
+    "pytest==9.0.3",
+]
+
+[project.urls]
+Homepage = "https://github.com/anpaz/qstack"
+Repository = "https://github.com/anpaz/qstack"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["qstack*"]
+
+[tool.setuptools.package-data]
+"qstack.surface" = ["qasm.lark", "includes/*.inc"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+norecursedirs = ["qstack.v0"]

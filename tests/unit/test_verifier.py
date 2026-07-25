@@ -1,6 +1,6 @@
 """Phase 1.1 tests: linearity + kernel-signature module-level verifier.
 
-Rules enforced by `qstack_mlir.verifier.verify_module`:
+Rules enforced by `qstack.verifier.verify_module`:
 
 * Every `!qstack.qubit` SSA value has exactly one use.
 * Every `!qstack.bit` SSA value has exactly one use.
@@ -22,10 +22,10 @@ from xdsl.dialects.builtin import FunctionType, ModuleOp
 from xdsl.dialects.func import FuncOp, ReturnOp as FuncReturn
 from xdsl.ir import Block, Region
 
-from qstack_mlir.dialect import BitType, QubitType
-from qstack_mlir.dialect.cliffords import CxOp, HOp
-from qstack_mlir.dialect.core import KernelOp, MeasureOp, ReturnOp
-from qstack_mlir.verifier import LinearityError, verify_module
+from qstack.dialect import BitType, QubitType
+from qstack.dialect.cliffords import CxOp, HOp
+from qstack.dialect.core import KernelOp, MeasureOp, ReturnOp
+from qstack.verifier import LinearityError, verify_module
 
 
 def _wrap_in_main(kernel: KernelOp, *, outer_qubit_types=None) -> ModuleOp:

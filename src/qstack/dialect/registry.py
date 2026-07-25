@@ -5,10 +5,10 @@ from __future__ import annotations
 from xdsl.ir import Dialect
 from xdsl.irdl import IRDLOperation
 
-from qstack_mlir.dialect.atoms import Atoms
-from qstack_mlir.dialect.cliffords import Cliffords
-from qstack_mlir.dialect.h2 import H2
-from qstack_mlir.dialect.toy import Toy
+from qstack.dialect.atoms import Atoms
+from qstack.dialect.cliffords import Cliffords
+from qstack.dialect.h2 import H2
+from qstack.dialect.toy import Toy
 
 
 _DIALECTS: dict[str, Dialect] = {

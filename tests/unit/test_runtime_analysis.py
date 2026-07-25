@@ -1,9 +1,9 @@
 """Tests for runtime backend-compatibility analysis."""
 
-from qstack_mlir.passes.toy2cliffords import compile_toy_to_cliffords
-from qstack_mlir.runtime.analysis import check_stim_compatible, is_stim_compatible
-from qstack_mlir.surface.lowering import lower
-from qstack_mlir.surface.parser import parse
+from qstack.passes.toy2cliffords import compile_toy_to_cliffords
+from qstack.runtime.analysis import check_stim_compatible, is_stim_compatible
+from qstack.surface.lowering import lower
+from qstack.surface.parser import parse
 
 
 def _lower(source: str):

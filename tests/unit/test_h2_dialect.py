@@ -8,11 +8,11 @@ from xdsl.ir import Block, Region
 from xdsl.parser import Parser
 from xdsl.printer import Printer
 
-from qstack_mlir.dialect import BitType, QStack, QubitType
-from qstack_mlir.dialect.core import KernelOp, MeasureOp, ReturnOp
-from qstack_mlir.dialect.h2 import H2, RzOp, RzzOp, U1Op, ZzOp
-from qstack_mlir.surface.lowering import lower
-from qstack_mlir.surface.parser import parse
+from qstack.dialect import BitType, QStack, QubitType
+from qstack.dialect.core import KernelOp, MeasureOp, ReturnOp
+from qstack.dialect.h2 import H2, RzOp, RzzOp, U1Op, ZzOp
+from qstack.surface.lowering import lower
+from qstack.surface.parser import parse
 
 
 def _ctx() -> Context:

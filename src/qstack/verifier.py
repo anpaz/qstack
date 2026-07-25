@@ -22,7 +22,7 @@ from __future__ import annotations
 from xdsl.dialects.builtin import ModuleOp
 from xdsl.ir import Operation, SSAValue
 
-from qstack_mlir.dialect.core import BitType, KernelOp, QubitType, ReturnOp
+from qstack.dialect.core import BitType, KernelOp, QubitType, ReturnOp
 
 
 class LinearityError(Exception):

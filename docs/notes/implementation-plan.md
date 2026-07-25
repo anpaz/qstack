@@ -165,7 +165,7 @@ per-dialect extensibility described in `DESIGN.md`.
 - [x] Keep MLIR module walking in `ModuleEvaluator` so execution and future
       compiler-pass validation can share traversal-oriented infrastructure.
 - [ ] Add an external dialect registration/discovery mechanism so packages
-      outside `qstack_mlir` can provide ISA dialects and include files.
+      outside `qstack` can provide ISA dialects and include files.
 - [ ] Add Pauli noise parity if it is still required from the original stack.
 
 ## 4. Surface-language work
@@ -246,7 +246,7 @@ teach the default machine to pick STIM for Clifford-only modules.
       `UnitaryGateOp`s are not.
 - [x] Require Clifford-equivalent non-canonical gates such as Toy gates to be
       lowered to the Clifford dialect before STIM auto-selection.
-- [x] Add `qstack_mlir.runtime.analysis.is_stim_compatible(module)` and
+- [x] Add `qstack.runtime.analysis.is_stim_compatible(module)` and
       structured diagnostics for the first incompatible executable gate.
 
 ### Phase F.4: Implement `StimQPU`

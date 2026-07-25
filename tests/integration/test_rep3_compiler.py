@@ -16,9 +16,9 @@ from xdsl.dialects.builtin import FunctionType, ModuleOp, UnitAttr
 from xdsl.dialects.func import CallOp, FuncOp, ReturnOp as FuncReturn
 from xdsl.ir import Block, Region
 
-from qstack_mlir.dialect import BitType, QubitType
-from qstack_mlir.dialect.cliffords import CxOp, CzOp, HOp, XOp
-from qstack_mlir.dialect.core import (
+from qstack.dialect import BitType, QubitType
+from qstack.dialect.cliffords import CxOp, CzOp, HOp, XOp
+from qstack.dialect.core import (
     DecodeOp,
     InvokeOp,
     KernelOp,
@@ -26,14 +26,14 @@ from qstack_mlir.dialect.core import (
     ReturnOp as KernelReturn,
     SelectOp,
 )
-from qstack_mlir.passes.rep3_trivial import (
+from qstack.passes.rep3_trivial import (
     Rep3CompileError,
     compile_rep3,
     register_rep3_callbacks,
 )
-from qstack_mlir.surface.lowering import lower
-from qstack_mlir.surface.parser import parse
-from qstack_mlir.verifier import verify_module
+from qstack.surface.lowering import lower
+from qstack.surface.parser import parse
+from qstack.verifier import verify_module
 from tests.integration.test_prepare_one_qasm import PREPARE_ONE
 
 FLIP_PROGRAM = """
@@ -97,7 +97,7 @@ def test_rep3_module_passes_verifier() -> None:
 
 
 def test_rep3_runtime_runs_1000_shots_all_one() -> None:
-    from qstack_mlir.runtime import CallbackRegistry, Machine
+    from qstack.runtime import CallbackRegistry, Machine
 
     out = compile_rep3(_module(FLIP_PROGRAM))
     reg = CallbackRegistry()
@@ -309,7 +309,7 @@ def test_rep3_composes_with_itself() -> None:
 
 
 def _prepare_one_registry():
-    from qstack_mlir.runtime import CallbackRegistry
+    from qstack.runtime import CallbackRegistry
 
     registry = CallbackRegistry()
 
@@ -322,7 +322,7 @@ def _prepare_one_registry():
 
 
 def test_rep3_prepare_one_executes() -> None:
-    from qstack_mlir.runtime import Machine
+    from qstack.runtime import Machine
 
     out = compile_rep3(_module(PREPARE_ONE))
     results = Machine(
@@ -334,7 +334,7 @@ def test_rep3_prepare_one_executes() -> None:
 
 
 def test_rep3_twice_prepare_one_executes() -> None:
-    from qstack_mlir.runtime import Machine
+    from qstack.runtime import Machine
 
     out = compile_rep3(compile_rep3(_module(PREPARE_ONE)))
     results = Machine(

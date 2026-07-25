@@ -6,10 +6,10 @@ lowers it, runs 4000 shots, and asserts the histogram is concentrated on
 ``(0, 0)`` and ``(1, 1)`` in roughly equal proportions.
 """
 
-from qstack_mlir.runtime import CallbackRegistry, Machine
-from qstack_mlir.surface.lowering import lower
-from qstack_mlir.surface.parser import parse
-from qstack_mlir.verifier import verify_module
+from qstack.runtime import CallbackRegistry, Machine
+from qstack.surface.lowering import lower
+from qstack.surface.parser import parse
+from qstack.verifier import verify_module
 
 BELL_PROGRAM = """
 QSTACKQASM 0.1;

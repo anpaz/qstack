@@ -9,7 +9,7 @@ bit ``1``.
 
 from tests.integration.test_prepare_one_ir import _build_module
 
-from qstack_mlir.runtime import CallbackRegistry, Machine
+from qstack.runtime import CallbackRegistry, Machine
 
 
 def _build_machine() -> Machine:

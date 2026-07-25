@@ -1,14 +1,14 @@
 """End-to-end parity pipelines ending in the H2-native dialect."""
 
-from qstack_mlir.dialect.cliffords import CxOp, HOp, XOp
-from qstack_mlir.dialect.h2 import RzOp, U1Op, ZzOp
-from qstack_mlir.passes.cliffords2h2 import compile_cliffords_to_h2
-from qstack_mlir.passes.rep3_trivial import compile_rep3, register_rep3_callbacks
-from qstack_mlir.passes.toy2cliffords import compile_toy_to_cliffords
-from qstack_mlir.runtime import CallbackRegistry, Machine
-from qstack_mlir.surface.lowering import lower
-from qstack_mlir.surface.parser import parse
-from qstack_mlir.verifier import verify_module
+from qstack.dialect.cliffords import CxOp, HOp, XOp
+from qstack.dialect.h2 import RzOp, U1Op, ZzOp
+from qstack.passes.cliffords2h2 import compile_cliffords_to_h2
+from qstack.passes.rep3_trivial import compile_rep3, register_rep3_callbacks
+from qstack.passes.toy2cliffords import compile_toy_to_cliffords
+from qstack.runtime import CallbackRegistry, Machine
+from qstack.surface.lowering import lower
+from qstack.surface.parser import parse
+from qstack.verifier import verify_module
 
 _TOY_BELL = """
 QSTACKQASM 0.1;

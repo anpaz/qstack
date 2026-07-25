@@ -19,10 +19,10 @@ from xdsl.ir import Block, Region
 from xdsl.parser import Parser
 from xdsl.printer import Printer
 
-from qstack_mlir.dialect import BitType, QStack, QubitType
-from qstack_mlir.dialect.cliffords import Cliffords, CxOp, HOp
-from qstack_mlir.dialect.core import InvokeOp, KernelOp, MeasureOp, ReturnOp, SelectOp
-from qstack_mlir.verifier import verify_module
+from qstack.dialect import BitType, QStack, QubitType
+from qstack.dialect.cliffords import Cliffords, CxOp, HOp
+from qstack.dialect.core import InvokeOp, KernelOp, MeasureOp, ReturnOp, SelectOp
+from qstack.verifier import verify_module
 
 
 def _ctx() -> Context:

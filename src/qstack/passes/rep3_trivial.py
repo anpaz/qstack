@@ -15,10 +15,10 @@ from xdsl.dialects.builtin import FunctionType, ModuleOp, SymbolRefAttr, UnitAtt
 from xdsl.dialects.func import CallOp, FuncOp, ReturnOp as FuncReturn
 from xdsl.ir import Attribute, Block, Operation, Region, SSAValue
 
-from qstack_mlir.dialect import BitType, QubitType
-from qstack_mlir.dialect.cliffords import CxOp, CzOp, HOp, SOp, XOp, ZOp
-from qstack_mlir.dialect.core import DecodeOp, InvokeOp, KernelOp, MeasureOp, ReturnOp, SelectOp
-from qstack_mlir.verifier import verify_module
+from qstack.dialect import BitType, QubitType
+from qstack.dialect.cliffords import CxOp, CzOp, HOp, SOp, XOp, ZOp
+from qstack.dialect.core import DecodeOp, InvokeOp, KernelOp, MeasureOp, ReturnOp, SelectOp
+from qstack.verifier import verify_module
 
 _MAJORITY_VOTE = "majority_vote"
 _SINGLE_QUBIT_GATES = (HOp, XOp, ZOp, SOp)

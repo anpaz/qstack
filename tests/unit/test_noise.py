@@ -2,10 +2,10 @@
 
 import numpy as np
 
-from qstack_mlir.runtime import CallbackRegistry, Machine
-from qstack_mlir.runtime.noise import DepolarizingNoise, NoiselessChannel
-from qstack_mlir.surface.lowering import lower
-from qstack_mlir.surface.parser import parse
+from qstack.runtime import CallbackRegistry, Machine
+from qstack.runtime.noise import DepolarizingNoise, NoiselessChannel
+from qstack.surface.lowering import lower
+from qstack.surface.parser import parse
 
 BELL_PROGRAM = """
 QSTACKQASM 0.1;

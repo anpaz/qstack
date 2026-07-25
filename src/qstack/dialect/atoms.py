@@ -13,7 +13,7 @@ from xdsl.irdl import (
     result_def,
 )
 
-from qstack_mlir.dialect.core import QubitType
+from qstack.dialect.core import QubitType
 
 
 SX_MAT = 0.5 * np.array(

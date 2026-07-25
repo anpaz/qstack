@@ -7,10 +7,10 @@ from xdsl.dialects.builtin import FunctionType, ModuleOp
 from xdsl.dialects.func import FuncOp, ReturnOp as FuncReturn
 from xdsl.ir import Block, Region
 
-from qstack_mlir.dialect import QubitType
-from qstack_mlir.dialect.cliffords import CxOp, CzOp, HOp, SOp, XOp, YOp, ZOp
-from qstack_mlir.dialect.h2 import RzOp, U1Op, ZzOp
-from qstack_mlir.passes.cliffords2h2 import (
+from qstack.dialect import QubitType
+from qstack.dialect.cliffords import CxOp, CzOp, HOp, SOp, XOp, YOp, ZOp
+from qstack.dialect.h2 import RzOp, U1Op, ZzOp
+from qstack.passes.cliffords2h2 import (
     CliffordsToH2Compiler,
     compile_cliffords_to_h2,
 )

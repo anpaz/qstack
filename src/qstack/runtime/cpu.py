@@ -6,8 +6,8 @@ import logging
 
 from xdsl.dialects.func import FuncOp
 
-from qstack_mlir.dialect.core import DecodeOp, SelectOp
-from qstack_mlir.runtime.registry import CallbackRegistry
+from qstack.dialect.core import DecodeOp, SelectOp
+from qstack.runtime.registry import CallbackRegistry
 
 logger = logging.getLogger("qstack")
 

@@ -21,9 +21,9 @@ from xdsl.dialects.builtin import ModuleOp
 from xdsl.dialects.func import FuncOp
 from xdsl.ir import Operation
 
-from qstack_mlir.dialect.cliffords import CxOp, HOp, XOp
-from qstack_mlir.dialect.toy import EntangleOp, FlipOp, MixOp, SkewOp
-from qstack_mlir.passes.base import BaseOpRewriter
+from qstack.dialect.cliffords import CxOp, HOp, XOp
+from qstack.dialect.toy import EntangleOp, FlipOp, MixOp, SkewOp
+from qstack.passes.base import BaseOpRewriter
 
 
 class ToyToCliffordsCompiler(BaseOpRewriter):

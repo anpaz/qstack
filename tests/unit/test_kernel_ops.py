@@ -14,8 +14,8 @@ from xdsl.dialects.builtin import Builtin, ModuleOp
 from xdsl.parser import Parser
 from xdsl.printer import Printer
 
-from qstack_mlir.dialect import BitType, QStack, QubitType
-from qstack_mlir.dialect.core import KernelOp, MeasureOp, ReturnOp
+from qstack.dialect import BitType, QStack, QubitType
+from qstack.dialect.core import KernelOp, MeasureOp, ReturnOp
 
 
 def _ctx() -> Context:

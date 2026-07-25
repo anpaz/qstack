@@ -12,8 +12,8 @@ from xdsl.ir import Block, Region
 from xdsl.parser import Parser
 from xdsl.printer import Printer
 
-from qstack_mlir.dialect import BitType, QStack, QubitType
-from qstack_mlir.dialect.cliffords import (
+from qstack.dialect import BitType, QStack, QubitType
+from qstack.dialect.cliffords import (
     Cliffords,
     CxOp,
     CzOp,
@@ -23,7 +23,7 @@ from qstack_mlir.dialect.cliffords import (
     YOp,
     ZOp,
 )
-from qstack_mlir.dialect.core import KernelOp, MeasureOp, ReturnOp
+from qstack.dialect.core import KernelOp, MeasureOp, ReturnOp
 
 
 def _ctx() -> Context:

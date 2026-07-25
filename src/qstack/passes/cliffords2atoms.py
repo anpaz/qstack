@@ -7,9 +7,9 @@ import math
 from xdsl.dialects.builtin import ModuleOp
 from xdsl.ir import Operation, SSAValue
 
-from qstack_mlir.dialect.atoms import CzOp as AtomsCzOp
-from qstack_mlir.dialect.atoms import RzOp, SxOp
-from qstack_mlir.dialect.cliffords import (
+from qstack.dialect.atoms import CzOp as AtomsCzOp
+from qstack.dialect.atoms import RzOp, SxOp
+from qstack.dialect.cliffords import (
     CxOp,
     CzOp,
     HOp,
@@ -18,7 +18,7 @@ from qstack_mlir.dialect.cliffords import (
     YOp,
     ZOp,
 )
-from qstack_mlir.passes.base import BaseOpRewriter
+from qstack.passes.base import BaseOpRewriter
 
 
 def _insert_before(op: Operation, replacements: list[Operation]) -> None:

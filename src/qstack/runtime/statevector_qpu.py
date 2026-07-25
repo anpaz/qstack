@@ -8,9 +8,9 @@ import random
 import numpy as np
 from qsharp.noisy_simulator import Instrument, Operation, StateVectorSimulator
 
-from qstack_mlir.dialect.core import UnitaryGateOp
-from qstack_mlir.runtime.noise import NoiseChannel, NoiselessChannel
-from qstack_mlir.runtime.qpu import GateApplication
+from qstack.dialect.core import UnitaryGateOp
+from qstack.runtime.noise import NoiseChannel, NoiselessChannel
+from qstack.runtime.qpu import GateApplication
 
 logger = logging.getLogger("qstack")
 

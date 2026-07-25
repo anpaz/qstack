@@ -8,10 +8,10 @@ $Z^{m_0} X^{m_1}$ to ``target``.  After teleportation, ``target`` is
 measured in the computational basis.
 """
 
-from qstack_mlir.runtime import CallbackRegistry, Machine
-from qstack_mlir.surface.lowering import lower
-from qstack_mlir.surface.parser import parse
-from qstack_mlir.verifier import verify_module
+from qstack.runtime import CallbackRegistry, Machine
+from qstack.surface.lowering import lower
+from qstack.surface.parser import parse
+from qstack.verifier import verify_module
 
 
 def _teleport_program(prep_gate: str) -> str:

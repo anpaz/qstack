@@ -13,15 +13,15 @@ from typing import Any, Literal
 
 from xdsl.dialects.builtin import ModuleOp
 
-from qstack_mlir.runtime.analysis import StimCompatibilityError, check_stim_compatible
-from qstack_mlir.runtime.cpu import CPU
-from qstack_mlir.runtime.evaluator import ModuleEvaluator
-from qstack_mlir.runtime.noise import NoiseChannel
-from qstack_mlir.runtime.qpu import QPUProtocol
-from qstack_mlir.runtime.registry import CallbackRegistry
-from qstack_mlir.runtime.results import Results
-from qstack_mlir.runtime.statevector_qpu import StateVectorQPU
-from qstack_mlir.runtime.stim_qpu import StimQPU
+from qstack.runtime.analysis import StimCompatibilityError, check_stim_compatible
+from qstack.runtime.cpu import CPU
+from qstack.runtime.evaluator import ModuleEvaluator
+from qstack.runtime.noise import NoiseChannel
+from qstack.runtime.qpu import QPUProtocol
+from qstack.runtime.registry import CallbackRegistry
+from qstack.runtime.results import Results
+from qstack.runtime.statevector_qpu import StateVectorQPU
+from qstack.runtime.stim_qpu import StimQPU
 
 QPUSelection = Literal["auto", "statevector", "stim"]
 logger = logging.getLogger("qstack")

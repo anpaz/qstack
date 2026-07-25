@@ -20,8 +20,8 @@ from xdsl.ir import Block, Region
 from xdsl.parser import Parser
 from xdsl.printer import Printer
 
-from qstack_mlir.dialect import BitType, QStack, QubitType
-from qstack_mlir.dialect.core import DecodeOp, SelectOp
+from qstack.dialect import BitType, QStack, QubitType
+from qstack.dialect.core import DecodeOp, SelectOp
 
 
 def _ctx() -> Context:

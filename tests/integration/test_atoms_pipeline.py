@@ -1,13 +1,13 @@
 """End-to-end pipelines ending in the neutral-atom dialect."""
 
-from qstack_mlir.dialect.atoms import CzOp, RzOp, SxOp
-from qstack_mlir.dialect.cliffords import CxOp, HOp, XOp
-from qstack_mlir.passes.cliffords2atoms import compile_cliffords_to_atoms
-from qstack_mlir.passes.toy2cliffords import compile_toy_to_cliffords
-from qstack_mlir.runtime import Machine
-from qstack_mlir.surface.lowering import lower
-from qstack_mlir.surface.parser import parse
-from qstack_mlir.verifier import verify_module
+from qstack.dialect.atoms import CzOp, RzOp, SxOp
+from qstack.dialect.cliffords import CxOp, HOp, XOp
+from qstack.passes.cliffords2atoms import compile_cliffords_to_atoms
+from qstack.passes.toy2cliffords import compile_toy_to_cliffords
+from qstack.runtime import Machine
+from qstack.surface.lowering import lower
+from qstack.surface.parser import parse
+from qstack.verifier import verify_module
 
 _TOY_BELL = """
 QSTACKQASM 0.1;

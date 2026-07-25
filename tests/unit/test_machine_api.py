@@ -5,10 +5,10 @@ from xdsl.dialects.builtin import FunctionType, ModuleOp, SymbolRefAttr, UnitAtt
 from xdsl.dialects.func import FuncOp, ReturnOp as FuncReturn
 from xdsl.ir import Block, Region
 
-from qstack_mlir.dialect import BitType, QubitType
-from qstack_mlir.dialect.cliffords import XOp
-from qstack_mlir.dialect.core import DecodeOp, KernelOp, MeasureOp, ReturnOp
-from qstack_mlir.runtime import (
+from qstack.dialect import BitType, QubitType
+from qstack.dialect.cliffords import XOp
+from qstack.dialect.core import DecodeOp, KernelOp, MeasureOp, ReturnOp
+from qstack.runtime import (
     CPU,
     QPU,
     Machine,
@@ -17,11 +17,11 @@ from qstack_mlir.runtime import (
     StimQPU,
     UnregisteredCallback,
 )
-from qstack_mlir.runtime.analysis import StimCompatibilityError
-from qstack_mlir.runtime.noise import NoiselessChannel
-from qstack_mlir.runtime.qpu import GateApplication
-from qstack_mlir.surface.lowering import lower
-from qstack_mlir.surface.parser import parse
+from qstack.runtime.analysis import StimCompatibilityError
+from qstack.runtime.noise import NoiselessChannel
+from qstack.runtime.qpu import GateApplication
+from qstack.surface.lowering import lower
+from qstack.surface.parser import parse
 
 
 def _sx_squared_module():

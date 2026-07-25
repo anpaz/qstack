@@ -3,10 +3,10 @@
 from xdsl.dialects.builtin import FunctionType, ModuleOp
 from xdsl.dialects.func import FuncOp
 
-from qstack_mlir.dialect import BitType, QubitType
-from qstack_mlir.surface.lowering import lower
-from qstack_mlir.surface.parser import parse
-from qstack_mlir.verifier import verify_module
+from qstack.dialect import BitType, QubitType
+from qstack.surface.lowering import lower
+from qstack.surface.parser import parse
+from qstack.verifier import verify_module
 
 PREPARE_ONE = """
 QSTACKQASM 0.1;
@@ -67,7 +67,7 @@ def test_prepare_one_passes_verifier() -> None:
 
 
 def test_prepare_one_runs_1000_shots_all_one() -> None:
-    from qstack_mlir.runtime import CallbackRegistry, Machine
+    from qstack.runtime import CallbackRegistry, Machine
 
     reg = CallbackRegistry()
 

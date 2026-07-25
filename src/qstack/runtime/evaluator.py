@@ -13,8 +13,8 @@ from xdsl.dialects.builtin import ModuleOp
 from xdsl.dialects.func import CallOp, FuncOp, ReturnOp as FuncReturnOp
 from xdsl.ir import Block, SSAValue
 
-from qstack_mlir.dialect import BitType, QubitType
-from qstack_mlir.dialect.core import (
+from qstack.dialect import BitType, QubitType
+from qstack.dialect.core import (
     DecodeOp,
     InvokeOp,
     KernelOp,
@@ -23,10 +23,10 @@ from qstack_mlir.dialect.core import (
     SelectOp,
     UnitaryGateOp,
 )
-from qstack_mlir.runtime.cpu import CPU
-from qstack_mlir.runtime.noise import NoiseChannel
-from qstack_mlir.runtime.qpu import GateApplication, QPU, QPUProtocol
-from qstack_mlir.runtime.registry import CallbackRegistry
+from qstack.runtime.cpu import CPU
+from qstack.runtime.noise import NoiseChannel
+from qstack.runtime.qpu import GateApplication, QPU, QPUProtocol
+from qstack.runtime.registry import CallbackRegistry
 
 
 # ----------------------------------------------------------------- evaluator

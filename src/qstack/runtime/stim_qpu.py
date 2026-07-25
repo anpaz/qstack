@@ -6,7 +6,7 @@ import logging
 
 import stim
 
-from qstack_mlir.runtime.qpu import GateApplication
+from qstack.runtime.qpu import GateApplication
 
 logger = logging.getLogger("qstack")
 

@@ -14,7 +14,7 @@ Running log of every non-trivial decision, deviation from the spec, environment 
 
 13. **`@majority_vote` is added once and validated on reuse.** The pass inserts a private `qstack.decoder` declaration with signature `(!qstack.bit, !qstack.bit, !qstack.bit) -> !qstack.bit` when it inserts its first decoder. A second repetition-3 application reuses that declaration. If the symbol already exists with a different body, tag, or signature, compilation fails with `Rep3CompileError` instead of shadowing it.
 
-14. **The pass verifies its own output.** Before returning, `compile_rep3` runs both xdsl structural verification and `qstack_mlir.verifier.verify_module`. This makes malformed output a compiler failure rather than deferring detection to the caller.
+14. **The pass verifies its own output.** Before returning, `compile_rep3` runs both xdsl structural verification and `qstack.verifier.verify_module`. This makes malformed output a compiler failure rather than deferring detection to the caller.
 
 15. **Composition behavior is decoder stacking, not decoder replacement.** On the second repetition-3 application, each first-layer physical measurement is expanded to three lower-layer measurements and decoded by a newly inserted majority vote. The first-layer majority-vote op remains unchanged and consumes those three newly decoded bits. This produces the intended 9-qubit concatenation while preserving every pre-existing callback reference.
 
@@ -115,7 +115,7 @@ _(None open.)_
 ## 2026-06-07 — Repetition-3 file consolidation
 
 - **One repetition-3 module is the public implementation.** The unused `rep3_trivial_classbased.py` experiment was deleted. It implemented only an in-place X rewrite, was not imported anywhere, and did not satisfy the completed pass contract.
-- **Callback registration lives with the pass.** The six-line `register_rep3_callbacks` helper was moved into `rep3_trivial.py`, and `rep3_trivial_callbacks.py` was deleted. Existing imports from `qstack_mlir.passes.rep3_trivial` are unchanged.
+- **Callback registration lives with the pass.** The six-line `register_rep3_callbacks` helper was moved into `rep3_trivial.py`, and `rep3_trivial_callbacks.py` was deleted. Existing imports from `qstack.passes.rep3_trivial` are unchanged.
 
 ## 2026-06-13 — Current-qstack parity: canonical ISA and H2 pipelines
 
@@ -207,7 +207,7 @@ _(None open.)_
 
 53. **User `def` symbols shadow included ISA gates.** Surface lowering resolves a call against hoisted user definitions before consulting the merged include gate table. Includes provide the ambient gate vocabulary, but local program symbols take precedence when names collide.
 
-54. **ISA op lookup lives under the dialect package.** The dialect registry is `qstack_mlir.dialect.registry`; include resolution validates declarations through that registry and stores the resolved IRDL op type on each `GateDecl`. Lowering consumes the resolved declaration instead of consulting the registry directly.
+54. **ISA op lookup lives under the dialect package.** The dialect registry is `qstack.dialect.registry`; include resolution validates declarations through that registry and stores the resolved IRDL op type on each `GateDecl`. Lowering consumes the resolved declaration instead of consulting the registry directly.
 
 55. **`Machine` is the hybrid quantum machine.** `Machine` is composed of explicit `qpu` and `cpu` processors so qstack programs can mix quantum state evolution with classical callback-driven control. `QPU` owns quantum state; qubit allocation, unitary application, measurement, reset, and quantum noise are QPU responsibilities because they mutate or observe that state. `CPU` owns classical state; `qstack.select` and `qstack.decode` evaluation are CPU responsibilities because they consume classical data through host callbacks. `ModuleEvaluator` is the IR walker that coordinates SSA/control-flow and delegates processor-specific work.
 

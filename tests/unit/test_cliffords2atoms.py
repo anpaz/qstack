@@ -7,13 +7,13 @@ from xdsl.dialects.builtin import FunctionType, ModuleOp
 from xdsl.dialects.func import FuncOp, ReturnOp as FuncReturn
 from xdsl.ir import Block, Region
 
-from qstack_mlir.dialect import QubitType
-from qstack_mlir.dialect.atoms import CzOp as AtomsCzOp
-from qstack_mlir.dialect.atoms import RzOp, SxOp
-from qstack_mlir.dialect.atoms import CZ_MAT, SX_MAT, rz_matrix
-from qstack_mlir.dialect.cliffords import CxOp, CzOp, HOp, SOp, XOp, YOp, ZOp
-from qstack_mlir.dialect.cliffords import H_MAT, X_MAT, Y_MAT, Z_MAT
-from qstack_mlir.passes.cliffords2atoms import (
+from qstack.dialect import QubitType
+from qstack.dialect.atoms import CzOp as AtomsCzOp
+from qstack.dialect.atoms import RzOp, SxOp
+from qstack.dialect.atoms import CZ_MAT, SX_MAT, rz_matrix
+from qstack.dialect.cliffords import CxOp, CzOp, HOp, SOp, XOp, YOp, ZOp
+from qstack.dialect.cliffords import H_MAT, X_MAT, Y_MAT, Z_MAT
+from qstack.passes.cliffords2atoms import (
     CliffordsToAtomsCompiler,
     compile_cliffords_to_atoms,
 )

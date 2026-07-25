@@ -8,12 +8,12 @@ from xdsl.ir import Block, Region
 from xdsl.parser import Parser
 from xdsl.printer import Printer
 
-from qstack_mlir.dialect import BitType, QStack, QubitType
-from qstack_mlir.dialect.atoms import Atoms, CzOp, RzOp, SxOp
-from qstack_mlir.dialect.core import KernelOp, MeasureOp, ReturnOp
-from qstack_mlir.runtime.evaluator import ModuleEvaluator
-from qstack_mlir.surface.lowering import lower
-from qstack_mlir.surface.parser import parse
+from qstack.dialect import BitType, QStack, QubitType
+from qstack.dialect.atoms import Atoms, CzOp, RzOp, SxOp
+from qstack.dialect.core import KernelOp, MeasureOp, ReturnOp
+from qstack.runtime.evaluator import ModuleEvaluator
+from qstack.surface.lowering import lower
+from qstack.surface.parser import parse
 
 
 def _ctx() -> Context:

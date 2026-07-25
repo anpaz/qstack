@@ -14,10 +14,10 @@ from xdsl.ir import Block, Region
 from xdsl.irdl import IRDLOperation, irdl_op_definition, operand_def, result_def
 import pytest
 
-from qstack_mlir.dialect import BitType, QubitType
-from qstack_mlir.dialect.cliffords import CxOp, HOp, XOp
-from qstack_mlir.dialect.core import KernelOp, MeasureOp, ReturnOp
-from qstack_mlir.runtime.evaluator import ModuleEvaluator
+from qstack.dialect import BitType, QubitType
+from qstack.dialect.cliffords import CxOp, HOp, XOp
+from qstack.dialect.core import KernelOp, MeasureOp, ReturnOp
+from qstack.runtime.evaluator import ModuleEvaluator
 
 
 def _kernel_x_then_measure() -> KernelOp:

@@ -42,9 +42,9 @@ from xdsl.dialects.builtin import (
 from xdsl.dialects.func import CallOp, FuncOp, ReturnOp as FuncReturn
 from xdsl.ir import Block, Operation, Region, SSAValue
 
-from qstack_mlir.dialect import BitType, QubitType
-from qstack_mlir.dialect.core import InvokeOp, KernelOp, MeasureOp, ReturnOp, SelectOp
-from qstack_mlir.surface.isa_includes import IncludeGateSet, resolve_includes
+from qstack.dialect import BitType, QubitType
+from qstack.dialect.core import InvokeOp, KernelOp, MeasureOp, ReturnOp, SelectOp
+from qstack.surface.isa_includes import IncludeGateSet, resolve_includes
 
 
 # ---------------------------------------------------------------------------

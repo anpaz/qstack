@@ -9,7 +9,7 @@ import re
 from lark import Token, Tree
 from xdsl.irdl import IRDLOperation
 
-from qstack_mlir.dialect.registry import get_isa_op
+from qstack.dialect.registry import get_isa_op
 
 
 _INCLUDE_DIR = Path(__file__).with_name("includes")

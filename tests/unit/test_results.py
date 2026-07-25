@@ -1,6 +1,6 @@
 """Tests for the ``Results`` wrapper returned by ``Machine.eval``."""
 
-from qstack_mlir.runtime.results import Results
+from qstack.runtime.results import Results
 
 
 def test_results_iterable_and_indexable() -> None:

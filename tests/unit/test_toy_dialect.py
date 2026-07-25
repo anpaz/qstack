@@ -2,14 +2,14 @@
 
 from xdsl.dialects.builtin import ModuleOp
 
-from qstack_mlir.dialect.core import KernelOp, MeasureOp, QubitType, ReturnOp
-from qstack_mlir.dialect.toy import EntangleOp, FlipOp, MixOp, SkewOp
+from qstack.dialect.core import KernelOp, MeasureOp, QubitType, ReturnOp
+from qstack.dialect.toy import EntangleOp, FlipOp, MixOp, SkewOp
 
 
 def _empty_kernel_with_one_qubit() -> tuple[KernelOp, "Block"]:
     from xdsl.ir import Block, Region
 
-    from qstack_mlir.dialect.core import BitType
+    from qstack.dialect.core import BitType
 
     body = Block(arg_types=[QubitType()])
     kernel = KernelOp(result_types=[BitType()], region=Region([body]))
@@ -44,7 +44,7 @@ def test_skew_op_carries_bias_attribute() -> None:
 def test_entangle_op_threads_two_qubits() -> None:
     from xdsl.ir import Block, Region
 
-    from qstack_mlir.dialect.core import BitType
+    from qstack.dialect.core import BitType
 
     body = Block(arg_types=[QubitType(), QubitType()])
     kernel = KernelOp(result_types=[BitType(), BitType()], region=Region([body]))

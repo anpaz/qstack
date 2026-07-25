@@ -5,10 +5,10 @@ Mirrors ``mlir/examples/2.bell-biased.ipynb`` and the legacy
 `entangle` should yield a biased Bell state with $|11\rangle\approx 80\%$.
 """
 
-from qstack_mlir.runtime import Machine
-from qstack_mlir.surface.lowering import lower
-from qstack_mlir.surface.parser import parse
-from qstack_mlir.verifier import verify_module
+from qstack.runtime import Machine
+from qstack.surface.lowering import lower
+from qstack.surface.parser import parse
+from qstack.verifier import verify_module
 
 _PROGRAM = """
 QSTACKQASM 0.1;

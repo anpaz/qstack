@@ -13,9 +13,9 @@ from xdsl.dialects.builtin import FunctionType, ModuleOp, SymbolRefAttr, UnitAtt
 from xdsl.dialects.func import CallOp, FuncOp, ReturnOp as FuncReturn
 from xdsl.ir import Block, Region
 
-from qstack_mlir.dialect import BitType, QubitType
-from qstack_mlir.dialect.cliffords import HOp, XOp
-from qstack_mlir.dialect.core import (
+from qstack.dialect import BitType, QubitType
+from qstack.dialect.cliffords import HOp, XOp
+from qstack.dialect.core import (
     DecodeOp,
     InvokeOp,
     KernelOp,
@@ -23,8 +23,8 @@ from qstack_mlir.dialect.core import (
     ReturnOp,
     SelectOp,
 )
-from qstack_mlir.runtime import CallbackRegistry
-from qstack_mlir.runtime.evaluator import ModuleEvaluator
+from qstack.runtime import CallbackRegistry
+from qstack.runtime.evaluator import ModuleEvaluator
 
 
 def test_func_call_runs_callee_body() -> None:

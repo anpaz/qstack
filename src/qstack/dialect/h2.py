@@ -19,7 +19,7 @@ from xdsl.irdl import (
     result_def,
 )
 
-from qstack_mlir.dialect.core import QubitType
+from qstack.dialect.core import QubitType
 
 
 def u1_matrix(theta: float, phi: float) -> np.ndarray:

@@ -6,13 +6,13 @@ import pytest
 
 from xdsl.dialects.func import CallOp
 
-from qstack_mlir.dialect.cliffords import HOp
-from qstack_mlir.dialect.toy import FlipOp, MixOp
-from qstack_mlir.dialect.atoms import RzOp as AtomsRzOp
-from qstack_mlir.dialect.h2 import RzOp as H2RzOp
-from qstack_mlir.surface import isa_includes
-from qstack_mlir.surface.lowering import lower
-from qstack_mlir.surface.parser import parse
+from qstack.dialect.cliffords import HOp
+from qstack.dialect.toy import FlipOp, MixOp
+from qstack.dialect.atoms import RzOp as AtomsRzOp
+from qstack.dialect.h2 import RzOp as H2RzOp
+from qstack.surface import isa_includes
+from qstack.surface.lowering import lower
+from qstack.surface.parser import parse
 
 
 def _program(include: str) -> str:

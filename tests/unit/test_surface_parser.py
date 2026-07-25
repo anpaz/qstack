@@ -2,7 +2,7 @@
 
 import pytest
 
-from qstack_mlir.surface.parser import parse
+from qstack.surface.parser import parse
 
 PREPARE_ONE = """
 QSTACKQASM 0.1;

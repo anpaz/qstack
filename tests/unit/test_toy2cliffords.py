@@ -2,13 +2,13 @@
 
 import pytest
 
-from qstack_mlir.dialect.cliffords import CxOp, HOp, XOp
-from qstack_mlir.dialect.toy import EntangleOp, FlipOp, MixOp, SkewOp
-from qstack_mlir.passes.toy2cliffords import compile_toy_to_cliffords
-from qstack_mlir.runtime import Machine
-from qstack_mlir.surface.lowering import lower
-from qstack_mlir.surface.parser import parse
-from qstack_mlir.verifier import verify_module
+from qstack.dialect.cliffords import CxOp, HOp, XOp
+from qstack.dialect.toy import EntangleOp, FlipOp, MixOp, SkewOp
+from qstack.passes.toy2cliffords import compile_toy_to_cliffords
+from qstack.runtime import Machine
+from qstack.surface.lowering import lower
+from qstack.surface.parser import parse
+from qstack.verifier import verify_module
 
 _TOY_BELL = """
 QSTACKQASM 0.1;

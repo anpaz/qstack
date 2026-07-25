@@ -8,11 +8,11 @@ from xdsl.dialects.func import Func
 from xdsl.parser import Parser
 from xdsl.printer import Printer
 
-from qstack_mlir.dialect import QStack
-from qstack_mlir.dialect.atoms import Atoms
-from qstack_mlir.runtime import Machine
-from qstack_mlir.surface.lowering import lower
-from qstack_mlir.surface.parser import parse
+from qstack.dialect import QStack
+from qstack.dialect.atoms import Atoms
+from qstack.runtime import Machine
+from qstack.surface.lowering import lower
+from qstack.surface.parser import parse
 
 
 def _ctx() -> Context:
