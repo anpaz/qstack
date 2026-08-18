@@ -25,11 +25,11 @@ _SINGLE_QUBIT_GATES = (HOp, XOp, ZOp, SOp)
 _TWO_QUBIT_GATES = (CxOp, CzOp)
 
 
-class Rep3CompileError(Exception):
+class Rep3BitCompileError(Exception):
     """Raised when a module cannot be lowered by the repetition-code pass."""
 
 
-def register_rep3_callbacks(registry) -> None:
+def register_rep3_bit_callbacks(registry) -> None:
     """Register the repetition-code decoder on a callback registry."""
 
     @registry.decoder(_MAJORITY_VOTE)
@@ -107,13 +107,13 @@ class _FunctionRewriter:
         try:
             return self.values[value]
         except KeyError as exc:
-            raise Rep3CompileError(f"rep3: no rewritten value for {value!r}") from exc
+            raise Rep3BitCompileError(f"rep3-bit: no rewritten value for {value!r}") from exc
 
     def _single(self, value: SSAValue) -> SSAValue:
         mapped = self._mapped(value)
         if len(mapped) != 1:
-            raise Rep3CompileError(
-                f"rep3: expected one rewritten value for {value!r}, got {len(mapped)}"
+            raise Rep3BitCompileError(
+                f"rep3-bit: expected one rewritten value for {value!r}, got {len(mapped)}"
             )
         return mapped[0]
 
@@ -150,7 +150,7 @@ class _FunctionRewriter:
             _copy_attributes(op, new_op)
             destination.add_op(new_op)
         else:
-            raise Rep3CompileError(f"rep3: unsupported operation {op.name!r}")
+            raise Rep3BitCompileError(f"rep3-bit: unsupported operation {op.name!r}")
 
     def _rewrite_single_qubit_gate(self, op: Operation, destination: Block) -> None:
         rewritten = []
@@ -190,8 +190,8 @@ class _FunctionRewriter:
 
     def _rewrite_kernel(self, op: KernelOp, destination: Block) -> None:
         if self.kernel_depth and any(isinstance(result.type, BitType) for result in op.results):
-            raise Rep3CompileError(
-                "rep3: allocating kernels nested inside another kernel require "
+            raise Rep3BitCompileError(
+                "rep3-bit: allocating kernels nested inside another kernel require "
                 "kernel restructuring to keep decoders at function scope"
             )
 
@@ -238,7 +238,7 @@ class _FunctionRewriter:
                 if old_result.name_hint is not None:
                     decode.result.name_hint = old_result.name_hint
                 continue
-            raise Rep3CompileError(f"rep3: unsupported kernel result type {old_result.type}")
+            raise Rep3BitCompileError(f"rep3-bit: unsupported kernel result type {old_result.type}")
 
     def _rewrite_decode(self, op: DecodeOp, destination: Block) -> None:
         new_op = DecodeOp(
@@ -278,7 +278,7 @@ class _FunctionRewriter:
         try:
             result_types = self.function_types[callee].outputs.data
         except KeyError as exc:
-            raise Rep3CompileError(f"rep3: func.call references unknown symbol @{callee}") from exc
+            raise Rep3BitCompileError(f"rep3-bit: func.call references unknown symbol @{callee}") from exc
         new_op = CallOp(op.callee, self._flatten(op.arguments), list(result_types))
         _copy_attributes(op, new_op)
         destination.add_op(new_op)
@@ -337,22 +337,22 @@ def _validate_existing_majority_vote(fn: FuncOp) -> None:
         or "qstack.decoder" not in fn.attributes
         or fn.function_type != expected
     ):
-        raise Rep3CompileError(
+        raise Rep3BitCompileError(
             "@majority_vote already exists but is not a decoder declaration "
             "with signature (!qstack.bit, !qstack.bit, !qstack.bit) -> !qstack.bit"
         )
 
 
-def compile_rep3(module: ModuleOp) -> ModuleOp:
+def compile_rep3_bit(module: ModuleOp) -> ModuleOp:
     """Return a repetition-3 encoded copy of ``module``."""
 
     functions: dict[str, FuncOp] = {}
     for op in module.body.ops:
         if not isinstance(op, FuncOp):
-            raise Rep3CompileError(f"rep3: unsupported top-level operation {op.name!r}")
+            raise Rep3BitCompileError(f"rep3-bit: unsupported top-level operation {op.name!r}")
         name = op.sym_name.data
         if name in functions:
-            raise Rep3CompileError(f"rep3: duplicate function symbol @{name}")
+            raise Rep3BitCompileError(f"rep3-bit: duplicate function symbol @{name}")
         functions[name] = op
 
     existing_majority = functions.get(_MAJORITY_VOTE)

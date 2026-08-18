@@ -1,9 +1,10 @@
 """End-to-end parity pipelines ending in the H2-native dialect."""
 
-from qstack.dialect.cliffords import CxOp, HOp, XOp
+from qstack.dialect.cliffords import CxOp, CzOp, HOp, SOp, XOp, YOp, ZOp
 from qstack.dialect.h2 import RzOp, U1Op, ZzOp
 from qstack.passes.cliffords2h2 import compile_cliffords_to_h2
-from qstack.passes.rep3_trivial import compile_rep3, register_rep3_callbacks
+from qstack.passes.rep3_bit import compile_rep3_bit, register_rep3_bit_callbacks
+from qstack.passes.rep3_phase import compile_rep3_phase, register_rep3_phase_callbacks
 from qstack.passes.toy2cliffords import compile_toy_to_cliffords
 from qstack.runtime import CallbackRegistry, Machine
 from qstack.surface.lowering import lower
@@ -34,7 +35,7 @@ measure q[0] -> c[0];
 
 
 def _has_cliffords(module) -> bool:
-    return any(isinstance(op, (HOp, XOp, CxOp)) for op in module.walk())
+    return any(isinstance(op, (CxOp, CzOp, HOp, SOp, XOp, YOp, ZOp)) for op in module.walk())
 
 
 def test_toy_to_cliffords_to_h2_executes_bell_program() -> None:
@@ -53,24 +54,37 @@ def test_toy_to_cliffords_to_h2_executes_bell_program() -> None:
 
 
 def test_rep3_to_h2_executes() -> None:
-    module = compile_rep3(lower(parse(_FLIP)))
+    module = compile_rep3_bit(lower(parse(_FLIP)))
     compile_cliffords_to_h2(module)
     verify_module(module)
 
     registry = CallbackRegistry()
-    register_rep3_callbacks(registry)
+    register_rep3_bit_callbacks(registry)
     results = Machine(module, num_qubits=3, registry=registry).eval(shots=100)
     assert all(result == [1] for result in results)
     assert not _has_cliffords(module)
 
 
 def test_repeated_rep3_to_h2_executes() -> None:
-    module = compile_rep3(compile_rep3(lower(parse(_FLIP))))
+    module = compile_rep3_bit(compile_rep3_bit(lower(parse(_FLIP))))
     compile_cliffords_to_h2(module)
     verify_module(module)
 
     registry = CallbackRegistry()
-    register_rep3_callbacks(registry)
+    register_rep3_bit_callbacks(registry)
+    results = Machine(module, num_qubits=9, registry=registry).eval(shots=20)
+    assert all(result == [1] for result in results)
+    assert not _has_cliffords(module)
+
+
+def test_rep3_bit_plus_phase_to_h2_executes() -> None:
+    module = compile_rep3_phase(compile_rep3_bit(lower(parse(_FLIP))))
+    compile_cliffords_to_h2(module)
+    verify_module(module)
+
+    registry = CallbackRegistry()
+    register_rep3_bit_callbacks(registry)
+    register_rep3_phase_callbacks(registry)
     results = Machine(module, num_qubits=9, registry=registry).eval(shots=20)
     assert all(result == [1] for result in results)
     assert not _has_cliffords(module)
