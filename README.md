@@ -1,85 +1,82 @@
 # qstack
 
-qstack is a framework for compiling and executing quantum programs using a stack-based approach for dynamic qubit allocation and measurement. It provides tools for defining quantum kernels, compiling them into lower-level instructions, integrating classical computations, and incorporating quantum error correction seamlessly.
+qstack is a research framework for building quantum compiler stacks on top of
+[xdsl](https://github.com/xdslproject/xdsl). It provides a linear quantum IR,
+a surface language based on a subset of OpenQASM 3, compiler passes,
+verification, and execution backends in one Python codebase.
+
+A central goal of qstack is **pass verification across every layer of the
+stack**. Each transformation should produce IR whose structure, types, and
+linear use of quantum and classical values can be checked before the next
+lowering layer consumes it. This makes verification part of the compiler
+pipeline rather than a final validation step.
+
+The project is primarily intended for researchers and developers working on:
+
+- quantum error-correction transformations;
+- circuit optimization and decomposition passes;
+- qubit layout and hardware-lowering passes; and
+- compiler analyses for hybrid quantum-classical programs.
+
+Programs enter qstack through the supported OpenQASM 3 subset or direct IR
+construction. Compiler passes progressively lower them through instruction-set
+dialects, with verification boundaries between layers. The resulting modules
+can be evaluated with the included state-vector and Stim-backed runtimes.
 
 ## Installation
 
-To install qstack, run:
+qstack requires Python 3.12 or newer. To install it in a fresh virtual
+environment:
 
 ```bash
-pip install .
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install .
 ```
 
-## Key Features
-
-- **Dynamic Qubit Allocation**: Allocate and measure qubits dynamically using a stack-based approach, enabling flexible and modular program design.
-- **Quantum Kernels**: Define quantum operations in a modular and nested manner, supporting complex quantum workflows.
-- **Classical Oracles**: Integrate classical computations into quantum programs, allowing conditional logic and hybrid quantum-classical operations.
-- **Instruction Set Compilation**: Compile high-level quantum instructions into hardware-specific low-level operations, ensuring compatibility with diverse quantum hardware.
-- **Quantum Error Correction**: Leverage modularity to incorporate advanced quantum error correction techniques, such as the Steane code, into the compilation of programs. This ensures resilience against errors and supports fault-tolerant quantum computation.
-- **Independent QPU and CPU Interfaces**: Demonstrates the independent operation of quantum and classical processors, showcasing their respective capabilities and interactions.
-
-## Usage
-
-Explore the `examples/` directory for sample usage of qstack. Some key examples include:
-
-- `bell.py`: Demonstrates creating a Bell state.
-- `teleport.py`: Implements quantum teleportation using entanglement and classical communication.
-- `noisy_bell.py`: Simulates a Bell state with noise, introducing realistic quantum system modeling.
-- `steane.py`: Demonstrates quantum error correction using the Steane code, showcasing fault-tolerant quantum computation.
-- `cpu.py`: Highlights the independent operation of the classical processor (CPU) for handling classical logic and measurement results.
-- `qpu.py`: Highlights the independent operation of the quantum processor (QPU) for executing quantum instructions.
-
-Run an example using:
+For an editable development installation with the test and build tools:
 
 ```bash
-python examples/steane.py
+python -m pip install -e '.[dev]'
 ```
 
-## High-Level Syntax Examples
+Jupyter support can be installed separately:
 
-qstack supports a high-level syntax for defining quantum programs. Here are a couple of examples:
-
-### Example 1: Bell State
-
-```plaintext
-allocate q1:
-  h q1
-  allocate q2:
-    cx q1 q2
-  measure
-measure
+```bash
+python -m pip install -e '.[jupyter]'
 ```
 
-### Example 2: Quantum Teleportation
+## Project structure
 
-```plaintext
-allocate q1:
-  allocate q2:
-    allocate q3:
-      h q2
-      cx q2 q3
-      cx q1 q2
-      h q1
-    measure
-  measure
-  ?? apply_corrections(q1)
-measure q3
+- `src/qstack/dialect/` defines the core IR and instruction-set dialects.
+- `src/qstack/passes/` contains decomposition and QEC transformations.
+- `src/qstack/surface/` parses and lowers the supported OpenQASM 3 subset.
+- `src/qstack/runtime/` provides execution, noise, and callback infrastructure.
+- `src/qstack/verifier.py` enforces qstack-specific IR invariants.
+- `tests/` contains unit and end-to-end compiler tests.
+
+The notebooks in `examples/` demonstrate application construction, compilation,
+and evaluation. They are end-to-end usage examples rather than tutorials for
+implementing new compiler passes.
+
+## Development
+
+Run the test suite from the repository root:
+
+```bash
+pytest
 ```
 
-## Documentation
+Build the source distribution and wheel with:
 
-The core functionality of qstack is implemented under the `src/qstack/` directory. Key modules include:
+```bash
+python -m build
+```
 
-- `compiler.py`: Handles the compilation of quantum programs, including error correction.
-- `emulator.py`: Simulates quantum program execution, supporting both noiseless and noisy environments.
-- `layer.py`: Defines abstraction layers for quantum operations, such as the Toy and clifford_min layers.
-- `noise.py`: Models noise in quantum computations, enabling realistic simulations.
-- `stack.py`: Implements the stack-based qubit allocation and measurement, central to qstack's design.
-- `classic_processor.py` and `qpu.py`: Define the independent interfaces for classical and quantum processors, respectively.
-
-Refer to the source code for detailed implementation and extendability.
+For the IR design and project motivation, see
+[DESIGN.md](docs/DESIGN.md) and [POSITIONING.md](docs/POSITIONING.md).
 
 ## License
 
-This project is licensed under the standard MIT License. See the LICENSE file for details.
+qstack is available under the [MIT License](LICENSE).
