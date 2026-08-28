@@ -28,8 +28,8 @@ def _has_cliffords(module) -> bool:
 
 def test_toy_to_cliffords_to_atoms_executes_bell_program() -> None:
     module = lower(parse(_TOY_BELL))
-    compile_toy_to_cliffords(module)
-    compile_cliffords_to_atoms(module)
+    module = compile_toy_to_cliffords(module)
+    module = compile_cliffords_to_atoms(module)
     verify_module(module)
 
     assert not _has_cliffords(module)
@@ -39,4 +39,3 @@ def test_toy_to_cliffords_to_atoms_executes_bell_program() -> None:
     assert set(histogram) <= {(0, 0), (1, 1)}
     for outcome in ((0, 0), (1, 1)):
         assert 800 < histogram.get(outcome, 0) < 1200
-

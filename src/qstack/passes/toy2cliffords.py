@@ -2,12 +2,12 @@
 
 MLIR port of ``src/qstack/compilers/toy2cliffords.py``: rewrites the
 toy-ISA gates `flip`, `mix`, and `entangle` to their Clifford
-counterparts in place. ``toy.skew`` is intentionally **not** handled
+counterparts in a fresh module. ``toy.skew`` is intentionally **not** handled
 (it has no Clifford decomposition) and triggers an error so callers
 catch the case early instead of silently producing a broken module.
 
-The pass operates at module scope; it walks every op of every ``func.func``
-body recursively, swapping the matching ops one-for-one. Linear bit/qubit
+The pass operates at module scope; it walks every named kernel body,
+swapping the matching ops one-for-one. Linear bit/qubit
 threading is preserved by reusing the original op's operands and giving
 the replacement the same single-/two-qubit shape.
 """
@@ -18,7 +18,6 @@ from typing import Iterable
 
 
 from xdsl.dialects.builtin import ModuleOp
-from xdsl.dialects.func import FuncOp
 from xdsl.ir import Operation
 
 from qstack.dialect.cliffords import CxOp, HOp, XOp
@@ -68,5 +67,5 @@ class ToyToCliffordsCompiler(BaseOpRewriter):
 
 
 def compile_toy_to_cliffords(module: ModuleOp) -> ModuleOp:
-    """Class-based compiler entry point for compatibility."""
+    """Return a Clifford-lowered copy of ``module``."""
     return ToyToCliffordsCompiler().compile(module)

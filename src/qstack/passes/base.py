@@ -1,12 +1,13 @@
-"""Base class for MLIR op rewriting compiler passes.
+"""Base class for non-mutating MLIR compiler passes.
 
-Provides traversal, handler dispatch, and result replacement logic.
-Subclasses only need to provide a handler registry (mapping op types to handler functions).
+Public compilation clones the input module, then rewrites the clone. Subclasses
+only need to provide a handler registry mapping operation types to handlers.
 """
 
 from xdsl.dialects.builtin import ModuleOp
-from xdsl.dialects.func import FuncOp
 from xdsl.ir import Block, Operation
+
+from qstack.dialect.core import KernelOp
 
 
 class BaseOpRewriter:
@@ -19,10 +20,12 @@ class BaseOpRewriter:
             )
 
     def compile(self, module: ModuleOp) -> ModuleOp:
-        for op in module.body.ops:
-            if isinstance(op, FuncOp) and not op.is_declaration:
+        """Return a rewritten copy of ``module`` without modifying ``module``."""
+        output = module.clone()
+        for op in output.body.ops:
+            if isinstance(op, KernelOp):
                 self._rewrite_block(op.body.block)
-        return module
+        return output
 
     def _rewrite_block(self, block: Block) -> None:
         for op in list(block.ops):

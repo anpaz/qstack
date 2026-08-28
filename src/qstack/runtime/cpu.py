@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import logging
 
-from xdsl.dialects.func import FuncOp
-
 from qstack.dialect.core import DecodeOp, SelectOp
 from qstack.runtime.registry import CallbackRegistry
 
@@ -25,25 +23,21 @@ class CPU:
     def restart(self) -> None:
         logger.debug("cpu.restart")
 
-    def select(self, op: SelectOp, bit_values: dict[str, int], funcs: dict[str, FuncOp]) -> FuncOp:
+    def select(self, op: SelectOp, bits: tuple[int, ...]) -> str:
         sym = op.callee.root_reference.data
         fn = self._registry.get_selector(sym)
-        label = fn(**bit_values)
-        logger.debug("cpu.select: %s %s -> %s", sym, bit_values, label)
-        if label not in op.continuations.data:
+        label = fn(bits)
+        logger.debug("cpu.select: %s %s -> %s", sym, bits, label)
+        if label not in op.cases.data:
             raise RuntimeError(
                 f"selector @{sym} returned label {label!r} not in menu "
-                f"{list(op.continuations.data)}"
+                f"{list(op.cases.data)}"
             )
-        cont_sym = op.continuations.data[label]
-        cont_name = cont_sym.root_reference.data
-        if cont_name not in funcs:
-            raise RuntimeError(f"continuation @{cont_name} not in module")
-        return funcs[cont_name]
+        return label
 
-    def decode(self, op: DecodeOp, args: list[int]) -> int:
+    def decode(self, op: DecodeOp, bits: tuple[int, ...]) -> int:
         sym = op.callee.root_reference.data
         fn = self._registry.get_decoder(sym)
-        result = int(fn(*args))
-        logger.debug("cpu.decode: %s %s -> %s", sym, args, result)
+        result = int(fn(bits))
+        logger.debug("cpu.decode: %s %s -> %s", sym, bits, result)
         return result

@@ -28,47 +28,47 @@ def test_register_and_lookup_selector() -> None:
     reg = CallbackRegistry()
 
     @reg.selector("repeat_until_one")
-    def fn(*, b):
-        return "done" if b == 1 else "retry"
+    def fn(bits):
+        return "done" if bits[0] == 1 else "retry"
 
     assert reg.get_selector("repeat_until_one") is fn
-    assert reg.get_selector("repeat_until_one")(b=1) == "done"
-    assert reg.get_selector("repeat_until_one")(b=0) == "retry"
+    assert reg.get_selector("repeat_until_one")((1,)) == "done"
+    assert reg.get_selector("repeat_until_one")((0,)) == "retry"
 
 
 def test_register_and_lookup_decoder() -> None:
     reg = CallbackRegistry()
 
     @reg.decoder("majority_vote")
-    def fn(a, b, c):
-        return 1 if (a + b + c) >= 2 else 0
+    def fn(bits):
+        return 1 if sum(bits) >= 2 else 0
 
     assert reg.get_decoder("majority_vote") is fn
-    assert reg.get_decoder("majority_vote")(1, 1, 0) == 1
-    assert reg.get_decoder("majority_vote")(0, 1, 0) == 0
+    assert reg.get_decoder("majority_vote")((1, 1, 0)) == 1
+    assert reg.get_decoder("majority_vote")((0, 1, 0)) == 0
 
 
 def test_decorator_uses_function_name_when_bare() -> None:
     reg = CallbackRegistry()
 
     @reg.selector
-    def my_selector(*, b):
+    def my_selector(bits):
         return "done"
 
-    assert reg.get_selector("my_selector")(b=0) == "done"
+    assert reg.get_selector("my_selector")((0,)) == "done"
 
 
 def test_duplicate_registration_rejected() -> None:
     reg = CallbackRegistry()
 
     @reg.selector("s")
-    def _(*, b):
+    def _(bits):
         return "x"
 
     with pytest.raises(DuplicateRegistration):
 
         @reg.selector("s")
-        def _(*, b):  # noqa: F811
+        def _(bits):  # noqa: F811
             return "y"
 
 
@@ -76,12 +76,12 @@ def test_selectors_and_decoders_have_separate_namespaces() -> None:
     reg = CallbackRegistry()
 
     @reg.selector("name")
-    def s(*, b):
+    def s(bits):
         return "done"
 
     @reg.decoder("name")
-    def d(a):
-        return a
+    def d(bits):
+        return bits[0]
 
     assert reg.get_selector("name") is s
     assert reg.get_decoder("name") is d

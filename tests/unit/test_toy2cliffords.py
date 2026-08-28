@@ -48,18 +48,18 @@ def test_toy_bell_lowers_with_toy_ops() -> None:
 
 def test_toy_to_cliffords_replaces_supported_ops() -> None:
     module = lower(parse(_TOY_BELL))
-    compile_toy_to_cliffords(module)
-    types = {type(op).__name__ for op in _all_ops(module)}
+    compiled = compile_toy_to_cliffords(module)
+    types = {type(op).__name__ for op in _all_ops(compiled)}
     assert "MixOp" not in types
     assert "FlipOp" not in types
     assert "EntangleOp" not in types
     assert "HOp" in types
     assert "CxOp" in types
+    assert any(isinstance(op, MixOp) for op in _all_ops(module))
 
 
 def test_compiled_module_still_verifies_and_runs() -> None:
-    module = lower(parse(_TOY_BELL))
-    compile_toy_to_cliffords(module)
+    module = compile_toy_to_cliffords(lower(parse(_TOY_BELL)))
     verify_module(module)
     hist = dict(Machine(module, num_qubits=4).eval(shots=2000).histogram())
     # Same bell distribution as the original toy program.

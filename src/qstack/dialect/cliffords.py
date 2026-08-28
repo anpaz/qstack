@@ -57,6 +57,8 @@ class _SingleQubitGateOp(IRDLOperation):
     qubit = operand_def(QubitType)
     result = result_def(QubitType)
 
+    assembly_format = "$qubit attr-dict"
+
     def __init__(self, qubit: SSAValue) -> None:
         super().__init__(operands=[qubit], result_types=[QubitType()])
 
@@ -73,6 +75,8 @@ class _TwoQubitGateOp(IRDLOperation):
     target = operand_def(QubitType)
     control_out = result_def(QubitType)
     target_out = result_def(QubitType)
+
+    assembly_format = "$control `,` $target attr-dict"
 
     def __init__(self, control: SSAValue, target: SSAValue) -> None:
         super().__init__(

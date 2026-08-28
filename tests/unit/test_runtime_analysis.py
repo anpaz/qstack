@@ -65,6 +65,6 @@ measure q[1] -> c[1];
 
     assert not is_stim_compatible(module)
 
-    compile_toy_to_cliffords(module)
+    module = compile_toy_to_cliffords(module)
 
     assert is_stim_compatible(module)

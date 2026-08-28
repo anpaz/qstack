@@ -1,153 +1,71 @@
-"""Phase 1.1 tests: linearity + kernel-signature module-level verifier.
-
-Rules enforced by `qstack.verifier.verify_module`:
-
-* Every `!qstack.qubit` SSA value has exactly one use.
-* Every `!qstack.bit` SSA value has exactly one use.
-* `qstack.kernel` signature: the result list is `bit × a` then `qubit × b`,
-  where `a` is the entry-block argument count (allocations). Equivalently,
-  `bits = allocations`. The trailing `qubit × b` count is whatever the body
-  threaded out from outer-scope captures; linearity already enforces the
-  borrow-return symmetry without a kernel-specific rule.
-* `qstack.return` operand list matches the enclosing kernel's result types
-  exactly.
-
-Symbol-presence / declaration-signature checks for selectors and decoders
-are out of scope for Phase 1.1 — they land with the surface lowering when
-declarations always exist.
-"""
-
 import pytest
-from xdsl.dialects.builtin import FunctionType, ModuleOp
-from xdsl.dialects.func import FuncOp, ReturnOp as FuncReturn
+from xdsl.dialects.builtin import ModuleOp
 from xdsl.ir import Block, Region
 
 from qstack.dialect import BitType, QubitType
 from qstack.dialect.cliffords import CxOp, HOp
-from qstack.dialect.core import KernelOp, MeasureOp, ReturnOp
+from qstack.dialect.core import CallOp, KernelOp, MeasureOp, ReturnOp
 from qstack.verifier import LinearityError, verify_module
 
 
-def _wrap_in_main(kernel: KernelOp, *, outer_qubit_types=None) -> ModuleOp:
-    """Wrap a kernel in a host @main that consumes its results."""
-    outer_qubit_types = list(outer_qubit_types or [])
-    main_block = Block(arg_types=outer_qubit_types)
-    main_block.add_op(kernel)
-    main_block.add_op(FuncReturn.create(operands=list(kernel.results)))
-    fn = FuncOp(
-        "main",
-        FunctionType.from_lists(outer_qubit_types, [r.type for r in kernel.results]),
-        Region([main_block]),
-    )
-    return ModuleOp([fn])
+def _kernel(name, inputs, results, body, *, allocates=0):
+    return KernelOp(name, input_types=inputs, result_types=results, allocates=allocates, region=Region([body]))
 
 
-def _minimal_good_module() -> ModuleOp:
-    """Single allocation, single measurement, no captures — verifier-clean."""
-    blk = Block(arg_types=[QubitType()])
-    q0 = blk.args[0]
-    meas = MeasureOp(operand=q0)
-    blk.add_op(meas)
-    blk.add_op(ReturnOp(operands=[meas.result]))
-    kernel = KernelOp(result_types=[BitType()], region=Region([blk]))
-    return _wrap_in_main(kernel)
+def test_verifier_rejects_modules_without_main() -> None:
+    block = Block(arg_types=[]); block.add_op(ReturnOp(operands=[]))
+    with pytest.raises(LinearityError, match="@main"):
+        verify_module(ModuleOp([KernelOp("other", input_types=[], result_types=[], allocates=0, region=Region([block]))]))
 
 
-def test_minimal_kernel_passes() -> None:
-    verify_module(_minimal_good_module())
+def test_verifier_rejects_main_returning_a_qubit() -> None:
+    block = Block(arg_types=[QubitType()]); block.add_op(ReturnOp(operands=[block.args[0]]))
+    with pytest.raises(LinearityError, match="cannot return a qubit"):
+        verify_module(ModuleOp([KernelOp("main", input_types=[], result_types=[QubitType()], allocates=1, region=Region([block]))]))
 
 
-def test_unused_qubit_fails() -> None:
-    """Allocate q0 and never use it — verifier rejects."""
-    blk = Block(arg_types=[QubitType()])
-    blk.add_op(ReturnOp(operands=[]))
-    kernel = KernelOp(result_types=[], region=Region([blk]))
-    m = _wrap_in_main(kernel)
-    with pytest.raises(LinearityError, match="unused"):
-        verify_module(m)
+def test_verifier_rejects_wrong_entry_signature() -> None:
+    block = Block(arg_types=[]); block.add_op(ReturnOp(operands=[]))
+    with pytest.raises(LinearityError, match="entry arguments"):
+        verify_module(ModuleOp([KernelOp("main", input_types=[], result_types=[], allocates=1, region=Region([block]))]))
 
 
-def test_double_used_bit_fails() -> None:
-    """Measure once, return the bit twice — second use is illegal."""
-    blk = Block(arg_types=[QubitType()])
-    q0 = blk.args[0]
-    meas = MeasureOp(operand=q0)
-    blk.add_op(meas)
-    blk.add_op(ReturnOp(operands=[meas.result, meas.result]))
-    kernel = KernelOp(
-        result_types=[BitType(), BitType()],
-        region=Region([blk]),
-    )
-    m = _wrap_in_main(kernel)
-    with pytest.raises(LinearityError, match="multiple uses"):
-        verify_module(m)
+def test_verifier_accepts_a_fresh_qubit_escaping_by_teleportation() -> None:
+    """A borrowed qubit may die inside the kernel while a fresh one is returned."""
+
+    body = Block(arg_types=[QubitType(), QubitType(), QubitType()])
+    psi, a, b = body.args
+    h_a = HOp(a); body.add_op(h_a)
+    bell = CxOp(h_a.result, b); body.add_op(bell)
+    entangle = CxOp(psi, bell.control_out); body.add_op(entangle)
+    basis = HOp(entangle.control_out); body.add_op(basis)
+    m0 = MeasureOp(operand=basis.result); body.add_op(m0)
+    m1 = MeasureOp(operand=entangle.target_out); body.add_op(m1)
+    body.add_op(ReturnOp(operands=[bell.target_out, m0.result, m1.result]))
+    teleport = _kernel("teleport", [QubitType()], [QubitType(), BitType(), BitType()], body, allocates=2)
+
+    main_block = Block(arg_types=[QubitType()])
+    call = CallOp("teleport", [main_block.args[0]], [QubitType(), BitType(), BitType()])
+    main_block.add_op(call)
+    final = MeasureOp(operand=call.results[0]); main_block.add_op(final)
+    main_block.add_op(ReturnOp(operands=[final.result, call.results[1], call.results[2]]))
+    main = _kernel("main", [], [BitType(), BitType(), BitType()], main_block, allocates=1)
+
+    verify_module(ModuleOp([teleport, main]))
 
 
-def test_kernel_signature_bits_count_mismatch_fails() -> None:
-    """2 allocations but only 1 bit in result list (signature lies)."""
-    blk = Block(arg_types=[QubitType(), QubitType()])
-    q0, q1 = blk.args
-    h = HOp(q0)
-    blk.add_op(h)
-    cx = CxOp(h.result, q1)
-    blk.add_op(cx)
-    meas = MeasureOp(operand=cx.target_out)
-    blk.add_op(meas)
-    blk.add_op(ReturnOp(operands=[meas.result, cx.control_out]))
-    kernel = KernelOp(
-        result_types=[BitType(), QubitType()],
-        region=Region([blk]),
-    )
-    m = _wrap_in_main(kernel)
-    with pytest.raises(LinearityError, match="bit results"):
-        verify_module(m)
+def test_verifier_accepts_a_kernel_returning_more_qubits_than_it_borrows() -> None:
+    """A state preparation borrows nothing and hands its fresh qubit to the caller."""
 
+    prep_block = Block(arg_types=[QubitType()])
+    h = HOp(prep_block.args[0]); prep_block.add_op(h)
+    prep_block.add_op(ReturnOp(operands=[h.result]))
+    prepare = _kernel("prepare_plus", [], [QubitType()], prep_block, allocates=1)
 
-def test_dropped_capture_fails_linearity() -> None:
-    """Capture an outer qubit but drop it inside the body — linearity catches.
+    main_block = Block(arg_types=[])
+    call = CallOp("prepare_plus", [], [QubitType()]); main_block.add_op(call)
+    measure = MeasureOp(operand=call.results[0]); main_block.add_op(measure)
+    main_block.add_op(ReturnOp(operands=[measure.result]))
+    main = _kernel("main", [], [BitType()], main_block)
 
-    With the no-operands kernel design, "borrow-return symmetry" is enforced
-    by qubit linearity, not a kernel-specific signature rule: the H result
-    on the captured qubit is unused, so the unused-value check fires.
-    """
-    outer = Block(arg_types=[QubitType()])
-    captured = outer.args[0]
-    inner = Block(arg_types=[])
-    h = HOp(captured)
-    inner.add_op(h)
-    inner.add_op(ReturnOp(operands=[]))
-    kernel = KernelOp(result_types=[], region=Region([inner]))
-    outer.add_op(kernel)
-    outer.add_op(FuncReturn.create(operands=[]))
-    fn = FuncOp("host", FunctionType.from_lists([QubitType()], []), Region([outer]))
-    m = ModuleOp([fn])
-    with pytest.raises(LinearityError, match="unused"):
-        verify_module(m)
-
-
-def test_kernel_results_ordering_fails() -> None:
-    """Results in wrong order: qubit then bit instead of bits-first."""
-    outer = Block(arg_types=[QubitType()])
-    captured = outer.args[0]
-
-    inner = Block(arg_types=[QubitType()])  # 1 allocation
-    q_alloc = inner.args[0]
-    meas = MeasureOp(operand=q_alloc)
-    inner.add_op(meas)
-    # WRONG ORDER: qubit first, bit second.
-    inner.add_op(ReturnOp(operands=[captured, meas.result]))
-
-    kernel = KernelOp(
-        result_types=[QubitType(), BitType()],  # WRONG: bits must come first
-        region=Region([inner]),
-    )
-    outer.add_op(kernel)
-    outer.add_op(FuncReturn.create(operands=list(kernel.results)))
-    fn = FuncOp(
-        "host",
-        FunctionType.from_lists([QubitType()], [QubitType(), BitType()]),
-        Region([outer]),
-    )
-    m = ModuleOp([fn])
-    with pytest.raises(LinearityError, match="order"):
-        verify_module(m)
+    verify_module(ModuleOp([prepare, main]))

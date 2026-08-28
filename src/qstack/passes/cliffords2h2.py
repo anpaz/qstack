@@ -113,6 +113,6 @@ class CliffordsToH2Compiler(BaseOpRewriter):
 
 
 def compile_cliffords_to_h2(module: ModuleOp) -> ModuleOp:
-    """Rewrite every Clifford operation in ``module`` to H2 operations."""
+    """Return an H2-lowered copy of ``module``."""
 
     return CliffordsToH2Compiler().compile(module)

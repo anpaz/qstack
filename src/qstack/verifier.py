@@ -1,120 +1,202 @@
-"""Module-level linearity + kernel-signature verifier (Phase 1.1).
+"""Structural verifier for the kernel-only qstack IR.
 
-Rules — see ``tests/unit/test_verifier.py`` for the exhaustive list and one
-negative test per rule:
-
-1. Every `!qstack.qubit` SSA value has exactly one use.
-2. Every `!qstack.bit` SSA value has exactly one use.
-3. `qstack.kernel` signature: result list is `bit × a` followed by
-   `qubit × b`, where `a` is the entry-block argument count (allocations).
-   The number of trailing qubit results `b` is whatever the body threaded
-   back from outer-scope captures; linearity of `!qstack.qubit` enforces
-   the borrow-return symmetry without a kernel-specific rule.
-4. `qstack.return` operand list matches the enclosing kernel's result types
-   exactly (positionally), which already pins bits-then-qubits ordering.
-
-Symbol-table checks (selector / decoder declarations match their call sites)
-land alongside the surface-language lowering, when those symbols always exist.
+This module enforces the executable shape from :mod:`docs.DESIGN`; it does
+not attempt semantic equivalence checking or callback-obligation generation.
 """
 
 from __future__ import annotations
 
-from xdsl.dialects.builtin import ModuleOp
+from collections.abc import Iterable
+
+from xdsl.dialects.builtin import ModuleOp, SymbolRefAttr
 from xdsl.ir import Operation, SSAValue
 
-from qstack.dialect.core import BitType, KernelOp, QubitType, ReturnOp
+from qstack.dialect.core import (
+    BitType,
+    CallOp,
+    DecodeOp,
+    DecoderOp,
+    KernelOp,
+    MeasureOp,
+    QubitType,
+    ReturnOp,
+    SelectOp,
+    SelectorOp,
+    UnitaryGateOp,
+)
 
 
 class LinearityError(Exception):
-    """Raised when the module violates a qstack linearity or signature rule."""
+    """Raised for any structural or linearity violation in a qstack module."""
 
 
-def _check_single_use(value: SSAValue, where: str) -> None:
-    """A linear value must be used exactly once."""
-    n = len(list(value.uses))
-    if n == 0:
-        raise LinearityError(f"linear value {value!r} ({value.type}) is unused at {where}")
-    if n > 1:
-        raise LinearityError(f"linear value {value!r} ({value.type}) has multiple uses ({n}) at {where}")
+def _type_list(values: Iterable[SSAValue]) -> list[object]:
+    return [value.type for value in values]
+
+
+def _check_same_types(actual: Iterable[object], expected: Iterable[object], message: str) -> None:
+    if list(actual) != list(expected):
+        raise LinearityError(message)
+
+
+def _symbol_name(ref: SymbolRefAttr) -> str:
+    return ref.root_reference.data
 
 
 def _is_linear(value: SSAValue) -> bool:
     return isinstance(value.type, (QubitType, BitType))
 
 
-def _verify_kernel(kernel: KernelOp) -> None:
-    region = kernel.body
-    if len(region.blocks) != 1:
-        raise LinearityError(f"qstack.kernel must have exactly one block, got {len(region.blocks)}")
-    entry = region.blocks[0]
+def _check_single_use(value: SSAValue, where: str) -> None:
+    uses = list(value.uses)
+    if len(uses) != 1:
+        qualifier = "unused" if not uses else f"used {len(uses)} times"
+        raise LinearityError(f"linear value {value!r} ({value.type}) is {qualifier} at {where}")
 
-    # Signature: block args are `allocations × a`; results are
-    # `bits × a` then `qubits × b`. Borrowed qubits are captured from the
-    # enclosing scope; their count `b` is read off the result list, and the
-    # linearity check (run earlier) already ensures every capture has its
-    # single use — which can only be satisfied by threading it back as one
-    # of the trailing qubit results.
-    n_alloc = len(entry.args)
-    results = list(kernel.results)
-    n_bits = sum(1 for r in results if isinstance(r.type, BitType))
-    n_qubits = sum(1 for r in results if isinstance(r.type, QubitType))
 
-    if n_bits != n_alloc:
-        raise LinearityError(
-            f"qstack.kernel signature: {n_alloc} allocations but {n_bits} bit " "results (must match)"
+def _linear_values(kernel: KernelOp) -> Iterable[SSAValue]:
+    block = kernel.body.blocks[0]
+    yield from block.args
+    for op in block.ops:
+        yield from op.results
+
+
+def _verify_kernel_body_ops(kernel: KernelOp) -> None:
+    block = kernel.body.blocks[0]
+    allowed = (UnitaryGateOp, MeasureOp, DecodeOp, SelectOp, CallOp, ReturnOp)
+    for op in block.ops:
+        if not isinstance(op, allowed):
+            raise LinearityError(f"kernel @{kernel.sym_name.data} contains forbidden operation {op.name}")
+        if op.regions:
+            raise LinearityError(f"kernel @{kernel.sym_name.data} contains nested region operation {op.name}")
+        if isinstance(op, MeasureOp) and not isinstance(op.qubit.type, QubitType):
+            raise LinearityError("qstack.measure operand is not a qubit")
+        if isinstance(op, (DecodeOp, SelectOp)) and any(
+            not isinstance(value.type, BitType) for value in op.bit_operands
+        ):
+            raise LinearityError(f"{op.name} bit operands must all be bits")
+
+
+def _verify_kernel_shape(kernel: KernelOp) -> None:
+    if len(kernel.body.blocks) != 1:
+        raise LinearityError(f"kernel @{kernel.sym_name.data} must have exactly one block")
+    if kernel.allocation_count < 0:
+        raise LinearityError(f"kernel @{kernel.sym_name.data} has a negative allocation count")
+    block = kernel.body.blocks[0]
+    expected_args = [*kernel.input_types, *[QubitType() for _ in range(kernel.allocation_count)]]
+    _check_same_types(
+        _type_list(block.args),
+        expected_args,
+        f"kernel @{kernel.sym_name.data} entry arguments do not match its signature and allocations",
+    )
+    if not isinstance(block.last_op, ReturnOp):
+        raise LinearityError(f"kernel @{kernel.sym_name.data} must end in qstack.return")
+    _check_same_types(
+        _type_list(block.last_op.operands),
+        kernel.declared_result_types,
+        f"qstack.return in @{kernel.sym_name.data} does not match the declared result types",
+    )
+    _verify_kernel_body_ops(kernel)
+    for value in _linear_values(kernel):
+        if _is_linear(value):
+            _check_single_use(value, f"kernel @{kernel.sym_name.data}")
+
+
+def _verify_callback_declaration(op: SelectorOp | DecoderOp) -> None:
+    if op.input_count < 0:
+        raise LinearityError(f"callback @{op.sym_name.data} has a negative bit-input count")
+    if isinstance(op, DecoderOp) and op.input_count == 0:
+        raise LinearityError(f"decoder @{op.sym_name.data} must accept at least one bit")
+
+
+def _verify_call(op: CallOp, kernels: dict[str, KernelOp]) -> None:
+    name = _symbol_name(op.callee)
+    kernel = kernels.get(name)
+    if kernel is None:
+        raise LinearityError(f"qstack.call references unknown kernel @{name}")
+    _check_same_types(_type_list(op.arguments), kernel.input_types, f"qstack.call @{name} has wrong argument types")
+    _check_same_types(_type_list(op.results), kernel.declared_result_types, f"qstack.call @{name} has wrong result types")
+
+
+def _verify_decode(op: DecodeOp, decoders: dict[str, DecoderOp]) -> None:
+    name = _symbol_name(op.callee)
+    decoder = decoders.get(name)
+    if decoder is None:
+        raise LinearityError(f"qstack.decode references unknown decoder @{name}")
+    if len(op.bit_operands) != decoder.input_count:
+        raise LinearityError(f"qstack.decode @{name} has wrong bit-operand count")
+
+
+def _verify_select(
+    op: SelectOp,
+    kernels: dict[str, KernelOp],
+    selectors: dict[str, SelectorOp],
+) -> None:
+    selector_name = _symbol_name(op.callee)
+    selector = selectors.get(selector_name)
+    if selector is None:
+        raise LinearityError(f"qstack.select references unknown selector @{selector_name}")
+    if len(op.bit_operands) != selector.input_count:
+        raise LinearityError(f"qstack.select @{selector_name} has wrong bit-operand count")
+    for label, target in op.cases.data.items():
+        if not isinstance(target, SymbolRefAttr):
+            raise LinearityError(f"qstack.select case {label!r} is not a kernel symbol reference")
+        target_name = _symbol_name(target)
+        kernel = kernels.get(target_name)
+        if kernel is None:
+            raise LinearityError(f"qstack.select case {label!r} references unknown kernel @{target_name}")
+        _check_same_types(
+            _type_list(op.case_arguments),
+            kernel.input_types,
+            f"qstack.select case {label!r} has incompatible kernel inputs",
         )
-
-    expected_types = [BitType()] * n_bits + [QubitType()] * n_qubits
-    actual_types = [r.type for r in results]
-    if [type(t) for t in actual_types] != [type(t) for t in expected_types]:
-        raise LinearityError(
-            "qstack.kernel result order must be bits-then-qubits, got " f"{[t.name for t in actual_types]}"
+        _check_same_types(
+            _type_list(op.results),
+            kernel.declared_result_types,
+            f"qstack.select case {label!r} has incompatible kernel results",
         )
-
-    # qstack.return operands must positionally match the kernel result types.
-    terminator = entry.last_op
-    if not isinstance(terminator, ReturnOp):
-        raise LinearityError(f"qstack.kernel body must end in qstack.return, got {type(terminator).__name__}")
-    ret_operand_types = [op.type for op in terminator.operands]
-    if [type(t) for t in ret_operand_types] != [type(t) for t in expected_types]:
-        raise LinearityError(
-            "qstack.return operand types must match enclosing kernel result types; "
-            f"expected {[t.name for t in expected_types]}, got "
-            f"{[t.name for t in ret_operand_types]}"
-        )
-
-
-def _walk_block_for_ops(op: Operation, callback) -> None:
-    callback(op)
-    for region in op.regions:
-        for blk in region.blocks:
-            for child in blk.ops:
-                _walk_block_for_ops(child, callback)
 
 
 def verify_module(module: ModuleOp) -> None:
-    """Run the qstack module-level verifier. Raises ``LinearityError`` on the
-    first rule violation."""
+    """Validate a closed kernel-only qstack module.
 
-    def check_op_results(op: Operation) -> None:
-        for result in op.results:
-            if _is_linear(result):
-                _check_single_use(result, f"result of {op.name}")
+    The verifier is intentionally structural. It establishes the IR invariants
+    required by execution but does not compare input and output compiler-pass
+    semantics.
+    """
 
-    def check_kernel_signature(op: Operation) -> None:
-        if isinstance(op, KernelOp):
-            _verify_kernel(op)
+    top_level = list(module.body.ops)
+    allowed = (KernelOp, SelectorOp, DecoderOp)
+    for op in top_level:
+        if not isinstance(op, allowed):
+            raise LinearityError(f"module contains forbidden top-level operation {op.name}")
 
-    def check_block_args(op: Operation) -> None:
-        for region in op.regions:
-            for blk in region.blocks:
-                for arg in blk.args:
-                    if _is_linear(arg):
-                        _check_single_use(arg, f"block arg in {op.name}")
+    symbols: dict[str, Operation] = {}
+    for op in top_level:
+        name = op.sym_name.data
+        if name in symbols:
+            raise LinearityError(f"duplicate qstack symbol @{name}")
+        symbols[name] = op
 
-    for top in module.body.ops:
-        # Linearity (uses) first so unused/multiple-use diagnostics surface
-        # before structural ones.
-        _walk_block_for_ops(top, check_block_args)
-        _walk_block_for_ops(top, check_op_results)
-        _walk_block_for_ops(top, check_kernel_signature)
+    kernels = {name: op for name, op in symbols.items() if isinstance(op, KernelOp)}
+    selectors = {name: op for name, op in symbols.items() if isinstance(op, SelectorOp)}
+    decoders = {name: op for name, op in symbols.items() if isinstance(op, DecoderOp)}
+    main = kernels.get("main")
+    if main is None:
+        raise LinearityError("module must define exactly one qstack.kernel @main")
+    if main.input_types:
+        raise LinearityError("qstack.kernel @main must not have borrowed inputs")
+    if any(isinstance(typ, QubitType) for typ in main.declared_result_types):
+        raise LinearityError("qstack.kernel @main cannot return a qubit")
+
+    for callback in [*selectors.values(), *decoders.values()]:
+        _verify_callback_declaration(callback)
+    for kernel in kernels.values():
+        _verify_kernel_shape(kernel)
+        for op in kernel.body.blocks[0].ops:
+            if isinstance(op, CallOp):
+                _verify_call(op, kernels)
+            elif isinstance(op, DecodeOp):
+                _verify_decode(op, decoders)
+            elif isinstance(op, SelectOp):
+                _verify_select(op, kernels, selectors)

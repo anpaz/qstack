@@ -47,6 +47,14 @@ class CallbackRegistry:
             raise UnregisteredCallback(f"no decoder registered for {name!r}")
         return self._decoders[name]
 
+    def has_selector(self, name: str) -> bool:
+        """Return whether a selector implementation has already been installed."""
+        return name in self._selectors
+
+    def has_decoder(self, name: str) -> bool:
+        """Return whether a decoder implementation has already been installed."""
+        return name in self._decoders
+
     @staticmethod
     def _register(table: dict, kind: str, arg: Any) -> Any:
         # Bare decorator form: arg is the function itself.

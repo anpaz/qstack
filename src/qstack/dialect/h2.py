@@ -55,6 +55,8 @@ class U1Op(IRDLOperation):
     theta = prop_def(FloatAttr)
     phi = prop_def(FloatAttr)
 
+    assembly_format = "$qubit $theta `,` $phi attr-dict"
+
     def __init__(self, qubit: SSAValue, theta: float, phi: float) -> None:
         super().__init__(
             operands=[qubit],
@@ -77,6 +79,8 @@ class RzOp(IRDLOperation):
     result = result_def(QubitType)
     theta = prop_def(FloatAttr)
 
+    assembly_format = "$qubit $theta attr-dict"
+
     def __init__(self, qubit: SSAValue, theta: float) -> None:
         super().__init__(
             operands=[qubit],
@@ -98,6 +102,8 @@ class RzzOp(IRDLOperation):
     second_out = result_def(QubitType)
     theta = prop_def(FloatAttr)
 
+    assembly_format = "$first `,` $second $theta attr-dict"
+
     def __init__(self, first: SSAValue, second: SSAValue, theta: float) -> None:
         super().__init__(
             operands=[first, second],
@@ -117,6 +123,8 @@ class ZzOp(IRDLOperation):
     second = operand_def(QubitType)
     first_out = result_def(QubitType)
     second_out = result_def(QubitType)
+
+    assembly_format = "$first `,` $second attr-dict"
 
     def __init__(self, first: SSAValue, second: SSAValue) -> None:
         super().__init__(

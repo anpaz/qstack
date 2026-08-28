@@ -6,7 +6,7 @@ import logging
 import random
 
 import numpy as np
-from qsharp.noisy_simulator import Instrument, Operation, StateVectorSimulator
+from qdk.simulation import Instrument, Operation, StateVectorSimulator
 
 from qstack.dialect.core import UnitaryGateOp
 from qstack.runtime.noise import NoiseChannel, NoiselessChannel

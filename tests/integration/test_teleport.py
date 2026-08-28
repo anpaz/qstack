@@ -56,9 +56,10 @@ def _registry() -> CallbackRegistry:
     reg = CallbackRegistry()
 
     @reg.selector("teleport_fix")
-    def _fix(*, b0: int, b1: int) -> str:
+    def _fix(bits: tuple[int, ...]) -> str:
         # Encode (m0, m1) into the case label: 2*m0 + m1.
-        return str(b0 * 2 + b1)
+        m0, m1 = bits
+        return str(m0 * 2 + m1)
 
     return reg
 

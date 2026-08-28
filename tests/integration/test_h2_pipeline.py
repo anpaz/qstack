@@ -40,8 +40,8 @@ def _has_cliffords(module) -> bool:
 
 def test_toy_to_cliffords_to_h2_executes_bell_program() -> None:
     module = lower(parse(_TOY_BELL))
-    compile_toy_to_cliffords(module)
-    compile_cliffords_to_h2(module)
+    module = compile_toy_to_cliffords(module)
+    module = compile_cliffords_to_h2(module)
     verify_module(module)
 
     assert not _has_cliffords(module)
@@ -55,7 +55,7 @@ def test_toy_to_cliffords_to_h2_executes_bell_program() -> None:
 
 def test_rep3_to_h2_executes() -> None:
     module = compile_rep3_bit(lower(parse(_FLIP)))
-    compile_cliffords_to_h2(module)
+    module = compile_cliffords_to_h2(module)
     verify_module(module)
 
     registry = CallbackRegistry()
@@ -67,7 +67,7 @@ def test_rep3_to_h2_executes() -> None:
 
 def test_repeated_rep3_to_h2_executes() -> None:
     module = compile_rep3_bit(compile_rep3_bit(lower(parse(_FLIP))))
-    compile_cliffords_to_h2(module)
+    module = compile_cliffords_to_h2(module)
     verify_module(module)
 
     registry = CallbackRegistry()
@@ -79,7 +79,7 @@ def test_repeated_rep3_to_h2_executes() -> None:
 
 def test_rep3_bit_plus_phase_to_h2_executes() -> None:
     module = compile_rep3_phase(compile_rep3_bit(lower(parse(_FLIP))))
-    compile_cliffords_to_h2(module)
+    module = compile_cliffords_to_h2(module)
     verify_module(module)
 
     registry = CallbackRegistry()

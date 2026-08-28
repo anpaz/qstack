@@ -1,149 +1,16 @@
-"""Phase 1c tests: qstack.select / qstack.decode.
-
-Programmatic construction + generic round-trip. Symbol-presence and
-signature-matching checks belong to the Phase 1.1 module-level verifier.
-"""
-
-from io import StringIO
-
-from xdsl.context import Context
-from xdsl.dialects.builtin import (
-    Builtin,
-    DictionaryAttr,
-    FunctionType,
-    ModuleOp,
-    StringAttr,
-    SymbolRefAttr,
-)
-from xdsl.dialects.func import Func
+from xdsl.dialects.builtin import ModuleOp, SymbolRefAttr
 from xdsl.ir import Block, Region
-from xdsl.parser import Parser
-from xdsl.printer import Printer
 
-from qstack.dialect import BitType, QStack, QubitType
-from qstack.dialect.core import DecodeOp, SelectOp
-
-
-def _ctx() -> Context:
-    ctx = Context()
-    ctx.load_dialect(Builtin)
-    ctx.load_dialect(Func)
-    ctx.load_dialect(QStack)
-    return ctx
+from qstack.dialect import BitType, QubitType
+from qstack.dialect.core import DecoderOp, KernelOp, MeasureOp, ReturnOp, SelectOp, SelectorOp
+from qstack.verifier import verify_module
 
 
-def _make_select_module() -> ModuleOp:
-    """A bare select op inside a function whose only role is to host the bit
-    operand. Symbols `@sel`, `@id`, `@retry` are *not* declared — that's a
-    verifier concern, not an IRDL concern."""
-    from xdsl.dialects.func import FuncOp, ReturnOp as FuncReturn
-
-    # func.func @host(%b: !qstack.bit) -> () { ... }
-    body_block = Block(arg_types=[BitType()])
-    b = body_block.args[0]
-
-    cont_type = FunctionType.from_lists([QubitType()], [QubitType()])
-    sel = SelectOp(
-        callee=SymbolRefAttr("sel"),
-        bit_names=["b"],
-        bit_operands=[b],
-        continuations={
-            "done": SymbolRefAttr("id"),
-            "retry": SymbolRefAttr("retry"),
-        },
-        result_type=cont_type,
-    )
-    body_block.add_op(sel)
-    body_block.add_op(FuncReturn.create(operands=[]))
-
-    fn = FuncOp(
-        "host",
-        FunctionType.from_lists([BitType()], []),
-        Region([body_block]),
-    )
-    return ModuleOp([fn])
-
-
-def _make_decode_module() -> ModuleOp:
-    from xdsl.dialects.func import FuncOp, ReturnOp as FuncReturn
-
-    body_block = Block(arg_types=[BitType(), BitType(), BitType()])
-    p1, p2, p3 = body_block.args
-    dec = DecodeOp(
-        callee=SymbolRefAttr("majority_vote"),
-        bit_operands=[p1, p2, p3],
-    )
-    body_block.add_op(dec)
-    body_block.add_op(FuncReturn.create(operands=[dec.result]))
-
-    fn = FuncOp(
-        "host",
-        FunctionType.from_lists([BitType(), BitType(), BitType()], [BitType()]),
-        Region([body_block]),
-    )
-    return ModuleOp([fn])
-
-
-def test_select_construct_and_print() -> None:
-    m = _make_select_module()
-    buf = StringIO()
-    Printer(stream=buf).print_op(m)
-    text = buf.getvalue()
-    assert "qstack.select" in text
-    assert "@sel" in text
-    assert "done" in text and "retry" in text
-    assert "@id" in text and "@retry" in text
-
-
-def test_select_roundtrip() -> None:
-    ctx = _ctx()
-    m = _make_select_module()
-    buf = StringIO()
-    Printer(stream=buf).print_op(m)
-    text = buf.getvalue()
-    m2 = Parser(ctx, text).parse_module()
-    buf2 = StringIO()
-    Printer(stream=buf2).print_op(m2)
-    assert buf2.getvalue() == text
-
-
-def test_select_continuations_is_dictionary() -> None:
-    m = _make_select_module()
-    sel = next(op for op in m.walk() if isinstance(op, SelectOp))
-    assert isinstance(sel.continuations, DictionaryAttr)
-    assert set(sel.continuations.data.keys()) == {"done", "retry"}
-
-
-def test_select_bit_names_align_with_operands() -> None:
-    m = _make_select_module()
-    sel = next(op for op in m.walk() if isinstance(op, SelectOp))
-    assert [s.data for s in sel.bit_names.data] == ["b"]
-    assert len(list(sel.bit_operands)) == 1
-
-
-def test_decode_construct_and_print() -> None:
-    m = _make_decode_module()
-    buf = StringIO()
-    Printer(stream=buf).print_op(m)
-    text = buf.getvalue()
-    assert "qstack.decode" in text
-    assert "@majority_vote" in text
-    assert "!qstack.bit" in text
-
-
-def test_decode_roundtrip() -> None:
-    ctx = _ctx()
-    m = _make_decode_module()
-    buf = StringIO()
-    Printer(stream=buf).print_op(m)
-    text = buf.getvalue()
-    m2 = Parser(ctx, text).parse_module()
-    buf2 = StringIO()
-    Printer(stream=buf2).print_op(m2)
-    assert buf2.getvalue() == text
-
-
-def test_decode_result_is_bit() -> None:
-    m = _make_decode_module()
-    dec = next(op for op in m.walk() if isinstance(op, DecodeOp))
-    assert isinstance(dec.result.type, BitType)
+def test_declared_select_and_decode_interfaces_verify() -> None:
+    case = Block(arg_types=[QubitType()]); case.add_op(ReturnOp(operands=[case.args[0]]))
+    identity = KernelOp("id", input_types=[QubitType()], result_types=[QubitType()], allocates=0, region=Region([case]))
+    main_body = Block(arg_types=[QubitType(), QubitType()]); bit = MeasureOp(operand=main_body.args[0]); main_body.add_op(bit)
+    select = SelectOp(callee="choose", bit_operands=[bit.result], cases={"ok": SymbolRefAttr("id")}, case_arguments=[main_body.args[1]], result_types=[QubitType()]); main_body.add_op(select)
+    out = MeasureOp(operand=select.results[0]); main_body.add_op(out); main_body.add_op(ReturnOp(operands=[out.result]))
+    main = KernelOp("main", input_types=[], result_types=[BitType()], allocates=2, region=Region([main_body]))
+    verify_module(ModuleOp([SelectorOp("choose", 1), DecoderOp("decode", 1), identity, main]))

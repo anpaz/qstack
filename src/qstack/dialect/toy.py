@@ -57,6 +57,8 @@ class _ToySingleQubitGateOp(IRDLOperation):
     qubit = operand_def(QubitType)
     result = result_def(QubitType)
 
+    assembly_format = "$qubit attr-dict"
+
     def __init__(self, qubit: SSAValue) -> None:
         super().__init__(operands=[qubit], result_types=[QubitType()])
 
@@ -95,6 +97,8 @@ class SkewOp(IRDLOperation):
     result = result_def(QubitType)
     bias = prop_def(FloatAttr)
 
+    assembly_format = "$qubit $bias attr-dict"
+
     def __init__(self, qubit: SSAValue, bias: float) -> None:
         super().__init__(
             operands=[qubit],
@@ -120,6 +124,8 @@ class EntangleOp(IRDLOperation):
     target = operand_def(QubitType)
     control_out = result_def(QubitType)
     target_out = result_def(QubitType)
+
+    assembly_format = "$control `,` $target attr-dict"
 
     def __init__(self, control: SSAValue, target: SSAValue) -> None:
         super().__init__(

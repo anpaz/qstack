@@ -109,7 +109,6 @@ class CliffordsToAtomsCompiler(BaseOpRewriter):
 
 
 def compile_cliffords_to_atoms(module: ModuleOp) -> ModuleOp:
-    """Rewrite every Clifford operation in ``module`` to atoms operations."""
+    """Return an atoms-lowered copy of ``module``."""
 
     return CliffordsToAtomsCompiler().compile(module)
-

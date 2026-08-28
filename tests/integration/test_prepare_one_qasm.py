@@ -1,9 +1,9 @@
 """Phase 3b tests: lower the parsed surface tree to a qstack ModuleOp."""
 
-from xdsl.dialects.builtin import FunctionType, ModuleOp
-from xdsl.dialects.func import FuncOp
+from xdsl.dialects.builtin import ModuleOp
 
 from qstack.dialect import BitType, QubitType
+from qstack.dialect.core import KernelOp, SelectorOp
 from qstack.surface.lowering import lower
 from qstack.surface.parser import parse
 from qstack.verifier import verify_module
@@ -39,26 +39,27 @@ def _module(src: str) -> ModuleOp:
 
 def test_prepare_one_lowers_to_expected_symbols() -> None:
     m = _module(PREPARE_ONE)
-    syms: dict[str, FuncOp] = {op.sym_name.data: op for op in m.body.ops if isinstance(op, FuncOp)}
+    syms = {op.sym_name.data: op for op in m.body.ops if hasattr(op, "sym_name")}
     # extern selector + def + main + auto-generated case continuations
     assert "repeat_until_one" in syms
     assert "prepare_one" in syms
     assert "main" in syms
 
-    # repeat_until_one is body-less and selector-tagged.
+    # repeat_until_one is a top-level opaque selector declaration.
     sel = syms["repeat_until_one"]
-    assert sel.is_declaration
-    assert "qstack.selector" in sel.attributes
+    assert isinstance(sel, SelectorOp)
 
     # prepare_one signature: (qubit) -> qubit
-    prep_ty = syms["prepare_one"].function_type
-    assert [type(t) for t in prep_ty.inputs.data] == [QubitType]
-    assert [type(t) for t in prep_ty.outputs.data] == [QubitType]
+    prep = syms["prepare_one"]
+    assert isinstance(prep, KernelOp)
+    assert [type(t) for t in prep.input_types] == [QubitType]
+    assert [type(t) for t in prep.declared_result_types] == [QubitType]
 
     # main signature: () -> bit
-    main_ty = syms["main"].function_type
-    assert list(main_ty.inputs.data) == []
-    assert [type(t) for t in main_ty.outputs.data] == [BitType]
+    main = syms["main"]
+    assert isinstance(main, KernelOp)
+    assert list(main.input_types) == []
+    assert [type(t) for t in main.declared_result_types] == [BitType]
 
 
 def test_prepare_one_passes_verifier() -> None:
@@ -72,9 +73,9 @@ def test_prepare_one_runs_1000_shots_all_one() -> None:
     reg = CallbackRegistry()
 
     @reg.selector("repeat_until_one")
-    def _pick(*, b0):
+    def _pick(bits):
         # continuation labels mirror the surface `case N:` numbers.
-        return "0" if b0 == 1 else "1"  # 0 = done, 1 = retry
+        return "0" if bits[0] == 1 else "1"  # 0 = done, 1 = retry
 
     m = _module(PREPARE_ONE)
     machine = Machine(m, num_qubits=4, registry=reg)
