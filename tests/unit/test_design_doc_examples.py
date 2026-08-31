@@ -1,4 +1,4 @@
-"""Every ```mlir block in docs/DESIGN.md is a complete, valid qstack module.
+"""Every ```mlir block in docs/DESIGN.md and docs/verification-design.md is a complete, valid qstack module.
 
 The specification's examples drifted from the implementation once already.
 This keeps them honest: an ``mlir`` fence must parse with the real parser and
@@ -23,12 +23,15 @@ from qstack.dialect.h2 import H2
 from qstack.dialect.toy import Toy
 from qstack.verifier import verify_module
 
-DESIGN = Path(__file__).resolve().parents[2] / "docs" / "DESIGN.md"
+_DOCS = [
+    Path(__file__).resolve().parents[2] / "docs" / "DESIGN.md",
+    Path(__file__).resolve().parents[2] / "docs" / "verification-design.md",
+]
 _BLOCK = re.compile(r"^```mlir\n(.*?)^```", re.DOTALL | re.MULTILINE)
 
 
 def _blocks() -> list[str]:
-    return _BLOCK.findall(DESIGN.read_text())
+    return [block for doc in _DOCS for block in _BLOCK.findall(doc.read_text())]
 
 
 def _context() -> Context:

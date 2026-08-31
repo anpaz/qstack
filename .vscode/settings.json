@@ -6,7 +6,6 @@
   ],
   "python.testing.pytestArgs": [
     "tests",
-    "mlir/tests"
   ],
   "python.testing.unittestEnabled": false,
   "python.testing.pytestEnabled": true,

@@ -14,7 +14,7 @@ Textual syntax in this document is the syntax the implementation actually parses
 2. **A kernel is a quantum instrument.** It maps its borrowed qubits and bits to its declared results, producing classical outcomes along the way. It is the only construct that creates qubits, and its allocation count is a detail of how the instrument is realized, not part of what it means.
 3. **The core is quantum plus explicit callback boundaries.** A kernel contains only target-dialect unitaries, measurement, decoding, selection, and calls to other kernels.
 4. **Qubits and bits are linear.** Each is used once. Gates thread a qubit to a new SSA name; measurement is the only core qubit destructor.
-5. **Callbacks are fixed, opaque, and deterministic.** A callback is registered by symbol name and may be stateful: its output and next state are determined by its current state and received values. A pass never changes an existing callback invocation's interface or trace, including its order and multiplicity.
+5. **Callbacks are fixed, opaque, and deterministic.** A callback is registered by symbol name and may be stateful: its output and next state are determined by its current state and received values. All callbacks execute against one stateful host machine and may share its state, so the preserved trace is the single global interleaving of every callback invocation, not a per-symbol order. A pass never changes an existing callback invocation's interface or trace, including its order and multiplicity.
 
 ### 1.2 Noiseless scope
 
@@ -78,7 +78,7 @@ The verifier is intentionally structural: it establishes the IR invariants execu
 - A kernel body has exactly one block, and no operation in it carries a nested region.
 - `@main` has no borrowed inputs and cannot return a qubit. Its results are bits, which are the program's observable output.
 - The entry block's argument types equal the declared inputs followed by exactly `allocates N` qubits, and `qstack.return`'s operand types equal the declared result types.
-- `allocates` is non-negative, and a kernel must end in `qstack.return`.
+- `allocates` is non-negative, and a kernel body contains exactly one `qstack.return`, its final operation.
 - `qstack.measure` consumes a qubit, and the bit operands of `qstack.decode` and `qstack.select` are bits.
 
 ## 3. Types and linearity
@@ -160,12 +160,12 @@ Selection and invocation are deliberately one operation. There is no function-va
 For every callback invocation already present in a pass input, compilation must preserve:
 
 - callback symbol and declaration signature;
-- selector input names and finite case map;
+- selector arity, bit operand order, and finite case map;
 - corresponding runtime bit values;
 - invocation order and multiplicity; and
 - reachability, including correlations with surviving quantum state.
 
-The compiler does not inspect callback code. A callback is a deterministic stateful computation: its output and next state are fixed by its current state and input values. Preserving the symbol and input values alone is therefore insufficient; order and multiplicity preserve the callback's state evolution as well. A pass may add an explicit decoder or a local selection construct only under a fresh callback declaration. It never wraps, retargets, changes, or adds a use of a pre-existing callback: another use would change that callback's invocation trace. The verification design specifies the classical obligations reported for newly introduced callback uses.
+The compiler does not inspect callback code. A callback is a deterministic stateful computation: its output and next state are fixed by its current state and input values. Preserving the symbol and input values alone is therefore insufficient; order and multiplicity preserve the callback's state evolution as well. Because all callbacks run on one host machine and may share state, the preserved order is global, across different callback symbols, not merely among invocations of the same symbol. A pass may add an explicit decoder or a local selection construct only under a fresh callback declaration. It never wraps, retargets, changes, or adds a use of a pre-existing callback: another use would change that callback's invocation trace. The verification design specifies the classical obligations reported for newly introduced callback uses.
 
 This is enforced by construction rather than by the verifier. The repetition-code and Steane passes each reserve a private decoder symbol, declare it if the module does not already carry an identical declaration, and reject a module that declares that reserved name with an incompatible signature.
 
