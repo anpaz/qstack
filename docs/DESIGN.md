@@ -4,27 +4,27 @@
 
 This document specifies qstack's executable IR and its noiseless semantics.
 
-qstack is a quantum IR with opaque host-language callbacks. Quantum work is expressed only in named kernels; the host is reached only through explicit `qstack.select` and `qstack.decode` operations. Compiler passes transform a closed module into another closed module and do not inspect, wrap, or replace registered host callback implementations.
+qstack is a quantum IR with opaque host-language callbacks. A program is a closed collection of named kernels rooted at `@main`; quantum work is expressed only in those kernels, and the host is reached only through explicit `qstack.select` and `qstack.decode` operations. Compiler passes transform one closed module into another and do not inspect registered host callback implementations.
 
 Textual syntax in this document is the syntax the implementation actually parses and prints. Blocks fenced as `mlir` are complete modules that parse and pass `qstack.verifier.verify_module`; blocks fenced as `text` are syntax templates with placeholders.
 
 ### 1.1 Principles
 
-1. **A program is a kernel.** A module has exactly one entry kernel, `qstack.kernel @main`; executing it executes the program.
+1. **A program is rooted at a kernel.** A module has exactly one entry kernel, `qstack.kernel @main`; executing it executes the statically reachable collection of kernels that makes up the program.
 2. **A kernel is a quantum instrument.** It maps its borrowed qubits and bits to its declared results, producing classical outcomes along the way. It is the only construct that creates qubits, and its allocation count is a detail of how the instrument is realized, not part of what it means.
 3. **The core is quantum plus explicit callback boundaries.** A kernel contains only target-dialect unitaries, measurement, decoding, selection, and calls to other kernels.
 4. **Qubits and bits are linear.** Each is used once. Gates thread a qubit to a new SSA name; measurement is the only core qubit destructor.
-5. **Callbacks are fixed, opaque, and deterministic.** A callback is registered by symbol name and may be stateful: its output and next state are determined by its current state and received values. All callbacks execute against one stateful host machine and may share its state, so the preserved trace is the single global interleaving of every callback invocation, not a per-symbol order. A pass never changes an existing callback invocation's interface or trace, including its order and multiplicity.
+5. **Existing callbacks are fixed interfaces.** A callback is registered by symbol name and may be stateful: its output and next state are determined by its current state and received values. All callbacks execute against one stateful host machine and may share its state, so the preserved trace is the single global interleaving of every callback invocation, not a per-symbol order. A pass never changes an existing callback invocation's interface or runtime trace. A callback introduced by a pass is fresh and carries a finite classical obligation derived by semantic verification.
 
 ### 1.2 Noiseless scope
 
 This specification makes no claim about code distance, fault tolerance, faulty syndrome extraction, or a noise model.
 
-`verification-design.md` anticipates an _error tag_ on a select case that identifies the error the case is intended to correct, supporting a local, noiseless correctness obligation. **The error tag is specified but not implemented.** `qstack.select` currently carries a callee, bit operands, case arguments, and a case map, and nothing else; there is no attribute for a tag and no verifier rule that reads one. A future noisy design may give the tag a stronger meaning without changing the kernel/callback model below.
+[`verification-design.md`](verification-design.md) anticipates an _error tag_ on a select case that identifies the error the case is intended to correct, supporting a local, noiseless correctness obligation. **The error tag is specified but not implemented.** `qstack.select` currently carries a callee, bit operands, case arguments, and a case map, and nothing else; there is no attribute for a tag and no verifier rule that reads one. A future noisy design may give the tag a stronger meaning without changing the kernel/callback model below.
 
 ## 2. Module and kernel model
 
-A module contains only named `qstack.kernel` definitions and `qstack.selector`/`qstack.decoder` declarations. Exactly one kernel is named `@main`; it has no kernel arguments. Private kernels may be called directly or selected as cases. No other executable top-level construct exists.
+A module contains only named `qstack.kernel` definitions and `qstack.selector`/`qstack.decoder` declarations. Exactly one kernel is named `@main`; it has no kernel arguments. Private kernels may be called directly or selected as cases. Every invocation target is therefore statically known, although not every declared kernel need be reachable from `@main`. No other executable top-level construct exists.
 
 ### 2.1 Named kernel definitions
 
@@ -72,14 +72,22 @@ No generic control flow, arithmetic, memory, arbitrary MLIR operation, or standa
 
 ### 2.4 Structural rules
 
-The verifier is intentionally structural: it establishes the IR invariants execution depends on, and does not compare the semantics of a pass's input and output. Beyond the rules stated above, it enforces:
+The executable-IR verifier is intentionally structural: it establishes the IR invariants execution depends on, and does not compare the semantics of a pass's input and output. Beyond the rules stated above, it is required to enforce:
 
 - The module's top level contains only `qstack.kernel`, `qstack.selector`, and `qstack.decoder`, and symbol names are unique across all three.
 - A kernel body has exactly one block, and no operation in it carries a nested region.
-- `@main` has no borrowed inputs and cannot return a qubit. Its results are bits, which are the program's observable output.
+- `@main` has no borrowed inputs and cannot return a qubit. Its declared results are bits, which are the program's observable output.
 - The entry block's argument types equal the declared inputs followed by exactly `allocates N` qubits, and `qstack.return`'s operand types equal the declared result types.
 - `allocates` is non-negative, and a kernel body contains exactly one `qstack.return`, its final operation.
 - `qstack.measure` consumes a qubit, and the bit operands of `qstack.decode` and `qstack.select` are bits.
+
+### 2.5 Kernel graphs and instruments
+
+A kernel body denotes a dataflow graph: operations are nodes, linear SSA values are wires, borrowed and fresh values are sources, and `qstack.return` is the sink. A call is an opaque node in its caller's graph; its callee is a separate graph. A select similarly refers to separate case-kernel graphs.
+
+Two bodies have the same graph when their nodes, symbols, attributes, and wiring match. The textual order of operations connected by no wire is not semantic in the noiseless model. Callback order is the exception: the derived host wire in Section 4.4 records the global order of stateful host interactions.
+
+A kernel denotes a quantum instrument from its declared borrowed inputs to its declared results. Fresh qubits begin inside an invocation in `|0⟩`; internal measurement outcomes consumed by a decode or select do not cross the kernel boundary. Returned bits carry their probabilities, returned qubits carry their conditional states, and correlations between them are part of the instrument. Calls and selects compose the instruments of their named kernels into the caller's instrument.
 
 ## 3. Types and linearity
 
@@ -90,13 +98,7 @@ The verifier is intentionally structural: it establishes the IR invariants execu
 
 Both types are linear: every SSA value has exactly one use. Unitaries and calls thread qubits to successor values; measurement consumes a qubit and produces a bit. Bits are consumed by decoding, selection, a kernel call, or kernel return.
 
-Each kernel conserves qubits:
-
-```text
-|borrowed qubits| + N == |measured qubits| + |returned qubits|
-```
-
-Here `N` is the kernel's allocation count. Every borrowed or fresh qubit is eventually measured or returned; there is no silent discard. Since `@main` has no borrowed qubits and cannot return qubits, every qubit in a program is measured before execution ends.
+Within a kernel body, every borrowed or fresh qubit is consumed exactly once: by a unitary, measurement, call, select, or return. Calls and selects may transfer ownership across kernel boundaries, including returning a qubit allocated by the invoked kernel, so qubit conservation is a property of the composed invocation rather than a count of only the caller's local measurements and results. There is no aliasing, implicit copying, or silent discard.
 
 Linearity forbids aliasing and implicit copying. It lets the verifier establish qubit conservation and identify the exact classical values delivered to a callback. The core has no first-class function, continuation, qubit-array, or unitary type.
 
@@ -113,7 +115,7 @@ qstack.selector @repeat_until_one arity 1
 qstack.decoder @majority_vote arity 3
 ```
 
-Types are not written: every callback input is a `!qstack.bit`, a decoder always returns exactly one bit, and a selector returns a case label to the runtime rather than an SSA value. A decoder must declare at least one input; a selector may declare none, since a stateful selector can still choose a case from its own state alone. Declarations have no body and cannot be kernel-call targets. Selectors and decoders occupy separate registry namespaces, so one string may name both.
+Types are not written: every callback input is a `!qstack.bit`, a decoder always returns exactly one bit, and a selector returns a case label to the runtime rather than an SSA value. A decoder must declare at least one input; a selector may declare none, since a stateful selector can still choose a case from its own state alone. Declarations have no body and cannot be kernel-call targets. Selector and decoder implementations occupy separate runtime registry namespaces, but their declarations share the module's qstack symbol namespace, so a valid module cannot declare the same string as both.
 
 The declaration names no parameters, because there are none to bind. Both kinds of callback receive their bits as a single positional tuple of `int`, in operand order, so the host implementation is `def callback(bits)` in either case. Nothing downstream of the declaration repeats an input name, and no invocation site carries one.
 
@@ -165,9 +167,19 @@ For every callback invocation already present in a pass input, compilation must 
 - invocation order and multiplicity; and
 - reachability, including correlations with surviving quantum state.
 
-The compiler does not inspect callback code. A callback is a deterministic stateful computation: its output and next state are fixed by its current state and input values. Preserving the symbol and input values alone is therefore insufficient; order and multiplicity preserve the callback's state evolution as well. Because all callbacks run on one host machine and may share state, the preserved order is global, across different callback symbols, not merely among invocations of the same symbol. A pass may add an explicit decoder or a local selection construct only under a fresh callback declaration. It never wraps, retargets, changes, or adds a use of a pre-existing callback: another use would change that callback's invocation trace. The verification design specifies the classical obligations reported for newly introduced callback uses.
+The compiler does not inspect callback code. A callback is a deterministic stateful computation: its output and next state are fixed by its current state and input values. Preserving the symbol and input values alone is therefore insufficient; order and multiplicity preserve the callback's state evolution as well. Because all callbacks run on one host machine and may share state, the preserved order is global, across different callback symbols, not merely among invocations of the same symbol.
 
-This is enforced by construction rather than by the verifier. The repetition-code and Steane passes each reserve a private decoder symbol, declare it if the module does not already carry an identical declaration, and reject a module that declares that reserved name with an incompatible signature.
+This order is represented semantically by the derived **host wire**. It threads through every `decode` and `select`, and through every call whose callee transitively invokes a callback. It is not printed in the IR. Operations unconnected by an SSA wire may otherwise be reordered without changing the kernel graph, but moving a pre-existing callback along the host wire changes program behavior.
+
+A semantic pass verifier checks callback preservation from the source module, target module, and pass witness. A pre-existing callback use must be an identity claim or part of an exact inline copy; a pass cannot wrap, retarget, change, drop, duplicate, or add a use of a callback declared in its source module. Exact inlining may copy the static operation while preserving the runtime trace, because an execution takes either the original call or the inline copy, never both.
+
+A callback introduced by a pass must use a declaration and use fresh relative to the source module. A new decoder appears only in the representation relation's measurement rule; a new selector appears only in a rule's target body. Its required finite behavior is derived as a classical obligation, including the requirement that its implementation not read or write state observed by other callbacks. The full witness conditions and obligation handoff are specified in [`verification-design.md`](verification-design.md).
+
+### 4.5 Semantic pass verification
+
+Executable-IR verification and pass verification are separate checks. The former validates one closed module structurally. The latter checks a source module, target module, and pass-produced witness together, and returns VERIFIED, VERIFIED MODULO CLASSICAL OBLIGATIONS, REFUTED, or UNSUPPORTED.
+
+A witness declares one representation relation for the pass and partitions the source and target graphs into identity, inline, and sub-graph claims. Reusable rules justify sub-graph claims; the relation supplies its own allocation and measurement rules. Each source-target kernel pair is checked independently, and the local results compose through calls to the claim about `@main`. Rewrites outside this claim vocabulary are unsupported rather than accepted by whole-program guessing. The complete contract, including its known limitations, is specified in [`verification-design.md`](verification-design.md).
 
 ## 5. Example: repeat until one
 
@@ -203,18 +215,21 @@ After a repetition-code transformation, physical measurement bits are decoded in
 
 MLIR remains the substrate for SSA, rewriting, symbol tables, and dialect composition. qstack does not reuse MLIR's function dialect for executable quantum code: the qstack dialect owns its kernel and callback symbols. The implementation is built on xDSL.
 
-## 7. Implementation status and deferred work
+## 7. Design and implementation status
 
-The following are fixed and implemented, and this document describes them as they exist:
+The following parts of this design are implemented:
 
 - **Parser and printer syntax.** Every core operation has custom textual syntax and round-trips. `qstack.kernel` uses hand-written `parse`/`print`; the rest use declarative assembly formats.
-- **Verifier.** `qstack.verifier.verify_module` enforces Sections 2, 3, and the declaration and signature-compatibility rules of Section 4.
+- **Executable-IR verifier.** `qstack.verifier.verify_module` enforces the current structural, linearity, declaration, and signature-compatibility rules.
 - **Runtime.** A `Machine(module, num_qubits=..., registry=..., seed=..., noise=..., qpu=...)` evaluates `@main` shot by shot against a `CallbackRegistry`, over a statevector or Stim backend.
 - **Surface language.** QSTACKQASM is a parsed surface syntax with `extern selector`/`extern` declarations, `switch`/`case` continuations, and per-ISA `.inc` includes; it lowers to the IR above.
 
-Still deferred:
+The implementation has not yet been updated for the reviewed pass-verification design:
 
+- **Witness-producing passes and semantic verification.** Passes do not yet emit representation relations, rules, or claims, and there is no checker for them or for the derived host wire.
+- **Fresh generated callbacks.** The repetition-code and Steane passes currently use reserved canonical callback symbols and may reuse matching declarations from their source module. They must instead generate fresh declarations and uses for each transformation. Steane must do so for both its decoder and syndrome selector.
 - **Error tags** on select cases, described in Section 1.2 and in `verification-design.md`.
 - **Callback-obligation data format**, the artifact a pass emits for a classical verifier to discharge.
-- **Semantic pass verification.** The verifier today is structural; the obligations in `verification-design.md` are not yet checked.
 - **Noisy semantics**, including any fault-tolerance claim.
+
+Verifier backends, witness serialization, additional claim types, and the other deliberately deferred choices are listed in Section 5 of [`verification-design.md`](verification-design.md).

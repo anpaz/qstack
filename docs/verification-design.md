@@ -156,7 +156,7 @@ The graphs make the model concrete:
 
 ### 2.4 Host interfaces and kernel boundaries
 
-A program exposes behavior to the host in two places: when it delivers bits to a callback, and when `@main` returns its results. These are the program's **host interfaces**. At these points, target bits must equal the corresponding source bits. Existing callbacks must also preserve the symbol, declaration, bit arity and operand order, case map, order, multiplicity, and reachability required by Section 2.3. Qubit results from `@main` need not have the same representation, but they must be related to the source results by `R_qubit` from Section 2.5.
+A program exposes behavior to the host in two places: when it delivers bits to a callback, and when `@main` returns its bit results. These are the program's **host interfaces**. At these points, target bits must equal the corresponding source bits. Existing callbacks must also preserve the symbol, declaration, bit arity and operand order, case map, order, multiplicity, and reachability required by Section 2.3. `@main` never returns qubits.
 
 A call from one kernel to another is not a host interface. Its arguments and results remain internal to the qstack program, and the compiler may change their representation. For example, a source call that passes one qubit may become a target call that passes an encoded block of qubits. No host code observes that change.
 
@@ -166,7 +166,7 @@ A pass may therefore change internal measurement, encoding, and decoding plumbin
 
 - each kernel pair satisfies the representation relation at its signature;
 - every existing callback receives the corresponding source bits; and
-- `@main` preserves its externally visible results through the representation relation.
+- `@main` returns the same externally visible bits.
 
 ### 2.5 The correctness statement
 
