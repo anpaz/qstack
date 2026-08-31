@@ -27,7 +27,7 @@ An error tag on an introduced select case has a deliberately limited meaning: th
 
 ### 2.1 A program is a collection of named kernels
 
-A program is a module containing a finite collection of named kernels and callback declarations. One kernel, `qstack.kernel @main`, is the program's distinguished entry point; it is not the whole program.
+A program is a module containing a finite collection of named kernels and callback declarations. One kernel, `qstack.kernel @main`, is the program's distinguished entry point.
 
 `qstack.call` and `qstack.select` refer to other named kernels. Every invocation target is named in the symbol table; there are no function values or indirect calls, so every kernel reachable from `@main` is statically known.
 
