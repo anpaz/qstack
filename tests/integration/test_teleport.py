@@ -69,6 +69,55 @@ def test_teleport_module_verifies() -> None:
     verify_module(module)
 
 
+def test_teleport_can_consume_a_borrowed_source_qubit() -> None:
+    """A definition may return only the borrowed qubits that remain live."""
+
+    source = """
+QSTACKQASM 0.1;
+include "qstack/cliffords.inc";
+
+extern selector teleport_fix(bit, bit) -> int;
+
+def teleport(qubit source, qubit target) {
+  qreg shared[1];
+  bit m0;
+  bit m1;
+
+  h shared[0];
+  cx shared[0], target;
+  cx source, shared[0];
+  h source;
+  measure source -> m0;
+  measure shared[0] -> m1;
+
+  switch (teleport_fix(m0, m1)) {
+    case 0: { }
+    case 1: { x target; }
+    case 2: { z target; }
+    case 3: { x target; z target; }
+  }
+}
+
+qreg q[2];
+creg c[1];
+h q[0];
+teleport q[0], q[1];
+measure q[1] -> c[0];
+"""
+    module = lower(parse(source))
+    teleport = next(
+        op
+        for op in module.body.ops
+        if getattr(op, "sym_name", None) and op.sym_name.data == "teleport"
+    )
+    assert len(teleport.input_types) == 2
+    assert len(teleport.declared_result_types) == 1
+    verify_module(module)
+
+    hist = dict(Machine(module, num_qubits=8, registry=_registry()).eval(shots=4000).histogram())
+    assert set(hist) == {(0,), (1,)}
+
+
 def test_teleport_preserves_one() -> None:
     # source = X|0> = |1>; after teleportation, target should always read 1.
     module = lower(parse(_teleport_program("x")))

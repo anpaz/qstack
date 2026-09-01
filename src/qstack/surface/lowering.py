@@ -71,6 +71,10 @@ class _Env:
 class _KernelDecl:
     inputs: tuple[object, ...]
     results: tuple[object, ...]
+    # QSTACKQASM definitions have no explicit return list.  A result is
+    # therefore identified by the position of the borrowed parameter that
+    # remains live at the end of the definition.
+    result_param_indices: tuple[int, ...] = ()
 
 
 class _Lower:
@@ -91,11 +95,15 @@ class _Lower:
             name, params = self._def_signature(definition)
             if any(kind != "qubit_type" for kind, _ in params):
                 raise NotImplementedError(f"def @{name}: only qubit parameters are supported")
-            # QSTACKQASM 0.1 has no return statement. A definition returns its
-            # surviving borrowed qubits; local allocations may not escape.
+            result_indices = self._definition_result_param_indices(definition, params)
+            # QSTACKQASM 0.1 has no return statement. A definition returns
+            # whichever borrowed qubits survive its body, in parameter order.
+            # Fresh allocations still have no surface-language destination at
+            # a call site, so they may not escape.
             signature = _KernelDecl(
                 tuple(QubitType() for _ in params),
-                tuple(QubitType() for _ in params),
+                tuple(QubitType() for _ in result_indices),
+                result_indices,
             )
             self.kernels[name] = signature
 
@@ -141,6 +149,25 @@ class _Lower:
                     params.append((parameter.children[0].data, str(parameter.children[1])))
         return name, params
 
+    @staticmethod
+    def _definition_result_param_indices(
+        node: Tree, params: list[tuple[str, str]]
+    ) -> tuple[int, ...]:
+        """Return the borrowed parameters not consumed by measurement.
+
+        Surface QASM has neither a return statement nor result binders.  The
+        only representable definition results are consequently the parameters
+        that remain live.  Calls and gates preserve a qubit name; measurement
+        is the operation that removes it from this surface-level liveness set.
+        """
+
+        live_params = {name for _, name in params}
+        body = next(child for child in node.children if _is_tree(child, "block"))
+        for statement in _block_stmts(body):
+            if statement.data == "measure_stmt":
+                live_params.discard(_qubit_arg_name(statement.children[0]))
+        return tuple(index for index, (_, name) in enumerate(params) if name in live_params)
+
     def _build_definition(self, node: Tree) -> None:
         name, params = self._def_signature(node)
         body = next(child for child in node.children if _is_tree(child, "block"))
@@ -150,14 +177,14 @@ class _Lower:
         env = _Env()
         for (_, parameter), value in zip(params, block.args[: len(params)], strict=True):
             env.add_qubit(parameter, value)
-        for alloc_name, value in zip(block.args[len(params) :], alloc_names, strict=True):
-            env.add_qubit(value, alloc_name)
+        for value, alloc_name in zip(block.args[len(params) :], alloc_names, strict=True):
+            env.add_qubit(alloc_name, value)
         self._lower_statements(_block_stmts(body), block, env)
         outputs = [env.qubits[name] for name in env.qubit_order]
         declared = self.kernels[name]
         if tuple(value.type for value in outputs) != declared.results:
             raise NotImplementedError(
-                f"def @{name}: QSTACKQASM 0.1 definitions must return their borrowed qubits"
+                f"def @{name}: QSTACKQASM 0.1 definitions cannot return fresh allocations"
             )
         block.add_op(ReturnOp(operands=outputs))
         self.module.body.block.add_op(
@@ -228,8 +255,15 @@ class _Lower:
             signature = self.kernels[name]
             call = CallOp(name, operands, signature.results)
             block.add_op(call)
-            for arg_name, result in zip(arg_names, call.results, strict=True):
-                env.qubits[arg_name] = result
+            returned_names = [arg_names[index] for index in signature.result_param_indices]
+            for arg_name in arg_names:
+                if arg_name not in returned_names:
+                    env.drop_qubit(arg_name)
+            for arg_name, result in zip(returned_names, call.results, strict=True):
+                if arg_name not in env.qubits:
+                    env.add_qubit(arg_name, result)
+                else:
+                    env.qubits[arg_name] = result
             return
         if name not in self.include_gates.gates:
             raise NotImplementedError(f"unknown apply target {name!r}")

@@ -397,23 +397,27 @@ def _operation_label(op) -> str:
             for case, target in op.cases.data.items()
         )
         label = f"{label}<br/>{{{cases}}}"
-    properties = [
-        f"{name} = {_property_value(attribute)}"
-        for name, attribute in op.properties.items()
-        if name not in {"callee", "cases", "operand_segment_sizes"}
-    ]
+    properties = []
+    for name, attribute in op.properties.items():
+        if name in {"callee", "cases", "operand_segment_sizes"}:
+            continue
+        value = _property_value(attribute)
+        if value is not None:
+            properties.append(f"{name} = {value}")
     if properties:
         label = f"{label}<br/>{'<br/>'.join(properties)}"
     return label
 
 
-def _property_value(attribute) -> str:
+def _property_value(attribute) -> str | None:
     """Format an operation property compactly for a Mermaid node label."""
     value = getattr(attribute, "value", attribute)
     value = getattr(value, "data", value)
     if isinstance(value, float):
         return f"{value:g}"
-    return str(value)
+    if isinstance(value, (bool, int, str)):
+        return str(value)
+    return None
 
 
 def _operation_shape(op, host_reachable: set[str]) -> str:
