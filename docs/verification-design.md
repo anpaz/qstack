@@ -4,7 +4,7 @@
 
 qstack does not trust its compiler passes. Quantum programs are hard enough to validate that the compiler cannot be taken on faith, so every run of a pass produces a **witness**: a record of the transformation it performed. An independent verifier checks the source module, the target module, and the witness together; in the literature this is witness-carrying translation validation. Trust lives in the verifier, never in a pass. The executable language is the kernel-only IR specified in [`DESIGN.md`](DESIGN.md).
 
-The goal is **semantic preservation**: for every fixed callback registry and initial host state, the target (compiled) `@main` must behave like the source `@main`, read through the representation relation the pass declares. Throughout this document, **source** means the pass input and **target** means its compiled output. The goal is not equality of IR: a pass may change representations, introduce internal measurements, widen target resources, and rewrite every unitary. The relation defines which externally visible behavior must survive.
+The goal is **semantic preservation**: for every fixed callback registry and initial host state, the target (compiled) `@main` must behave like the source `@main`, read through the representation relation induced by the pass's declared encoding isometry. Throughout this document, **source** means the pass input and **target** means its compiled output. The goal is not equality of IR: a pass may change representations, introduce internal measurements, widen target resources, and rewrite every unitary. The relation defines which externally visible behavior must survive.
 
 Section 2 gives the semantic model, Section 3 the pass contract, Section 4 the checks, Section 5 what is deliberately deferred, and Section 6 the known limitations of the design.
 
@@ -160,7 +160,7 @@ A program exposes behavior to the host in two places: when it delivers bits to a
 
 A call from one kernel to another is not a host interface. Its arguments and results remain internal to the qstack program, and the compiler may change their representation. For example, a source call that passes one qubit may become a target call that passes an encoded block of qubits. No host code observes that change.
 
-Kernel boundaries are nevertheless **verification boundaries**. Because each source-target kernel pair is verified independently, their signatures must correspond through the representation relation: source and target qubits are related by `R_qubit`, while their bits are equal under `R_bit`. This allows the verifier to use a callee's result when checking its caller without inspecting the callee's graph.
+Kernel boundaries are nevertheless **verification boundaries**. Because each source-target kernel pair is verified independently, their signatures must correspond through the representation relation: source and target qubit tuples are related by the pass's encoding applied to the appropriate representation units, while their bits are equal under `R_bit`. This allows the verifier to use a callee's result when checking its caller without inspecting the callee's graph.
 
 A pass may therefore change internal measurement, encoding, and decoding plumbing, provided that:
 
@@ -170,28 +170,23 @@ A pass may therefore change internal measurement, encoding, and decoding plumbin
 
 ### 2.5 The correctness statement
 
-A pass may change how a program represents qubits and bits. It must declare that change as a **representation relation**. A QEC pass declares:
+A pass declares one encoding isometry `V`, from the state space of an ordered source representation unit of `M` qubits to that of an ordered target unit of `N` qubits. This covers a one-to-one representation on distinct wire identities, a one-to-many code block, and a general `M`-to-`N` encoding. A pass that preserves representation declares the identity isometry. Each claim records which source and target wires instantiate the pass's fixed representation units.
 
-- an encoding isometry `V`, which maps source qubits to target qubits; and
-- a decoding specification `d_spec`, a mathematical function that maps target measurement results back to source bits.
-
-`d_spec` is part of the representation relation, not a callback implementation. If the target program uses a fresh `qstack.decoder` callback to perform this mapping, that callback remains opaque and its required agreement with `d_spec` becomes a classical obligation.
-
-For example, the three-qubit repetition code represents one source qubit with three target qubits and decodes three target measurement results by majority vote. A pass that does not change representation, such as an optimization or dialect lowering, declares the identity relation.
-
-The relation is defined by qstack type:
+Together with equality on bits, this encoding induces the **representation relation** used below. For a source tuple state `ρ_S` and its corresponding target tuple state `ρ_T`, the quantum relation induced by `V` is:
 
 ```
-R_qubit(ρ_S, ρ_T)  iff  ρ_T = V ρ_S V†
-R_bit(b_S, b_T)    iff  b_S = b_T
-R_(τ1 × τ2)        wire by wire, on the joint state
+R_V(ρ_S, ρ_T)  iff  ρ_T = V ρ_S V†.
 ```
 
-For qubits, the target state must be exactly the encoded source state. This also requires the target state to lie in the code space: it cannot have support outside the image of `V`.
+Thus the target state must lie in the image of `V`. Bits use the same relation in every pass:
 
-For bits, the relation is equality. Target measurement results are decoded inside the target kernel, so any bit that reaches a return, caller, or callback already equals the corresponding source bit. The measure rule in Section 3.2 uses `d_spec` to specify that decoding. The verifier does not trust the registered decoder to implement `d_spec`; it emits that requirement as a classical obligation under Section 4.3.
+```
+R_bit(b_S, b_T)  iff  b_S = b_T.
+```
 
-Kernel boundaries contain tuples of wires, so the relation applies to the complete joint state. It encodes every qubit wire together, using one `V` per wire, and leaves bit wires unchanged. Applying the relation to the joint state, rather than to each wire separately, preserves correlations and entanglement between wires.
+Bits use equality because existing callbacks are opaque: changing a bit could change callback behavior. Thus every pre-existing callback must receive exactly the source bit tuple, and independent kernel checks require the same equality at every kernel boundary. Internal target measurement bits must be decoded back to this equality before crossing one.
+
+At a kernel boundary containing `k` independent representation units, the induced encoding is `V^⊗k`. This is one pass-level `V` applied once per representation unit, not one separately declared isometry per wire or claim. It applies to the complete joint state, preserving correlations and entanglement.
 
 #### Kernel behavior by outcome
 
@@ -205,12 +200,12 @@ The outcome component `ρ'_i` is the unnormalized state of the returned qubits c
 
 #### When two kernels are related
 
-Run the source kernel `K_S` on `ρ`. Run the target kernel `K_T` on the related input `γ = enc(ρ)`, where `enc` applies `V` to every input qubit wire of the joint state:
+Run the source kernel `K_S` on `ρ`. If its input contains `k_in` representation units, run the target kernel `K_T` on the related input `γ = V^⊗k_in ρ (V^⊗k_in)†`:
 
 ```mermaid
 flowchart LR
     S(["ρ"]) -- "⟦K_S⟧" --> S2(["{ (i, ρ'ᵢ) }"])
-    T(["γ = enc(ρ)"]) -- "⟦K_T⟧" --> T2(["{ (i, γ'ᵢ) }"])
+    T(["γ = V^⊗kᵢₙ ρ (V^⊗kᵢₙ)†"]) -- "⟦K_T⟧" --> T2(["{ (i, γ'ᵢ) }"])
     S -. "R" .- T
     S2 -. "R" .- T2
 ```
@@ -220,10 +215,10 @@ Both kernels must return bits with the same arity and meaning, so their outcome-
 The kernels are related if, for every input `ρ` and every returned-bit outcome `i`:
 
 ```
-γ'_i  =  enc(ρ'_i)
+γ'_i  =  V^⊗k_out ρ'_i (V^⊗k_out)†
 ```
 
-In words: for each classical outcome, the target kernel's remaining quantum state must be the encoded source state. Because encoding preserves trace, the two kernels also assign the same probability to that outcome.
+Here `k_out` is the number of returned representation units. In words: for each classical outcome, the target kernel's remaining quantum state must represent the source state through the pass's encoding. Because an isometry preserves trace, the two kernels also assign the same probability to that outcome.
 
 This one equation preserves all externally visible behavior:
 
@@ -234,6 +229,10 @@ This one equation preserves all externally visible behavior:
 - pre-existing callbacks receive identical bits in the same global order, so they produce the same results and host-state evolution under Section 2.3.
 
 The statement also covers consumed borrowed qubits and escaping fresh qubits because each `ρ'_i` contains exactly the qubit results declared by the kernel. Borrowed bits select which outcome-indexed family applies, so the equation must hold for every pair of related borrowed-bit assignments.
+
+#### Encoded measurement and decoder obligations
+
+The bit relation is equality, including at a measurement boundary. When a pass replaces source measurement with measurements of the represented target tuple, the target's raw measurement bits are internal. A fresh opaque decoder must turn them into the source-level bit or bit tuple that would have left the source measurement. The verifier derives this finite classical requirement from the measurement rule and reports it as an obligation; a classical verifier checks the registered decoder implementation. The decoder's required map is therefore not part of the representation relation or its declaration. For the three-qubit repetition encoding, the derived requirement is majority vote.
 
 #### What the verifier checks
 
@@ -247,14 +246,14 @@ Instead, the verifier checks that each witnessed replacement has the same local 
 
 A pass emits, alongside its target module, a witness containing:
 
-1. its **representation relation**: `V` and `d_spec`, the identity for a same-representation pass;
+1. its **encoding isometry**: the pass's single `V`, including the identity isometry for a same-representation pass;
 2. the **rules** its sub-graph claims reference (Section 3.2);
 3. the **claims**: which claim each node of the source and target modules belongs to, where an unlisted node belongs to the identity; and
 4. each claim's **arguments**, such as an inline's callee or a correction case's error tags.
 
 The witness is bookkeeping a rewrite driver records as it applies each claim, so pass authors do not write witnesses by hand. This sets the scope deliberately: qstack verifies passes built on its own pass framework, cooperative but untrusted, and does not try to reconstruct what an uninstrumented third-party pass did from the source and target modules alone.
 
-A pass applies everything in one shot through its one declared relation: an encoding pass applies its unitary rules together with the relation's measure and allocation rules, and no intermediate module ever exists to be valid or invalid. Verification sees the source module, the target module, and the witness.
+A pass applies everything in one shot through its induced relation: an encoding pass applies its unitary rules together with the relation's measure and allocation rules, and no intermediate module ever exists to be valid or invalid. Verification sees the source module, the target module, and the witness.
 
 A pass transforms the program kernel by kernel. The unit of compilation and verification is a pair of source and target kernel graphs, not one whole-program graph. The verifier checks each pair independently: a call remains an opaque node in the caller's graph, while its callee pair is verified separately. Section 4.4 then composes the per-kernel results into the end-to-end claim about `@main`.
 
@@ -264,7 +263,7 @@ This independence restricts a call to exactly two replacements: inline it, or pr
 
 Every node of the source and target modules belongs to exactly one claim. A claim states how a piece of the program was transformed, and each claim type has its own check. There are three types today: identity, inline, and sub-graph. The vocabulary is closed but extensible: a new claim type, classical claims included, needs a defined check before any pass may use it (Section 5). Not every verifier backend can check every claim; Section 4.1 describes how backends are tried.
 
-**Identity.** The node is preserved: the same operation, with every operand and result related through the relation, which under an identity relation means the same node outright. For some node kinds the relation carries extra content: a pre-existing `decode` or `select` keeps its symbol, arity, bit operand order, and case map, with bit operands related by `R_bit` and each case kernel related to the kernel named by the same label; a call keeps its callee, with the callee pair related separately (Section 4.4); a return returns the corresponding values, qubits related by `R_qubit` and bits by `R_bit`. Case kernel bodies and signatures may be transformed by the pass, but the callback-visible interface does not change.
+**Identity.** The node is preserved: the same operation, with every operand and result related through the relation, which under an identity relation means the same node outright. For some node kinds the relation carries extra content: a pre-existing `decode` or `select` keeps its symbol, arity, bit operand order, and case map, with bit operands related by `R_bit` and each case kernel related to the kernel named by the same label; a call keeps its callee, with the callee pair related separately (Section 4.4); a return returns the corresponding values, qubit tuples related by the appropriate tensor power of `V` and bits by `R_bit`. Case kernel bodies and signatures may be transformed by the pass, but the callback-visible interface does not change.
 
 **Inline.** A call replaced by a copy of the callee's source body: arguments substituted for the borrowed entry values, SSA names renamed fresh, and the callee's `allocates` merged into the caller's. The check is purely syntactic, because a direct call already denotes the callee's instrument at that point. Inlining is exact substitution, so any callee qualifies, including one that measures or invokes callbacks: the copied callback uses execute exactly when the call would have, keeping the host wire intact. A pass that wants to rewrite across a call boundary inlines first and rewrites the copy in a second pass; the module between the two passes is an ordinary valid program. Because the copy is verbatim, inlining under a non-identity relation cannot typecheck (a source-representation copy cannot wire into target-representation surroundings), so inlining happens before the encoding pass or after it. A callee left unreachable may be dropped. Outlining, the inverse, has no claim type (Section 3.4).
 
@@ -275,10 +274,10 @@ Every node of the source and target modules belongs to exactly one claim. A clai
 
 The verifier checks the rule semantically once, then checks each claim by matching its nodes and wires against that rule. Many claims can therefore reuse one rule without repeating its semantic check. Writing rules as kernels also reuses the parser, linearity checks, and signature syntax already used for program kernels.
 
-The source and target rule bodies must have the same effect through the relation. Writing `U_S` and `U_T` for their net actions, a rule over `k` source boundary wires must satisfy:
+The source and target rule bodies must have the same effect through the relation. Writing `U_S` and `U_T` for their net actions, a rule with `k_in` input and `k_out` output representation units must satisfy:
 
 ```
-U_T V^⊗k = V^⊗k U_S
+U_T V^⊗k_in = V^⊗k_out U_S
 ```
 
 For an identity relation, this is ordinary unitary equality. A rule may, for example, replace `S;S` with `Z`. Under the three-qubit repetition relation, a rule may replace one source `X` with one target `X` on each of the three corresponding target wires.
@@ -287,18 +286,18 @@ An ordinary rule's source body contains only unitaries. Its target body may allo
 
 A rule body never contains a call or a pre-existing callback. A call must be inlined before a rule can see the callee's operations, and C1 keeps existing callbacks outside sub-graph claims. Rules are concrete: gate angles and other parameters are actual attributes from the site, not symbolic variables.
 
-**The relation's own rules.** Ordinary sub-graph rules describe computations on wires that already exist. A non-identity relation must also account for where a qubit's representation begins and ends, so declaring `V` and `d_spec` supplies two additional rules automatically. The pass does not write them.
+**The relation's own rules.** Ordinary sub-graph rules describe computations on wires that already exist. A non-identity encoding must also account for where a representation unit begins and ends, so it supplies allocation and measurement rules automatically. The pass does not write them.
 
-The **allocation rule** establishes the relation when a fresh qubit is created. A source allocation starts one qubit in `|0⟩`; the target allocates its corresponding block in `|0…0⟩` and prepares it as `V|0⟩`. Allocation lives in the kernel's entry block rather than in an operation, but it still needs a claim because the pass must account for the preparation of every fresh target block.
+The **allocation rule** establishes the relation when a fresh source representation unit is created. The target allocates the corresponding target unit and prepares it as `V|0…0⟩`. Allocation lives in the kernel's entry block rather than in an operation, but it still needs a claim because the pass must account for the preparation of every represented fresh unit.
 
-The **measurement rule** recovers the source observable when an encoded block is measured. It replaces one source `qstack.measure` with target measurements followed by one fresh decode:
+The **measurement rule** recovers the source observable when a represented target tuple is measured. It replaces source measurement with target measurements followed by a fresh decode:
 
 ```
 source:  measure one qubit ──────────────────────────────→ one bit
-target:  measure the target block → decode per d_spec ───→ one bit
+target:  measure the target tuple → fresh decode ────────→ one bit
 ```
 
-The raw target measurement results remain inside the rule. The bit that leaves must equal the source measurement result. A fresh `qstack.decoder` callback may compute `d_spec`, but its implementation remains opaque; the verifier reports its required agreement with `d_spec` for classical discharge under Section 4.3. This is the only rule that hands out a newly created bit, which keeps `R_bit` equal at every kernel and host boundary.
+The raw target measurement results remain inside the rule. The bit that leaves must equal the source measurement result. The fresh `qstack.decoder` callback remains opaque; the verifier derives and reports the finite behavior it must have for classical discharge under Section 4.3. This is the only rule that hands out a newly created bit, which keeps `R_bit` equal at every kernel and host boundary.
 
 For example, an encoded transformation of
 
@@ -330,7 +329,7 @@ A transformation the witness cannot express gets UNSUPPORTED rather than a refut
 
 ### 4.1 Checking rules
 
-Before a rule can justify any claims, the verifier checks the semantic obligation from Section 3.2. For a unitary rule over `k` source wires, it checks `U_T V^⊗k = V^⊗k U_S`, using gate matrices supplied by the dialect definitions.
+Before a rule can justify any claims, the verifier checks the semantic obligation from Section 3.2. For a unitary rule, it checks `U_T V^⊗k_in = V^⊗k_out U_S`, using gate matrices supplied by the dialect definitions.
 
 If the target body performs internal measurements, the verifier checks every reachable outcome separately. Each outcome must implement the same source action through the relation. This check also derives the outcome-to-case behavior required of the rule's fresh selector. Tagged unreachable correction cases are checked separately under Section 4.3.
 
@@ -391,7 +390,7 @@ This document does not yet choose:
 - the witness serialization: rule format, claim encoding, claim arguments;
 - additional claim types beyond identity, inline, and sub-graph, including classical claims over the decode and select structure;
 - the classical obligation data structure and pass-manager integration;
-- an API through which a pass declares its relation or error tags;
+- an API through which a pass declares its encoding isometry or error tags;
 - channel-valued rules: rules whose source body contains a measurement, or whose bodies denote an instrument rather than a single unitary, checked as channel equivalence; today the source body is unitary, every declared rule denotes one unitary, and a bit that must survive a rewrite is owned by the relation's measure rule;
 - kernel summaries: a call to a transitively unitary, non-recursive kernel summarized by its unitary, letting the call join a rule site without inlining first;
 - the frame-enriched qubit relation for encoding passes that track Pauli frames instead of materializing corrections;

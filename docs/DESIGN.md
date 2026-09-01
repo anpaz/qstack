@@ -179,7 +179,7 @@ A callback introduced by a pass must use a declaration and use fresh relative to
 
 Executable-IR verification and pass verification are separate checks. The former validates one closed module structurally. The latter checks a source module, target module, and pass-produced witness together, and returns VERIFIED, VERIFIED MODULO CLASSICAL OBLIGATIONS, REFUTED, or UNSUPPORTED.
 
-A witness declares one representation relation for the pass and partitions the source and target graphs into identity, inline, and sub-graph claims. Reusable rules justify sub-graph claims; the relation supplies its own allocation and measurement rules. Each source-target kernel pair is checked independently, and the local results compose through calls to the claim about `@main`. Rewrites outside this claim vocabulary are unsupported rather than accepted by whole-program guessing. The complete contract, including its known limitations, is specified in [`verification-design.md`](verification-design.md).
+A witness records the pass's encoding isometry and partitions the source and target graphs into identity, inline, and sub-graph claims. Together with bit equality, the isometry induces the representation relation; reusable rules justify sub-graph claims, and the relation supplies its own allocation and measurement rules. Each source-target kernel pair is checked independently, and the local results compose through calls to the claim about `@main`. Rewrites outside this claim vocabulary are unsupported rather than accepted by whole-program guessing. The complete contract, including its known limitations, is specified in [`verification-design.md`](verification-design.md).
 
 ## 5. Example: repeat until one
 
