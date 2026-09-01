@@ -23,6 +23,7 @@ from IPython.core.magic import Magics, cell_magic, magics_class
 from qstack.surface.lowering import lower
 from qstack.surface.parser import parse
 from qstack.verifier import verify_module
+from qstack.visualize import dataflow
 
 
 @magics_class
@@ -38,3 +39,4 @@ class QStackMagics(Magics):
 
 def load_ipython_extension(ipython) -> None:
     ipython.register_magics(QStackMagics)
+    ipython.user_ns.setdefault("dataflow", dataflow)

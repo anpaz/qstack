@@ -9,6 +9,7 @@ from IPython.core.getipython import get_ipython  # noqa: E402
 from xdsl.dialects.builtin import ModuleOp  # noqa: E402
 
 from qstack.jupyter import load_ipython_extension  # noqa: E402
+from qstack.visualize import dataflow  # noqa: E402
 
 PREPARE_ONE = """
 QSTACKQASM 0.1;
@@ -61,3 +62,7 @@ def test_qasm_magic_binds_under_custom_name(ip) -> None:
 def test_qasm_magic_returns_module(ip) -> None:
     result = ip.run_cell_magic("qasm", "", PREPARE_ONE)
     assert isinstance(result, ModuleOp)
+
+
+def test_extension_exposes_dataflow_helper(ip) -> None:
+    assert ip.user_ns["dataflow"] is dataflow
