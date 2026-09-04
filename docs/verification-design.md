@@ -34,7 +34,7 @@ A program is a module containing a finite collection of named kernels and callba
 Semantically, a kernel maps an input quantum state to one output quantum state for each possible returned bitstring. If `K` returns `m` bits, write:
 
 ```
-⟦K⟧(ρ) = { b ↦ ρ_b | b ∈ {0,1}^m }
+⟦K⟧(ρ) = { (b, ρ_b) | b ∈ {0,1}^m }
 ```
 
 Here `ρ` is the state of the kernel's input qubits and `ρ_b` is the subnormalized state of its returned qubits for outcome `b`. The trace of `ρ_b` is the probability that the kernel returns `b`. Different returned bitstrings may correspond to different quantum states; this correlation is part of the kernel's meaning. A map of this kind is commonly called a **quantum instrument**.
