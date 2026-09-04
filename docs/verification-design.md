@@ -4,7 +4,7 @@
 
 qstack does not trust its compiler passes. Quantum programs are hard enough to validate that the compiler cannot be taken on faith, so every run of a pass produces a **witness**: a record of the transformation it performed. An independent verifier checks the source module, the target module, and the witness together; in the literature this is witness-carrying translation validation. Trust lives in the verifier, never in a pass. The executable language is the kernel-only IR specified in [`DESIGN.md`](DESIGN.md).
 
-The goal is **semantic preservation**: for every fixed callback registry and initial host state, the target (compiled) `@main` must behave like the source `@main`, read through the representation relation induced by the pass's declared encoding isometry. Throughout this document, **source** means the pass input and **target** means its compiled output. The goal is not equality of IR: a pass may change representations, introduce internal measurements, widen target resources, and rewrite every unitary. The relation defines which externally visible behavior must survive.
+The goal is **semantic preservation**: for every fixed callback registry and initial host state for each callback source, the target (compiled) `@main` must behave like the source `@main`, read through the representation relation induced by the pass's declared encoding isometry. Throughout this document, **source** and **target** without qualification mean the pass input and its compiled output; a **callback source** is the namespace and host-state domain described in Section 2.3. The goal is not equality of IR: a pass may change representations, introduce internal measurements, widen target resources, and rewrite every unitary. The relation defines which externally visible behavior must survive.
 
 Section 2 gives the semantic model, Section 3 the pass contract, Section 4 the checks, Section 5 what is deliberately deferred, and Section 6 the known limitations of the design.
 
@@ -12,7 +12,7 @@ Section 2 gives the semantic model, Section 3 the pass contract, Section 4 the c
 
 - **P1. One semantic obligation.** Optimizations, QEC encodings, and dialect lowerings are all the same thing: preservation of the kernel's behavior modulo a representation relation.
 - **P2. The pass is untrusted but cooperative.** A pass reports what it did, and everything it reports is checked before it is used. A false witness is refuted; one the verifier cannot check yields UNSUPPORTED. A witness affects what can be verified, never what counts as correct.
-- **P3. Existing callbacks are interfaces.** A pass preserves every callback invocation in the source module, including the global order and multiplicity of invocations, and never reasons about a callback's host implementation.
+- **P3. Existing callbacks are interfaces.** A pass preserves every callback invocation in the source module, including its callback source and its order and multiplicity on that source's host wire, and never reasons about a callback's host implementation.
 - **P4. New callback behavior is an obligation.** When a pass introduces a decoder or selector, the verifier derives the classical behavior it must have and reports it for a classical verifier to check.
 - **P5. Rules are checked; kernels are composed.** Most quantum verifiers today compare the full source and target circuits for equivalence. qstack does not, for two reasons: a kernel's behavior depends on opaque callbacks, so it cannot be computed at all, and whole-program comparison grows exponentially with program size, so it does not scale. Instead the verifier checks that each small replacement preserves the semantics of the operation it replaces, and lifts those local results by composition to `@main`. Anything that does not arrive as such replacements is UNSUPPORTED, not guessed at.
 - **P6. Failures are attributable.** A refutation names the rule, site, kernel, branch, or callback interface that failed.
@@ -53,17 +53,13 @@ The operations are the nodes; the SSA values are the wires. The sources are the 
 
 Two kernel bodies are the same kernel when their graphs match: same nodes, symbols, attributes, and wiring. In particular, the order of two operations connected by no wire is not part of the kernel graph. This is safe in the noiseless model, where operations on disjoint qubits commute: emitting them in either order produces the same graph. Order matters only where a wire carries it, and one more wire is needed for the order that matters to callbacks.
 
-### 2.3 One host machine and the host wire
+### 2.3 Callback sources and host wires
 
-At runtime a module runs against one fixed callback registry and one initial host state. All callbacks execute on a single deterministic, stateful host machine and may share its state: each result and the machine's next state are fixed by the current state and the received bits. A selector maps its bits to one label of a select's finite case map; a decoder maps its bits to one bit. Implementations are opaque to the compiler. The finite case map is a validation boundary: everything the selector can choose is a named kernel the verifier can inspect.
+Every selector and decoder belongs to a **callback source**, which identifies both a namespace and a host-state domain. An absent `source` attribute denotes the empty source used by callbacks in the original program; these callbacks keep their unqualified names. A compiler-created source has the form `family.layer`: for example, `@rep3.1:decode` has source `rep3.1`, but resolves to the shared implementation `rep3:decode`. Later layers use `rep3.2` through `rep3.n`. Layers share the implementation, not its state; when needed, source-local state is passed separately.
 
-Because the host is stateful and shared, what matters semantically is the single global order of all callback invocations. The graph carries it as the **host wire**: one linear wire representing the host state, threaded through every `decode` and `select`, and through every call whose callee transitively invokes a callback (computable from the static call graph). The wire enters each kernel implicitly and leaves through its return, running from `@main`'s entry to `@main`'s return; the sequence of nodes along it is the invocation trace. Like the rest of the graph, it is derived from the IR, not printed.
+Callbacks with the same source may share deterministic state, while callbacks with different sources cannot observe one another's state. Their implementations remain opaque to the compiler. Each source is represented in the kernel graph by one implicit **host wire**. A `decode` or `select` threads its source's wire, and a call threads every wire used transitively by its callee. The sequence on a wire records the order of callbacks that may share state; callbacks on different wires need no additional ordering unless connected by ordinary dataflow.
 
-The host wire tracks order, nothing more. The host state stays opaque: no rewrite is ever justified by reasoning about the wire's value, only refuted by changing its shape.
-
-For each callback use in the source module, the target module must make the same runtime call: same symbol and declaration, same arity, bit operand order, and case map, corresponding bit values, and the same global order, multiplicity, and reachability. The compiler may not replace, wrap, drop, duplicate, retarget, or reorder such an invocation, and may not add invocations of a callback declared in the source module. It need not know the callback's answer: the same implementation and initial state run before and after compilation, so determinism gives the same results. In the graph, all of this is one statement: **the host wire's sequence of pre-existing callback nodes is preserved.**
-
-The constraint is on the runtime trace, not the static operation count: inlining copies a callback operation without changing when it executes (a run takes the copy or the callee, never both), so it keeps the trace. A newly introduced callback needs a fresh declaration and the obligations of Section 3.4. The rule is relative to each source module: a callback added by one pass is an ordinary fixed callback for the next.
+A pass preserves each existing callback's source, qualified name, interface, bit operands, reachability, multiplicity, and position on its host wire. Because the same deterministic implementation receives the same bits in the same source-local state, it produces the same result and state transition. A callback introduced by a pass instead uses a fresh source and carries the classical obligations of Sections 3.3 and 4.3. That source is retained by later passes, so the new host-state domain remains separate from earlier ones.
 
 **Example: teleportation.** The module below teleports the state of a fresh qubit onto a borrowed one: `@teleport` prepares the state to send, entangles, measures both of its fresh qubits, and asks the host which Pauli fix to apply. It parses and verifies as written.
 
@@ -111,7 +107,7 @@ builtin.module {
 }
 ```
 
-The graph reading of `@teleport`, with qubit wires solid, bit wires dotted, the host wire bold, and host nodes drawn with a double border:
+The graph reading of `@teleport`, with qubit wires solid, bit wires dotted, the empty-source host wire bold, and host nodes drawn with a double border:
 
 ```mermaid
 flowchart TB
@@ -226,7 +222,7 @@ This one equation preserves all externally visible behavior:
 - the quantum state associated with each returned-bit outcome is preserved through the encoding;
 - correlations among returned bits and qubits are preserved;
 - callers, case maps, callbacks, and `@main` can use target results without translation; and
-- pre-existing callbacks receive identical bits in the same global order, so they produce the same results and host-state evolution under Section 2.3.
+- pre-existing callbacks receive identical bits in the same order on each callback source's host wire, so they produce the same results and host-state evolution under Section 2.3.
 
 The statement also covers consumed borrowed qubits and escaping fresh qubits because each `ρ'_i` contains exactly the qubit results declared by the kernel. Borrowed bits select which outcome-indexed family applies, so the equation must hold for every pair of related borrowed-bit assignments.
 
@@ -238,7 +234,7 @@ The bit relation is equality, including at a measurement boundary. When a pass r
 
 The commuting square above defines correctness; it is not the algorithm used to check a pass. The verifier cannot compute `⟦K_S⟧` or `⟦K_T⟧` directly because kernel behavior depends on opaque callback implementations, and correctness must hold for every callback registry.
 
-Instead, the verifier checks that each witnessed replacement has the same local effect as the fragment it replaces (Sections 4.1 and 4.2), checks that the host wire is preserved (Section 2.3), and proves that those local facts compose into the square (Section 4.4).
+Instead, the verifier checks that each witnessed replacement has the same local effect as the fragment it replaces (Sections 4.1 and 4.2), checks that every existing host wire is preserved (Section 2.3), and proves that those local facts compose into the square (Section 4.4).
 
 ## 3. The pass contract
 
@@ -263,9 +259,9 @@ This independence restricts a call to exactly two replacements: inline it, or pr
 
 Every node of the source and target modules belongs to exactly one claim. A claim states how a piece of the program was transformed, and each claim type has its own check. There are three types today: identity, inline, and sub-graph. The vocabulary is closed but extensible: a new claim type, classical claims included, needs a defined check before any pass may use it (Section 5). Not every verifier backend can check every claim; Section 4.1 describes how backends are tried.
 
-**Identity.** The node is preserved: the same operation, with every operand and result related through the relation, which under an identity relation means the same node outright. For some node kinds the relation carries extra content: a pre-existing `decode` or `select` keeps its symbol, arity, bit operand order, and case map, with bit operands related by `R_bit` and each case kernel related to the kernel named by the same label; a call keeps its callee, with the callee pair related separately (Section 4.4); a return returns the corresponding values, qubit tuples related by the appropriate tensor power of `V` and bits by `R_bit`. Case kernel bodies and signatures may be transformed by the pass, but the callback-visible interface does not change.
+**Identity.** The node is preserved: the same operation, with every operand and result related through the relation, which under an identity relation means the same node outright. For some node kinds the relation carries extra content: a pre-existing `decode` or `select` keeps its callback source, symbol, arity, bit operand order, and case map, with bit operands related by `R_bit` and each case kernel related to the kernel named by the same label; a call keeps its callee, with the callee pair related separately (Section 4.4); a return returns the corresponding values, qubit tuples related by the appropriate tensor power of `V` and bits by `R_bit`. Case kernel bodies and signatures may be transformed by the pass, but the callback-visible interface does not change.
 
-**Inline.** A call replaced by a copy of the callee's source body: arguments substituted for the borrowed entry values, SSA names renamed fresh, and the callee's `allocates` merged into the caller's. The check is purely syntactic, because a direct call already denotes the callee's instrument at that point. Inlining is exact substitution, so any callee qualifies, including one that measures or invokes callbacks: the copied callback uses execute exactly when the call would have, keeping the host wire intact. A pass that wants to rewrite across a call boundary inlines first and rewrites the copy in a second pass; the module between the two passes is an ordinary valid program. Because the copy is verbatim, inlining under a non-identity relation cannot typecheck (a source-representation copy cannot wire into target-representation surroundings), so inlining happens before the encoding pass or after it. A callee left unreachable may be dropped. Outlining, the inverse, has no claim type (Section 3.4).
+**Inline.** A call replaced by a copy of the callee's source body: arguments substituted for the borrowed entry values, SSA names renamed fresh, and the callee's `allocates` merged into the caller's. The check is purely syntactic, because a direct call already denotes the callee's instrument at that point. Inlining is exact substitution, so any callee qualifies, including one that measures or invokes callbacks: the copied callback uses execute exactly when the call would have, keeping every host wire intact. A pass that wants to rewrite across a call boundary inlines first and rewrites the copy in a second pass; the module between the two passes is an ordinary valid program. Because the copy is verbatim, inlining under a non-identity relation cannot typecheck (a source-representation copy cannot wire into target-representation surroundings), so inlining happens before the encoding pass or after it. A callee left unreachable may be dropped. Outlining, the inverse, has no claim type (Section 3.4).
 
 **Sub-graph.** A sub-graph claim says that a particular region of a source kernel was replaced by a particular region of the target kernel using a verified rule. The rule and the claim play different roles:
 
@@ -313,17 +309,17 @@ Two asymmetries keep these claims sound. A target rule may introduce measurement
 
 Conditions on the witness; Section 4 rejects one that violates them.
 
-- **C1. Existing callbacks are untouchable.** Every pre-existing `decode` and `select` node belongs to an identity claim or an inline copy, and to nothing else. No rule contains a pre-existing callback, so no sub-graph claim can touch one. Case kernel bodies may be transformed, but the callback-visible case map does not change, and the callback is not reverified.
+- **C1. Existing callbacks are untouchable.** Every pre-existing `decode` and `select` node belongs to an identity claim or an inline copy, and to nothing else. No rule contains a pre-existing callback, so no sub-graph claim can touch one. Its declaration, including the value or absence of its `source` attribute, is preserved. Case kernel bodies may be transformed, but the callback-visible case map does not change, and the callback is not reverified.
 - **C2. A new decode appears only in the relation's measure rule.** Its output stands for the replaced measurement's bit. A decode is never introduced to pre-process bits for an introduced selector: a selector is an arbitrary function of its bits, so that computation belongs inside it, keeping each introduced callback's obligation standalone. The declaration and every new use are fresh relative to the source module.
 - **C3. A new select appears only inside a rule's target body.** Its selector declaration and use are fresh. A case reachable in the noiseless semantics is justified by the rule's branch check; an unreachable case, as a QEC correction case is, carries an error tag naming the error it claims to correct (a tag for an error at another point must state that point) and is checked by its correction identity. Once introduced, the selector and its cases are fixed: later passes preserve them under C1 like any other callback.
 - **C4. Introduced bits are internal.** Bits created for a new decoder or selector must not reach a pre-existing callback or a `@main` result without an explicit relation restoring the source observable. A transformation may not add a new opaque classical interface.
-- **C5. Introduced callbacks are isolated.** An introduced callback's invocations land between pre-existing ones in the global trace, and would perturb them if the new implementation touched shared state. Its reported obligation therefore includes isolation: the implementation must realize its contract without reading or writing state any other callback observes.
+- **C5. Introduced callback sources are fresh.** Every introduced callback declaration has an explicit, nonempty callback source absent from the source module. Callbacks introduced together may share a fresh source only when their stateful behavior is covered by one joint classical obligation; otherwise their sources are distinct. Runtime state is partitioned by callback source, so a new source cannot perturb the state carried by an existing host wire.
 
 ### 3.4 Transformations outside the contract
 
-A transformation the witness cannot express gets UNSUPPORTED rather than a refutation. Today that includes outlining a fragment into a new kernel (the inverse of inlining, with no claim type yet) and any rewrite of a source region containing a measurement or callback, which only the identity claim and the relation's measure rule may touch. Reordering two operations connected by no wire is not on this list, because it is not a transformation: the source and target modules have the same graph. Moving a pre-existing callback along the host wire is a shape change and is refuted. The verifier never searches for unwitnessed correspondences: a rewrite absent from the claims is UNSUPPORTED even if it happens to be correct.
+A transformation the witness cannot express gets UNSUPPORTED rather than a refutation. Today that includes outlining a fragment into a new kernel (the inverse of inlining, with no claim type yet) and any rewrite of a source region containing a measurement or callback, which only the identity claim and the relation's measure rule may touch. Reordering two operations connected by no wire is not on this list, because it is not a transformation: the source and target modules have the same graph. Moving a pre-existing callback along its host wire or changing its callback source is a shape change and is refuted. The verifier never searches for unwitnessed correspondences: a rewrite absent from the claims is UNSUPPORTED even if it happens to be correct.
 
-**Example: Pauli-frame tracking.** An encoding pass may try to defer Pauli corrections into later measurement decoding instead of materializing them with `qstack.select`. The current relation cannot represent the tracked frame, so such a transformation is UNSUPPORTED; it requires the frame-enriched qubit relation deferred in Section 5. A later pass also cannot remove an already materialized correction select: doing so changes the host wire and is REFUTED.
+**Example: Pauli-frame tracking.** An encoding pass may try to defer Pauli corrections into later measurement decoding instead of materializing them with `qstack.select`. The current relation cannot represent the tracked frame, so such a transformation is UNSUPPORTED; it requires the frame-enriched qubit relation deferred in Section 5. A later pass also cannot remove an already materialized correction select: doing so changes its host wire and is REFUTED.
 
 ## 4. How verification checks the witness
 
@@ -341,8 +337,8 @@ The claims are checked structurally against both graphs:
 
 1. **Partition.** Every node of the source and target modules belongs to exactly one claim; unlisted nodes to the identity. No node is shared.
 2. **Sites.** Each sub-graph site holds together: no path leaves the site and re-enters it through an outside node. This is what lets the site stand alone as one action.
-3. **Instantiation.** Each sub-graph site matches its rule's source body up to wire renaming, and its replacement matches the target body under the same renaming. An inline's copy must be the callee's source body with arguments substituted and names renamed. An identity claim on a callback must carry the unchanged symbol, arity, operand order, and case map. Freshness (C2, C3) is checked against the source module's symbols.
-4. **Remainder and host wire.** The rest of the two graphs must agree: identity nodes correspond exactly, and the host wire's sequence of pre-existing callback nodes is identical on both sides, with introduced callbacks appearing only inside their own claims.
+3. **Instantiation.** Each sub-graph site matches its rule's source body up to wire renaming, and its replacement matches the target body under the same renaming. An inline's copy must be the callee's source body with arguments substituted and names renamed. An identity claim on a callback must carry the unchanged callback source, symbol, arity, operand order, and case map. Freshness (C2, C3, C5) is checked against the source module's callback sources and symbols.
+4. **Remainder and host wires.** The rest of the two graphs must agree: identity nodes correspond exactly, the sequence of pre-existing callback nodes on every existing host wire is identical on both sides, and introduced callbacks appear only on fresh host wires inside their own claims.
 
 Every step is syntactic. A witness that makes a false statement, such as a site that does not match its rule, is REFUTED; one that is merely silent about a changed region is UNSUPPORTED. Either way the failing rule, site, or node is named.
 
@@ -350,7 +346,7 @@ Every step is syntactic. A witness that makes a false statement, such as a site 
 
 An introduced callback's required behavior is derived from the quantum relation, never trusted (P4).
 
-For a decoder introduced by the relation's measure rule, the verifier does not execute or inspect the implementation. It derives and reports a finite obligation: the callback symbol and input layout, the reachable input tuples in the noiseless relation, the required output for each, any explicitly unconstrained tuples, and the isolation requirement of C5. A classical verifier checks the registered decoder against it; until then, the quantum result is verified modulo the reported obligation.
+For a decoder introduced by the relation's measure rule, the verifier does not execute or inspect the implementation. It derives and reports a finite obligation: the callback source, qualified declaration symbol, and shared implementation key; the input layout; the reachable input tuples in the noiseless relation; the required output for each; and any explicitly unconstrained tuples. A classical verifier checks the registered decoder against it; until then, the quantum result is verified modulo the reported obligation.
 
 For a selector introduced by a rule, the verifier derives the outcome-to-case behavior required on every reachable branch (Section 4.1) and checks each tagged unreachable case at its declared point. For an error `E` occurring after a replaced operation `U`, the correction case kernel `C_E` must satisfy:
 
@@ -358,7 +354,9 @@ For a selector introduced by a rule, the verifier derives the outcome-to-case be
 C_E E U = U
 ```
 
-Equivalently, `C_E E = I` on the image of the code space where `E` occurs; a tag naming an error at another point uses the correspondingly conjugated relation. From the measurement structure and the tags, the verifier then reports the finite syndrome-to-case behavior required of the selector, with the isolation requirement of C5, for a classical verifier to check against the registered implementation.
+Equivalently, `C_E E = I` on the image of the code space where `E` occurs; a tag naming an error at another point uses the correspondingly conjugated relation. From the measurement structure and the tags, the verifier then reports the finite syndrome-to-case behavior required of the selector, together with its callback source, qualified declaration symbol, and shared implementation key, for a classical verifier to check against the registered implementation.
+
+When several callbacks share a fresh source such as `rep3.1`, their per-callback requirements form one joint classical obligation. That obligation follows their ordered invocations on the source's host wire and accounts for any state they share. Giving each callback a distinct source avoids this joint reasoning.
 
 ### 4.4 Composition
 
@@ -366,10 +364,10 @@ The end-to-end claim rests on these facts:
 
 - **Local composition.** Related replacements compose sequentially, so an introduced decoder or selector is justified at its site rather than against an enclosing kernel.
 - **Kernel calls.** If a callee pair is related, the corresponding target call preserves the caller's relation.
-- **Kernel composition.** If all claims in a kernel are related and the host wire is preserved, the source and target kernels are related.
-- **Root adequacy.** If every reachable kernel pair is related, all pre-existing callback uses are preserved, and every added obligation is discharged, the source and target `@main` are related for the fixed registry and initial host state.
+- **Kernel composition.** If all claims in a kernel are related and every existing host wire is preserved, the source and target kernels are related.
+- **Root adequacy.** If every reachable kernel pair is related, all pre-existing callback uses and sources are preserved, and every added obligation is discharged, the source and target `@main` are related for the fixed registry and initial state of each callback source.
 
-These rely on linearity and the host wire: together they leave no unaccounted wires, copies, discards, or unordered host interactions between local obligations.
+These rely on linearity and the host wires: together they leave no unaccounted wires, copies, discards, or unordered host interactions within a callback source.
 
 ### 4.5 Verdicts and obligation handoff
 

@@ -14,7 +14,7 @@ Textual syntax in this document is the syntax the implementation actually parses
 2. **A kernel is a quantum instrument.** It maps its borrowed qubits and bits to its declared results, producing classical outcomes along the way. It is the only construct that creates qubits, and its allocation count is a detail of how the instrument is realized, not part of what it means.
 3. **The core is quantum plus explicit callback boundaries.** A kernel contains only target-dialect unitaries, measurement, decoding, selection, and calls to other kernels.
 4. **Qubits and bits are linear.** Each is used once. Gates thread a qubit to a new SSA name; measurement is the only core qubit destructor.
-5. **Existing callbacks are fixed interfaces.** A callback is registered by symbol name and may be stateful: its output and next state are determined by its current state and received values. All callbacks execute against one stateful host machine and may share its state, so the preserved trace is the single global interleaving of every callback invocation, not a per-symbol order. A pass never changes an existing callback invocation's interface or runtime trace. A callback introduced by a pass is fresh and carries a finite classical obligation derived by semantic verification.
+5. **Existing callbacks are fixed interfaces.** A callback is registered once under its family-qualified implementation name and may be stateful: its output and next state are determined by its source-local state and received values. Callbacks from the same source may share state, so a pass preserves their order on that source's host wire as well as every existing callback invocation's interface and multiplicity. Different sources have disjoint host state. A callback introduced by a pass uses a fresh source and carries a finite classical obligation derived by semantic verification.
 
 ### 1.2 Noiseless scope
 
@@ -81,15 +81,9 @@ The executable-IR verifier is intentionally structural: it establishes the IR in
 - `allocates` is non-negative, and a kernel body contains exactly one `qstack.return`, its final operation.
 - `qstack.measure` consumes a qubit, and the bit operands of `qstack.decode` and `qstack.select` are bits.
 
-### 2.5 Kernel graphs and instruments
+## 3. Types, linearity, and kernel semantics
 
-A kernel body denotes a dataflow graph: operations are nodes, linear SSA values are wires, borrowed and fresh values are sources, and `qstack.return` is the sink. A call is an opaque node in its caller's graph; its callee is a separate graph. A select similarly refers to separate case-kernel graphs.
-
-Two bodies have the same graph when their nodes, symbols, attributes, and wiring match. The textual order of operations connected by no wire is not semantic in the noiseless model. Callback order is the exception: the derived host wire in Section 4.4 records the global order of stateful host interactions.
-
-A kernel denotes a quantum instrument from its declared borrowed inputs to its declared results. Fresh qubits begin inside an invocation in `|0⟩`; internal measurement outcomes consumed by a decode or select do not cross the kernel boundary. Returned bits carry their probabilities, returned qubits carry their conditional states, and correlations between them are part of the instrument. Calls and selects compose the instruments of their named kernels into the caller's instrument.
-
-## 3. Types and linearity
+### 3.1 Types and linearity
 
 | Type            | Meaning                                      |
 | --------------- | -------------------------------------------- |
@@ -102,22 +96,36 @@ Within a kernel body, every borrowed or fresh qubit is consumed exactly once: by
 
 Linearity forbids aliasing and implicit copying. It lets the verifier establish qubit conservation and identify the exact classical values delivered to a callback. The core has no first-class function, continuation, qubit-array, or unitary type.
 
+### 3.2 Kernel graphs and instruments
+
+A kernel body denotes a dataflow graph: operations are nodes, linear SSA values are wires, borrowed and fresh values are sources, and `qstack.return` is the sink. The graph also contains one implicit host wire for each callback source used by the kernel. A `decode` or `select` lies on the host wire of its declaration's callback source, and a call lies on every host wire used transitively by its callee. These wires carry source-local host state and order callbacks that may share it. A call is an opaque node in its caller's graph; its callee is a separate graph. A select similarly refers to separate case-kernel graphs.
+
+Two bodies have the same graph when their nodes, symbols, attributes, and wiring match.
+
+Semantically, a kernel maps an input quantum state `ρ` to one subnormalized state `ρ_b` of its returned qubits for each possible returned bitstring `b`. The trace of `ρ_b` is the probability of `b`; this outcome-indexed map, including the correlation between `b` and `ρ_b`, is a quantum instrument. Fresh qubits begin in `|0⟩`, and measurement results consumed inside the kernel affect its instrument without appearing in `b`. Calls and selects incorporate the instruments of the kernels they invoke. The instrument of `@main`, which returns no qubits, is the program's probability distribution over returned bitstrings.
+
 ## 4. Callback declarations and operations
 
-Callbacks are host-language implementations registered by module symbol name. Their bodies are absent from qstack IR; the registry is the only quantum/classical boundary.
+Callbacks are host-language implementations registered by family-qualified implementation name. Their bodies are absent from qstack IR; the registry is the only quantum/classical boundary.
 
 ### 4.1 Declarations
 
-A callback declaration carries a symbol name and the size of the bit bundle it receives:
+A callback declaration carries a symbol name, an optional callback source, and the size of the bit bundle it receives:
 
 ```text
 qstack.selector @repeat_until_one arity 1
-qstack.decoder @majority_vote arity 3
+qstack.decoder @rep3.1:decode arity 3 {source = "rep3.1"}
 ```
 
-Types are not written: every callback input is a `!qstack.bit`, a decoder always returns exactly one bit, and a selector returns a case label to the runtime rather than an SSA value. A decoder must declare at least one input; a selector may declare none, since a stateful selector can still choose a case from its own state alone. Declarations have no body and cannot be kernel-call targets. Selector and decoder implementations occupy separate runtime registry namespaces, but their declarations share the module's qstack symbol namespace, so a valid module cannot declare the same string as both.
+The `source` attribute names the callback's host-state domain. It is absent for callbacks in the original program, which belong to the empty source and resolve by their unqualified symbols; `@repeat_until_one` therefore uses the registry entry `repeat_until_one`.
 
-The declaration names no parameters, because there are none to bind. Both kinds of callback receive their bits as a single positional tuple of `int`, in operand order, so the host implementation is `def callback(bits)` in either case. Nothing downstream of the declaration repeats an input name, and no invocation site carries one.
+A compiler-introduced source has the form `family.layer`, where `layer` is a positive integer. Its declaration symbol has the form `family.layer:name`. The decoder above therefore has the qualified identity `rep3.1:decode`, while successive repetition-code layers use `rep3.2:decode` through `rep3.n:decode`. Registry lookup removes the layer component, so all of these declarations use the single registered implementation `rep3:decode`. The full source remains significant for state: `rep3.1` and `rep3.2` have distinct host wires and distinct state even though they execute the same implementation.
+
+Callbacks with the same full source may share state, while callbacks with different sources cannot observe or modify one another's state. A compiler preserves the source, including its absence, of an existing declaration and assigns a fresh source to each new callback layer it introduces.
+
+Types are not written: every callback input is a `!qstack.bit`, a decoder always returns exactly one bit, and a selector returns a case label to the runtime rather than an SSA value. Declarations have no body and cannot be kernel-call targets. Selector and decoder implementations occupy separate runtime registry namespaces, but their declarations share the module's qstack symbol namespace, so a valid module cannot declare the same string as both.
+
+The declaration names no bit parameters, because there are none to bind. Both kinds of callback receive their bits as a single positional tuple of `int`, in operand order. A stateless implementation therefore has the shape `def callback(bits)`. When an implementation needs state, the runtime supplies the state of the full callback source as a separate parameter; sharing the implementation does not share state between layers. Nothing downstream of the declaration repeats an input name, and no invocation site carries one.
 
 ### 4.2 Decode
 
@@ -125,7 +133,7 @@ The declaration names no parameters, because there are none to bind. Both kinds 
 %logical = qstack.decode @decoder(%b0, %b1, ...)
 ```
 
-`qstack.decode` invokes an opaque decoder, consuming its full bit bundle and yielding a bit. The operand count must equal the declaration's input count. Its explicit operands make it impossible to hide decoding in a wrapper callback. Because both operand and result types are fixed as `!qstack.bit`, no type signature is printed. The runtime delivers the bundle to the registered decoder as one tuple in operand order.
+`qstack.decode` invokes an opaque decoder, consuming its full bit bundle and yielding a bit. The operand count must equal the declaration's input count. Its explicit operands make it impossible to hide decoding in a wrapper callback. Because both operand and result types are fixed as `!qstack.bit`, no type signature is printed. The runtime delivers the bundle to the declaration's family-qualified registered implementation as one tuple in operand order.
 
 ```mlir
 builtin.module {
@@ -155,25 +163,27 @@ The selector consumes bit operands and returns one of its finite case labels. Th
 
 Bit operands are positional and their count must match the selector's declared arity. The runtime delivers them to the host callback as one tuple, exactly as it does for a decoder. Every case names a `qstack.kernel` whose declared inputs match `%case_args...` and whose declared results match the select's results, so the select has one known result signature. The callback cannot synthesize a new kernel at runtime. This closed case menu is a validation boundary: the verifier can inspect every quantum behavior the callback may select, while the callback may choose only among those already validated kernels.
 
+Like a decode, a select resolves its registered implementation by removing the layer component from the qualified name of its declaration.
+
 Selection and invocation are deliberately one operation. There is no function-valued result, continuation type, or indirect invocation operation.
 
 ### 4.4 Callback preservation
 
 For every callback invocation already present in a pass input, compilation must preserve:
 
-- callback symbol and declaration signature;
+- callback source, symbol, and declaration signature;
 - selector arity, bit operand order, and finite case map;
 - corresponding runtime bit values;
 - invocation order and multiplicity; and
 - reachability, including correlations with surviving quantum state.
 
-The compiler does not inspect callback code. A callback is a deterministic stateful computation: its output and next state are fixed by its current state and input values. Preserving the symbol and input values alone is therefore insufficient; order and multiplicity preserve the callback's state evolution as well. Because all callbacks run on one host machine and may share state, the preserved order is global, across different callback symbols, not merely among invocations of the same symbol.
+The compiler does not inspect callback code. A callback is a deterministic stateful computation: its output and next state are fixed by its current source-local state and input values. Preserving the qualified declaration name and input values alone is therefore insufficient; order and multiplicity preserve the callback source's state evolution as well. The preserved order spans all callback symbols with the same source.
 
-This order is represented semantically by the derived **host wire**. It threads through every `decode` and `select`, and through every call whose callee transitively invokes a callback. It is not printed in the IR. Operations unconnected by an SSA wire may otherwise be reordered without changing the kernel graph, but moving a pre-existing callback along the host wire changes program behavior.
+This order is represented semantically by one derived **host wire** per callback source. A `decode` or `select` threads the wire named by its declaration's `source` attribute, and a call threads every host wire used transitively by its callee. Host wires are not printed in the IR. Operations unconnected by an SSA wire may otherwise be reordered without changing the kernel graph, but moving a pre-existing callback along its host wire changes program behavior. Callbacks on different host wires need no additional ordering unless an ordinary dataflow dependency connects them.
 
-A semantic pass verifier checks callback preservation from the source module, target module, and pass witness. A pre-existing callback use must be an identity claim or part of an exact inline copy; a pass cannot wrap, retarget, change, drop, duplicate, or add a use of a callback declared in its source module. Exact inlining may copy the static operation while preserving the runtime trace, because an execution takes either the original call or the inline copy, never both.
+A semantic pass verifier checks callback preservation from the source module, target module, and pass witness. A pre-existing callback use must be an identity claim or part of an exact inline copy; a pass cannot wrap, retarget, change its callback source, drop, duplicate, or add a use of a callback declared in its source module. Exact inlining may copy the static operation while preserving the runtime trace, because an execution takes either the original call or the inline copy, never both.
 
-A callback introduced by a pass must use a declaration and use fresh relative to the source module. A new decoder appears only in the representation relation's measurement rule; a new selector appears only in a rule's target body. Its required finite behavior is derived as a classical obligation, including the requirement that its implementation not read or write state observed by other callbacks. The full witness conditions and obligation handoff are specified in [`verification-design.md`](verification-design.md).
+A callback introduced by a pass must use a declaration, use, and callback source fresh relative to the source module. Its fresh source gives it a separate host wire and state domain. Callbacks introduced together may share that source only when their stateful behavior is verified jointly. A new decoder appears only in the representation relation's measurement rule; a new selector appears only in a rule's target body. Its required finite behavior is derived as a classical obligation. The full witness conditions and obligation handoff are specified in [`verification-design.md`](verification-design.md).
 
 ### 4.5 Semantic pass verification
 
@@ -226,8 +236,9 @@ The following parts of this design are implemented:
 
 The implementation has not yet been updated for the reviewed pass-verification design:
 
-- **Witness-producing passes and semantic verification.** Passes do not yet emit representation relations, rules, or claims, and there is no checker for them or for the derived host wire.
+- **Witness-producing passes and semantic verification.** Passes do not yet emit representation relations, rules, or claims, and there is no checker for them or for the derived host wires.
 - **Fresh generated callbacks.** The repetition-code and Steane passes currently use reserved canonical callback symbols and may reuse matching declarations from their source module. They must instead generate fresh declarations and uses for each transformation. Steane must do so for both its decoder and syndrome selector.
+- **Callback sources.** Callback declarations do not yet carry the `source` attribute, registry lookup does not yet resolve `family.layer:name` through the shared `family:name` implementation, and the runtime does not yet partition callback state or derive one host wire per source.
 - **Error tags** on select cases, described in Section 1.2 and in `verification-design.md`.
 - **Callback-obligation data format**, the artifact a pass emits for a classical verifier to discharge.
 - **Noisy semantics**, including any fault-tolerance claim.
