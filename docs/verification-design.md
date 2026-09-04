@@ -31,21 +31,21 @@ A program is a module containing a finite collection of named kernels and callba
 
 `qstack.call` and `qstack.select` refer to other named kernels. Every invocation target is named in the symbol table; there are no function values or indirect calls, so every kernel reachable from `@main` is statically known.
 
-A kernel denotes a map `⟦K⟧`: give it the state of its borrowed inputs `in`, and it describes what the kernel delivers on its qubit results `out` and bit results `bits`. A kernel that measures is probabilistic, and the map carries all of it: each possible bit outcome, its probability, and the quantum state that comes with it. In quantum information terms this map is a quantum instrument:
+Semantically, a kernel maps an input quantum state to one output quantum state for each possible returned bitstring. If `K` returns `m` bits, write:
 
 ```
-⟦K⟧ : states(in) → states(out, bits)
+⟦K⟧(ρ) = { b ↦ ρ_b | b ∈ {0,1}^m }
 ```
 
-This document uses the standard definitions without developing them. What matters here is the shape: quantum and classical outputs travel in one map, so the correlations between returned bits and surviving qubits are part of what a kernel means. Borrowed bits parameterize the family, one map per assignment of their values. The instrument is what VERIFIED makes claims about: the verifier never computes one (P5), but every local check is justified by what it does to this map.
+Here `ρ` is the state of the kernel's input qubits and `ρ_b` is the subnormalized state of its returned qubits for outcome `b`. The trace of `ρ_b` is the probability that the kernel returns `b`. Different returned bitstrings may correspond to different quantum states; this correlation is part of the kernel's meaning. A map of this kind is commonly called a **quantum instrument**.
 
-The map's boundary follows the kernel's signature. Fresh qubits from `allocates N` are not inputs: they start inside the kernel in `|0⟩`, and each is either measured during the invocation or handed out as a qubit result. Measurement outcomes consumed inside the kernel by `decode` or `select` are not outputs: they never leave the map. What crosses the boundary is exactly the declared inputs and results.
+Fresh qubits allocated by the kernel begin in `|0⟩`. Only measurement results returned by the kernel appear in `b`; measurements consumed inside the kernel still affect the probabilities and output states but are not themselves observable results.
 
-A `qstack.call` plugs the callee's map in at the call site. A `qstack.select` runs one map from its finite menu of case kernels.
+The instrument of a kernel is determined by its fresh-qubit allocation and by the operations in its body, including unitaries, measurements, decodes, calls, and selects. A `qstack.call` incorporates the instrument of its callee, while a `qstack.select` incorporates the instrument of the selected case kernel. The instrument denoted by `@main` is the meaning of the program. Because `@main` returns no qubits, its output quantum state belongs to the one-dimensional Hilbert space of zero qubits. For each returned bitstring `b`, the corresponding subnormalized state is the `1 × 1` matrix `[p_b]`, whose trace is the probability `p_b`. Thus the instrument of `@main` is a probability distribution over its returned bitstrings.
 
 ### 2.2 A kernel is a dataflow graph
 
-Each kernel body forms a separate dataflow graph. The program is therefore a collection of kernel graphs, not one whole-program graph. Verification compares each source kernel graph with its corresponding target kernel graph independently.
+Each kernel body forms a separate dataflow graph. The program is therefore a collection of kernel graphs. Verification compares each source kernel graph with its corresponding target kernel graph independently.
 
 This graph view is not a new representation: linearity gives every qubit and bit value exactly one producer and one consumer, so the graph is already present in the kernel body, written down in sequence form.
 
@@ -190,13 +190,13 @@ At a kernel boundary containing `k` independent representation units, the induce
 
 #### Kernel behavior by outcome
 
-A kernel that receives state `ρ` produces an outcome-indexed family. For each possible tuple `i` of returned bits, the family contains the corresponding returned-qubit state `ρ'_i`:
+A kernel that receives state `ρ` produces the outcome-indexed family described in Section 2.1. For each possible tuple `i` of returned bits, the family contains the corresponding subnormalized state `ρ'_i` of the returned qubits:
 
 ```
 ⟦K⟧ : ρ ↦ { (i, ρ'_i) }
 ```
 
-The outcome component `ρ'_i` is the unnormalized state of the returned qubits conditioned on outcome `i`. Its trace is the probability of that outcome, and the traces of all outcome components sum to one. Measurement results consumed inside the kernel by `decode` or `select` do not appear in `i`; their effects are already included in the outcome components. This family is the concrete form of the instrument from Section 2.1.
+The trace of `ρ'_i` is the probability of outcome `i`, and the traces of all outcome components sum to one. Measurement results consumed inside the kernel by `decode` or `select` do not appear in `i`; their effects are already included in the outcome components.
 
 #### When two kernels are related
 
