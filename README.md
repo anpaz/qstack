@@ -60,6 +60,31 @@ The notebooks in `examples/` demonstrate application construction, compilation,
 and evaluation. They are end-to-end usage examples rather than tutorials for
 implementing new compiler passes.
 
+## Visualizing dataflow
+
+`qstack.visualize` emits Mermaid flowcharts directly from a kernel's SSA
+dataflow. Operations are nodes, SSA values are labeled with their IR names,
+qubits are solid wires, measurement bits are bold wires, and the derived host
+state is a dotted wire.
+
+Direct calls are inlined by default, so their wires flow through the callee's
+operations within an `@kernel` region. Recursive calls remain references to
+keep diagrams finite. Pass `inline_calls=False` to show called definitions
+within their call-site subgraphs instead.
+
+```python
+from qstack.visualize import dataflow
+
+diagram = dataflow(module, kernel="main")
+print(diagram.to_mermaid())
+diagram.display()
+```
+
+`display()` emits Mermaid-fenced Markdown for Jupyter frontends that support
+Mermaid rendering. `to_mermaid()` is always available for copying into another
+Mermaid-compatible renderer. After `%load_ext qstack.jupyter`, `dataflow` is
+already available in the notebook namespace.
+
 ## Development
 
 Run the test suite from the repository root:
