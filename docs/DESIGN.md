@@ -32,7 +32,7 @@ A kernel declares its borrowed input types, its allocation count, and its result
 
 ```text
 qstack.kernel @name <[input-types], [result-types]> allocates N {
-^bb0(%borrowed..., %fresh...):
+^bb0(%fresh..., %borrowed...):
     // kernel body
     qstack.return %results... : result-types
 }
@@ -42,7 +42,7 @@ The signature is an attribute on the kernel (`!qstack.kernel_signature`, a pair 
 
 A kernel definition produces no values of its own, even when its signature declares results. Results appear at the call site, one set per invocation, because a kernel may be called any number of times. Code that needs a kernel's declared results reads `KernelOp.declared_result_types`. The inherited xDSL accessor `Operation.result_types` answers a different question, namely which values this operation itself defines, and correctly reports none.
 
-The declared inputs and the first entry-block arguments correspond positionally. The final `N` entry arguments are fresh `|0⟩` qubits supplied by the kernel invocation, not caller operands.
+The first `N` entry arguments are fresh `|0⟩` qubits supplied by the kernel invocation, not caller operands. The declared inputs and the remaining entry-block arguments correspond positionally.
 
 Arguments and results may contain `!qstack.qubit` and `!qstack.bit`. A qubit result may come from a borrowed input or a fresh allocation. A measurement bit may be returned or consumed by `decode` or `select`.
 
@@ -77,7 +77,7 @@ The executable-IR verifier is intentionally structural: it establishes the IR in
 - The module's top level contains only `qstack.kernel`, `qstack.selector`, and `qstack.decoder`, and symbol names are unique across all three.
 - A kernel body has exactly one block, and no operation in it carries a nested region.
 - `@main` has no borrowed inputs and cannot return a qubit. Its declared results are bits, which are the program's observable output.
-- The entry block's argument types equal the declared inputs followed by exactly `allocates N` qubits, and `qstack.return`'s operand types equal the declared result types.
+- The entry block's argument types equal exactly `allocates N` qubits followed by the declared inputs, and `qstack.return`'s operand types equal the declared result types.
 - `allocates` is non-negative, and a kernel body contains exactly one `qstack.return`, its final operation.
 - `qstack.measure` consumes a qubit, and the bit operands of `qstack.decode` and `qstack.select` are bits.
 
@@ -202,8 +202,8 @@ builtin.module {
   }
   qstack.kernel @prepare_one <[!qstack.qubit], [!qstack.qubit]> allocates 1 {
   ^bb0(%0: !qstack.qubit, %1: !qstack.qubit):
-    %2 = cliffords.h %0
-    %3, %4 = cliffords.cx %2, %1
+    %2 = cliffords.h %1
+    %3, %4 = cliffords.cx %2, %0
     %5 = qstack.measure %4
     %6 = qstack.select @repeat_until_one(%5) [%3] {done = @id, retry = @prepare_one} : (!qstack.qubit) -> !qstack.qubit
     qstack.return %6 : !qstack.qubit
@@ -217,7 +217,7 @@ builtin.module {
 }
 ```
 
-`@main` allocates `%0`; `@prepare_one` allocates its own `%1` and measures it, returning the qubit it borrowed. The selector executes inside the kernel where `%5` is measured. Every possible continuation is a named kernel, so the module is closed for ahead-of-time compilation.
+`@main` allocates `%0`; `@prepare_one` allocates its own `%0` and measures it, returning the qubit it borrowed (`%1`). The selector executes inside the kernel where `%5` is measured. Every possible continuation is a named kernel, so the module is closed for ahead-of-time compilation.
 
 After a repetition-code transformation, physical measurement bits are decoded inside the transformed kernel before the unchanged source selector consumes the logical bit. No function-scope plumbing and no callback wrapper are required.
 

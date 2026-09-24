@@ -59,7 +59,7 @@ class _KernelRewriter:
 
     def rewrite(self, source: KernelOp) -> KernelOp:
         inputs, results = self.signatures[source.sym_name.data]
-        block = Block(arg_types=[*inputs, *[QubitType() for _ in range(source.allocation_count * _WIDTH)]])
+        block = Block(arg_types=[*[QubitType() for _ in range(source.allocation_count * _WIDTH)], *inputs])
         self._map_values(source.body.block.args, block.args)
         for op in source.body.block.ops:
             self._rewrite_op(op, block)

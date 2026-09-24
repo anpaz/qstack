@@ -87,7 +87,7 @@ builtin.module {
     qstack.return %2 : !qstack.qubit
   }
   qstack.kernel @teleport <[!qstack.qubit], [!qstack.qubit]> allocates 2 {
-  ^bb0(%target: !qstack.qubit, %shared: !qstack.qubit, %source: !qstack.qubit):
+  ^bb0(%shared: !qstack.qubit, %source: !qstack.qubit, %target: !qstack.qubit):
     %0 = cliffords.x %source
     %1 = cliffords.h %shared
     %2, %3 = cliffords.cx %1, %target

@@ -55,10 +55,11 @@ class ModuleEvaluator:
             )
         block = kernel.body.blocks[0]
         env: dict[SSAValue, Any] = {}
-        for value, argument in zip(block.args[: len(arguments)], arguments, strict=True):
-            env[value] = argument
-        for value in block.args[len(arguments) :]:
+        allocation_count = kernel.allocation_count
+        for value in block.args[:allocation_count]:
             env[value] = self._qpu.allocate()
+        for value, argument in zip(block.args[allocation_count:], arguments, strict=True):
+            env[value] = argument
         return self._exec_block(block, env)
 
     def _exec_block(self, block: Block, env: dict[SSAValue, Any]) -> list[Any]:
@@ -66,7 +67,7 @@ class ModuleEvaluator:
             if isinstance(op, ReturnOp):
                 return [env.pop(value) for value in op.operands]
             self._dispatch(op, env)
-        raise RuntimeError("kernel block did not terminate with qstack.return")
+        raise RuntimeError("kernel block did not terminapte with qstack.return")
 
     def _dispatch(self, op, env: dict[SSAValue, Any]) -> None:
         if isinstance(op, UnitaryGateOp):

@@ -83,7 +83,7 @@ def _verify_kernel_shape(kernel: KernelOp) -> None:
     if kernel.allocation_count < 0:
         raise LinearityError(f"kernel @{kernel.sym_name.data} has a negative allocation count")
     block = kernel.body.blocks[0]
-    expected_args = [*kernel.input_types, *[QubitType() for _ in range(kernel.allocation_count)]]
+    expected_args = [*[QubitType() for _ in range(kernel.allocation_count)], *kernel.input_types]
     _check_same_types(
         _type_list(block.args),
         expected_args,

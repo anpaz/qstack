@@ -42,10 +42,10 @@ def register_rep3_phase_callbacks(registry) -> None:
 class _PhaseRewriter(_KernelRewriter):
     def rewrite(self, source: KernelOp) -> KernelOp:
         inputs, results = self.signatures[source.sym_name.data]
-        block = Block(arg_types=[*inputs, *[QubitType() for _ in range(source.allocation_count * _WIDTH)]])
+        block = Block(arg_types=[*[QubitType() for _ in range(source.allocation_count * _WIDTH)], *inputs])
         self._map_values(source.body.block.args, block.args)
         # Fresh logical |0> states are represented as |+++> in the phase code.
-        for argument in source.body.block.args[len(source.input_types) :]:
+        for argument in source.body.block.args[: source.allocation_count]:
             prepared: list[SSAValue] = []
             for qubit in self._mapped(argument):
                 gate = HOp(qubit)

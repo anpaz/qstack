@@ -114,9 +114,9 @@ class _Rewriter:
 
     def rewrite(self, source: KernelOp) -> KernelOp:
         inputs, results = self.signatures[source.sym_name.data]
-        block = Block(arg_types=[*inputs, *[QubitType() for _ in range(source.allocation_count * _WIDTH)]])
+        block = Block(arg_types=[*[QubitType() for _ in range(source.allocation_count * _WIDTH)], *inputs])
         self._map(source.body.block.args, block.args)
-        for fresh in source.body.block.args[len(source.input_types) :]:
+        for fresh in source.body.block.args[: source.allocation_count]:
             self.values[fresh] = _prepare_zero(block, self.values[fresh])
         for op in source.body.block.ops:
             self._rewrite_op(op, block)
@@ -190,8 +190,8 @@ class _Rewriter:
 
 
 def _syndrome_kernel(name: str, *, phase: bool) -> KernelOp:
-    block = Block(arg_types=[*[QubitType() for _ in range(_WIDTH)], QubitType(), QubitType(), QubitType()])
-    data = list(block.args[:_WIDTH]); ancillas = list(block.args[_WIDTH:])
+    block = Block(arg_types=[QubitType(), QubitType(), QubitType(), *[QubitType() for _ in range(_WIDTH)]])
+    ancillas = list(block.args[:3]); data = list(block.args[3:])
     if phase:
         for i, ancilla in enumerate(ancillas):
             gate = HOp(ancilla); block.add_op(gate); ancillas[i] = gate.result

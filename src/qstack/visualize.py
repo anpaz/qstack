@@ -260,19 +260,20 @@ def _flatten_dataflow(
             names[value] = name
             return names[value]
 
-        for index, argument in enumerate(block.args[: len(kernel.input_types)]):
+        allocation_count = kernel.allocation_count
+        for index, argument in enumerate(block.args[:allocation_count]):
+            node_id = f"arg{index}" if is_root else f"{context}_arg{index}"
+            add_node(region, node_id, f"{value_name(argument)} (fresh)", "source")
+            wires[argument] = _Wire(node_id, value_name(argument), "qubit")
+        for index, argument in enumerate(block.args[allocation_count:]):
+            entry_index = allocation_count + index
             if is_root:
-                node_id = f"arg{index}"
+                node_id = f"arg{entry_index}"
                 add_node(region, node_id, f"{value_name(argument)} (input)", "source")
                 wires[argument] = _Wire(node_id, value_name(argument), _value_kind(argument))
             else:
                 wires[argument] = arguments[index]
                 value_name(argument)
-        for index, argument in enumerate(block.args[len(kernel.input_types) :]):
-            entry_index = len(kernel.input_types) + index
-            node_id = f"arg{entry_index}" if is_root else f"{context}_arg{entry_index}"
-            add_node(region, node_id, f"{value_name(argument)} (fresh)", "source")
-            wires[argument] = _Wire(node_id, value_name(argument), "qubit")
 
         for index, op in enumerate(block.ops):
             if isinstance(op, ReturnOp):
@@ -352,7 +353,7 @@ def _kernel_dataflow(
 
     for index, argument in enumerate(block.args):
         source_id = f"{node_prefix}arg{index}"
-        origin = "input" if index < len(kernel.input_types) else "fresh"
+        origin = "fresh" if index < kernel.allocation_count else "input"
         nodes.append((source_id, f"{value_name(argument)} ({origin})", "source"))
         producers[argument] = source_id
 

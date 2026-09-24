@@ -173,12 +173,12 @@ class _Lower:
         body = next(child for child in node.children if _is_tree(child, "block"))
         input_types = [QubitType() for _ in params]
         alloc_names = self._allocation_names(_block_stmts(body))
-        block = Block(arg_types=[*input_types, *[QubitType() for _ in alloc_names]])
+        block = Block(arg_types=[*[QubitType() for _ in alloc_names], *input_types])
         env = _Env()
-        for (_, parameter), value in zip(params, block.args[: len(params)], strict=True):
-            env.add_qubit(parameter, value)
-        for value, alloc_name in zip(block.args[len(params) :], alloc_names, strict=True):
+        for value, alloc_name in zip(block.args[: len(alloc_names)], alloc_names, strict=True):
             env.add_qubit(alloc_name, value)
+        for (_, parameter), value in zip(params, block.args[len(alloc_names) :], strict=True):
+            env.add_qubit(parameter, value)
         self._lower_statements(_block_stmts(body), block, env)
         outputs = [env.qubits[name] for name in env.qubit_order]
         declared = self.kernels[name]
