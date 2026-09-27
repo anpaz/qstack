@@ -69,8 +69,8 @@ def test_teleport_module_verifies() -> None:
     verify_module(module)
 
 
-def test_teleport_can_consume_a_borrowed_source_qubit() -> None:
-    """A definition may return only the borrowed qubits that remain live."""
+def test_teleport_returns_both_qubit_parameters() -> None:
+    """A definition returns every qubit parameter, even one measured and replaced with a fresh |0> inside the body."""
 
     source = """
 QSTACKQASM 0.1;
@@ -99,10 +99,11 @@ def teleport(qubit source, qubit target) {
 }
 
 qreg q[2];
-creg c[1];
+creg c[2];
 h q[0];
 teleport q[0], q[1];
 measure q[1] -> c[0];
+measure q[0] -> c[1];
 """
     module = lower(parse(source))
     teleport = next(
@@ -111,7 +112,7 @@ measure q[1] -> c[0];
         if getattr(op, "sym_name", None) and op.sym_name.data == "teleport"
     )
     assert len(teleport.input_types) == 2
-    assert len(teleport.declared_result_types) == 1
+    assert len(teleport.declared_result_types) == 2
     verify_module(module)
 
     hist = dict(
@@ -119,7 +120,9 @@ measure q[1] -> c[0];
         .eval(module, shots=4000)
         .histogram()
     )
-    assert set(hist) == {(0,), (1,)}
+    # c[0] is the teleported |+> state (random); c[1] is the fresh |0>
+    # substituted for "source" once it was measured -- deterministic.
+    assert set(hist) == {(0, 0), (1, 0)}
 
 
 def test_teleport_preserves_one() -> None:

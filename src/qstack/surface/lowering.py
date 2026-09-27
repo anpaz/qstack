@@ -3,6 +3,15 @@
 The surface grammar is intentionally unchanged.  This lowering only changes
 its target: definitions, generated switch cases, and the synthesized program
 entry are all named ``qstack.kernel`` symbols.
+
+Every qubit parameter a ``def`` (or a generated switch-case kernel) declares
+is returned, unconditionally, in declaration order -- there is no inference
+of which parameters "survive" a body.  Measuring a qubit that must be
+returned implicitly substitutes a fresh ``|0>`` in its place, realized as one
+more entry in the kernel's ``allocates`` count; measuring anything else (a
+local ancilla) simply consumes it.  Every qubit and bit that comes into
+existence in a body must be consumed by something before the body's
+``qstack.return`` -- an unconsumed local ancilla or bit is a compile error.
 """
 
 from __future__ import annotations
@@ -51,11 +60,33 @@ def _block_stmts(block: Tree) -> list[Tree]:
     return [child for child in block.children if isinstance(child, Tree)]
 
 
+def _referenced_qubit_names(node: Tree) -> set[str]:
+    """Every qubit name referenced anywhere under ``node``, including inside
+    nested switch-case blocks.  A ``qreg`` element that never appears here is
+    never allocated -- it never entered the IR, so it needs no disposition.
+    """
+
+    names: set[str] = set()
+    for child in node.children:
+        if not isinstance(child, Tree):
+            continue
+        if child.data in ("qubit_ref", "qubit_index"):
+            names.add(_qubit_arg_name(child))
+        else:
+            names |= _referenced_qubit_names(child)
+    return names
+
+
 @dataclass
 class _Env:
     qubits: dict[str, SSAValue] = field(default_factory=dict)
     bits: dict[str, SSAValue] = field(default_factory=dict)
     qubit_order: list[str] = field(default_factory=list)
+    # Names that must still be bound to a live qubit when this scope ends:
+    # a def's parameters, or (for a switch-case kernel) every qubit threaded
+    # through the switch.  Measuring one of these substitutes a fresh |0>
+    # instead of retiring the name.
+    replace_on_measure: frozenset[str] = field(default_factory=frozenset)
 
     def add_qubit(self, name: str, value: SSAValue) -> None:
         if name not in self.qubits:
@@ -67,14 +98,30 @@ class _Env:
         self.qubit_order.remove(name)
 
 
+class _AllocCursor:
+    """Grows a kernel's ``allocates`` count on demand.
+
+    A measured qubit that must be replaced (``_Env.replace_on_measure``)
+    needs one more fresh ``|0>`` than the body's own ``qreg`` declarations
+    accounted for. Rather than pre-scanning a body to size the block up
+    front, allocations are appended to the block as they're needed, always
+    ahead of the borrowed/threaded parameters that follow them.
+    """
+
+    def __init__(self, block: Block, count: int) -> None:
+        self._block = block
+        self.count = count
+
+    def fresh_qubit(self) -> SSAValue:
+        argument = self._block.insert_arg(QubitType(), self.count)
+        self.count += 1
+        return argument
+
+
 @dataclass(frozen=True)
 class _KernelDecl:
     inputs: tuple[object, ...]
     results: tuple[object, ...]
-    # QSTACKQASM definitions have no explicit return list.  A result is
-    # therefore identified by the position of the borrowed parameter that
-    # remains live at the end of the definition.
-    result_param_indices: tuple[int, ...] = ()
 
 
 class _Lower:
@@ -95,17 +142,10 @@ class _Lower:
             name, params = self._def_signature(definition)
             if any(kind != "qubit_type" for kind, _ in params):
                 raise NotImplementedError(f"def @{name}: only qubit parameters are supported")
-            result_indices = self._definition_result_param_indices(definition, params)
-            # QSTACKQASM 0.1 has no return statement. A definition returns
-            # whichever borrowed qubits survive its body, in parameter order.
-            # Fresh allocations still have no surface-language destination at
-            # a call site, so they may not escape.
-            signature = _KernelDecl(
-                tuple(QubitType() for _ in params),
-                tuple(QubitType() for _ in result_indices),
-                result_indices,
-            )
-            self.kernels[name] = signature
+            # Every qubit parameter is returned, unconditionally, in
+            # parameter order: a def's signature is symmetric in qubits.
+            qubit_types = tuple(QubitType() for _ in params)
+            self.kernels[name] = _KernelDecl(qubit_types, qubit_types)
 
         for child in tree.children:
             if _is_tree(child, "extern_decl"):
@@ -149,68 +189,69 @@ class _Lower:
                     params.append((parameter.children[0].data, str(parameter.children[1])))
         return name, params
 
-    @staticmethod
-    def _definition_result_param_indices(
-        node: Tree, params: list[tuple[str, str]]
-    ) -> tuple[int, ...]:
-        """Return the borrowed parameters not consumed by measurement.
-
-        Surface QASM has neither a return statement nor result binders.  The
-        only representable definition results are consequently the parameters
-        that remain live.  Calls and gates preserve a qubit name; measurement
-        is the operation that removes it from this surface-level liveness set.
-        """
-
-        live_params = {name for _, name in params}
-        body = next(child for child in node.children if _is_tree(child, "block"))
-        for statement in _block_stmts(body):
-            if statement.data == "measure_stmt":
-                live_params.discard(_qubit_arg_name(statement.children[0]))
-        return tuple(index for index, (_, name) in enumerate(params) if name in live_params)
-
     def _build_definition(self, node: Tree) -> None:
         name, params = self._def_signature(node)
+        parameter_names = [parameter for _, parameter in params]
         body = next(child for child in node.children if _is_tree(child, "block"))
+        statements = _block_stmts(body)
+        referenced = _referenced_qubit_names(body)
+        alloc_names = [n for n in self._allocation_names(statements) if n in referenced]
+
         input_types = [QubitType() for _ in params]
-        alloc_names = self._allocation_names(_block_stmts(body))
         block = Block(arg_types=[*[QubitType() for _ in alloc_names], *input_types])
-        env = _Env()
+        allocs = _AllocCursor(block, len(alloc_names))
+        env = _Env(replace_on_measure=frozenset(parameter_names))
         for value, alloc_name in zip(block.args[: len(alloc_names)], alloc_names, strict=True):
             env.add_qubit(alloc_name, value)
         for (_, parameter), value in zip(params, block.args[len(alloc_names) :], strict=True):
             env.add_qubit(parameter, value)
-        self._lower_statements(_block_stmts(body), block, env)
-        outputs = [env.qubits[name] for name in env.qubit_order]
-        declared = self.kernels[name]
-        if tuple(value.type for value in outputs) != declared.results:
-            raise NotImplementedError(
-                f"def @{name}: QSTACKQASM 0.1 definitions cannot return fresh allocations"
+
+        self._lower_statements(statements, block, env, allocs)
+
+        leftover = [n for n in env.qubit_order if n not in parameter_names]
+        if leftover:
+            raise ValueError(
+                f"def @{name}: local qubit(s) {', '.join(leftover)} must be measured "
+                "before the end of the body"
             )
+        if env.bits:
+            raise ValueError(f"def @{name}: bit(s) {', '.join(env.bits)} were measured but never consumed")
+
+        outputs = [env.qubits[parameter] for parameter in parameter_names]
         block.add_op(ReturnOp(operands=outputs))
+        declared = self.kernels[name]
         self.module.body.block.add_op(
             KernelOp(
                 name,
                 input_types=declared.inputs,
                 result_types=declared.results,
-                allocates=len(alloc_names),
+                allocates=allocs.count,
                 region=Region([block]),
             )
         )
 
     def _build_main(self, statements: list[Tree]) -> None:
-        alloc_names = self._allocation_names(statements)
+        referenced: set[str] = set()
+        for statement in statements:
+            referenced |= _referenced_qubit_names(statement)
+        alloc_names = [n for n in self._allocation_names(statements) if n in referenced]
         block = Block(arg_types=[QubitType() for _ in alloc_names])
+        allocs = _AllocCursor(block, len(alloc_names))
         env = _Env()
         for value, name in zip(block.args, alloc_names, strict=True):
             env.add_qubit(name, value)
-        self._lower_statements(statements, block, env)
+        self._lower_statements(statements, block, env, allocs)
+        if env.qubit_order:
+            raise ValueError(
+                f"main: qubit(s) {', '.join(env.qubit_order)} must be measured before the program ends"
+            )
         outputs = list(env.bits.values())
         block.add_op(ReturnOp(operands=outputs))
         main = KernelOp(
             "main",
             input_types=[],
             result_types=[BitType() for _ in outputs],
-            allocates=len(alloc_names),
+            allocates=allocs.count,
             region=Region([block]),
         )
         self.kernels["main"] = _KernelDecl((), tuple(main.declared_result_types))
@@ -227,14 +268,14 @@ class _Lower:
             names.extend(f"{register}[{index}]" for index in range(count))
         return names
 
-    def _lower_statements(self, statements: Iterable[Tree], block: Block, env: _Env) -> None:
+    def _lower_statements(self, statements: Iterable[Tree], block: Block, env: _Env, allocs: _AllocCursor) -> None:
         for statement in statements:
             if statement.data in {"qreg_stmt", "creg_stmt", "bit_stmt"}:
                 continue
             if statement.data == "apply_stmt":
                 self._lower_apply(statement, block, env)
             elif statement.data == "measure_stmt":
-                self._lower_measure(statement, block, env)
+                self._lower_measure(statement, block, env, allocs)
             elif statement.data == "switch_stmt":
                 self._lower_switch(statement, block, env)
             else:
@@ -255,15 +296,11 @@ class _Lower:
             signature = self.kernels[name]
             call = CallOp(name, operands, signature.results)
             block.add_op(call)
-            returned_names = [arg_names[index] for index in signature.result_param_indices]
-            for arg_name in arg_names:
-                if arg_name not in returned_names:
-                    env.drop_qubit(arg_name)
-            for arg_name, result in zip(returned_names, call.results, strict=True):
-                if arg_name not in env.qubits:
-                    env.add_qubit(arg_name, result)
-                else:
-                    env.qubits[arg_name] = result
+            # Every argument comes back, in order: a call is opaque, and the
+            # caller cannot tell -- and is not told -- which of its returned
+            # qubits are physically fresh |0>s substituted by the callee.
+            for arg_name, result in zip(arg_names, call.results, strict=True):
+                env.qubits[arg_name] = result
             return
         if name not in self.include_gates.gates:
             raise NotImplementedError(f"unknown apply target {name!r}")
@@ -285,12 +322,17 @@ class _Lower:
         for arg_name, result in zip(arg_names, gate.results, strict=True):
             env.qubits[arg_name] = result
 
-    def _lower_measure(self, statement: Tree, block: Block, env: _Env) -> None:
+    def _lower_measure(self, statement: Tree, block: Block, env: _Env, allocs: _AllocCursor) -> None:
         qubit_name = _qubit_arg_name(statement.children[0])
         bit_name = _bit_target_name(statement.children[1])
         measure = MeasureOp(operand=env.qubits[qubit_name])
         block.add_op(measure)
-        env.drop_qubit(qubit_name)
+        if qubit_name in env.replace_on_measure:
+            # Z-measurement plus reset: the name must still be live when
+            # this scope returns, so it's rebound to a freshly prepared |0>.
+            env.qubits[qubit_name] = allocs.fresh_qubit()
+        else:
+            env.drop_qubit(qubit_name)
         env.bits[bit_name] = measure.result
 
     def _lower_switch(self, statement: Tree, block: Block, env: _Env) -> None:
@@ -330,18 +372,24 @@ class _Lower:
         name = f"__qstack_case_{label}_{self.case_counter}"
         inputs = [QubitType() for _ in live_names]
         block = Block(arg_types=inputs)
-        env = _Env()
+        allocs = _AllocCursor(block, 0)
+        # Every qubit threaded through a switch must come back out of each
+        # case, exactly like a def's parameters (§4.6): a case kernel's
+        # "parameters" are the full set of qubits live at the switch.
+        env = _Env(replace_on_measure=frozenset(live_names))
         for live_name, value in zip(live_names, block.args, strict=True):
             env.add_qubit(live_name, value)
         statements = _block_stmts(case_block)
         if any(statement.data == "qreg_stmt" for statement in statements):
             raise NotImplementedError("qreg declarations inside switch cases are not supported")
-        self._lower_statements(statements, block, env)
+        self._lower_statements(statements, block, env, allocs)
+        if env.bits:
+            raise ValueError(f"case {label!r}: bit(s) {', '.join(env.bits)} were measured but never consumed")
         outputs = [env.qubits[live_name] for live_name in live_names]
         block.add_op(ReturnOp(operands=outputs))
         self.kernels[name] = _KernelDecl(tuple(inputs), tuple(inputs))
         self.module.body.block.add_op(
-            KernelOp(name, input_types=inputs, result_types=inputs, allocates=0, region=Region([block]))
+            KernelOp(name, input_types=inputs, result_types=inputs, allocates=allocs.count, region=Region([block]))
         )
         return name
 
