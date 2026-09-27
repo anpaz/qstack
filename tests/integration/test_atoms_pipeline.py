@@ -2,8 +2,8 @@
 
 from qstack.dialect.atoms import CzOp, RzOp, SxOp
 from qstack.dialect.cliffords import CxOp, HOp, XOp
-from qstack.passes.cliffords2atoms import compile_cliffords_to_atoms
-from qstack.passes.toy2cliffords import compile_toy_to_cliffords
+from qstack.passes.cliffords2atoms import lower_cliffords_to_atoms
+from qstack.passes.toy2cliffords import lower_toy_to_cliffords
 from qstack.runtime import Machine
 from qstack.surface.lowering import lower
 from qstack.surface.parser import parse
@@ -28,14 +28,14 @@ def _has_cliffords(module) -> bool:
 
 def test_toy_to_cliffords_to_atoms_executes_bell_program() -> None:
     module = lower(parse(_TOY_BELL))
-    module = compile_toy_to_cliffords(module)
-    module = compile_cliffords_to_atoms(module)
+    module = lower_toy_to_cliffords(module)
+    module = lower_cliffords_to_atoms(module)
     verify_module(module)
 
     assert not _has_cliffords(module)
     assert any(isinstance(op, (RzOp, SxOp, CzOp)) for op in module.walk())
 
-    histogram = dict(Machine(module, num_qubits=2).eval(shots=2000).histogram())
+    histogram = dict(Machine(num_qubits=2).eval(module, shots=2000).histogram())
     assert set(histogram) <= {(0, 0), (1, 1)}
     for outcome in ((0, 0), (1, 1)):
         assert 800 < histogram.get(outcome, 0) < 1200

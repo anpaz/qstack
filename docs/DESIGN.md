@@ -26,6 +26,12 @@ This specification makes no claim about code distance, fault tolerance, faulty s
 
 A module contains only named `qstack.kernel` definitions and `qstack.selector`/`qstack.decoder` declarations. Exactly one kernel is named `@main`; it has no kernel arguments. Private kernels may be called directly or selected as cases. Every invocation target is therefore statically known, although not every declared kernel need be reachable from `@main`. No other executable top-level construct exists.
 
+A transformed module may also carry `qstack.pass_history`, an ordered string
+array of stable pass identifiers. This is compiler provenance rather than an
+executable operation. A successful pass appends one entry; its one-based
+position in the complete history supplies the layer number for compiler-created
+symbols.
+
 ### 2.1 Named kernel definitions
 
 A kernel declares its borrowed input types, its allocation count, and its result types:
@@ -110,18 +116,18 @@ Callbacks are host-language implementations registered by family-qualified imple
 
 ### 4.1 Declarations
 
-A callback declaration carries a symbol name, an optional callback source, and the size of the bit bundle it receives:
+A callback declaration carries a symbol name and the size of the bit bundle it receives. A qualified symbol also identifies its callback source:
 
 ```text
 qstack.selector @repeat_until_one arity 1
-qstack.decoder @rep3.1:decode arity 3 {source = "rep3.1"}
+qstack.decoder @rep3.1:decode arity 3
 ```
 
-The `source` attribute names the callback's host-state domain. It is absent for callbacks in the original program, which belong to the empty source and resolve by their unqualified symbols; `@repeat_until_one` therefore uses the registry entry `repeat_until_one`.
+An unqualified callback symbol belongs to the empty source and resolves by its exact symbol; `@repeat_until_one` therefore uses the registry entry `repeat_until_one`.
 
-A compiler-introduced source has the form `family.layer`, where `layer` is a positive integer. Its declaration symbol has the form `family.layer:name`. The decoder above therefore has the qualified identity `rep3.1:decode`, while successive repetition-code layers use `rep3.2:decode` through `rep3.n:decode`. Registry lookup removes the layer component, so all of these declarations use the single registered implementation `rep3:decode`. The full source remains significant for state: `rep3.1` and `rep3.2` have distinct host wires and distinct state even though they execute the same implementation.
+A compiler-introduced declaration has the form `family.layer:name`, where `layer` is the positive, global pass-history position of the pass that introduced it. The `family.layer` prefix is its callback source; it is authoritative rather than repeated in a separate attribute. The decoder above therefore has the qualified identity `rep3.1:decode`. A second immediately applied repetition pass uses `rep3.2:decode`; if another pass occurs between them, its layer reflects the later global position instead. Registry lookup removes the layer component, so all of these declarations use the single registered implementation `rep3:decode`. The full source remains significant for state: declarations from different layers have distinct host wires and distinct state even when they execute the same implementation.
 
-Callbacks with the same full source may share state, while callbacks with different sources cannot observe or modify one another's state. A compiler preserves the source, including its absence, of an existing declaration and assigns a fresh source to each new callback layer it introduces.
+Callbacks with the same full source may share state, while callbacks with different sources cannot observe or modify one another's state. A compiler preserves an existing declaration's full symbol, including whether it is qualified, and assigns a fresh qualified source prefix to each new callback layer it introduces.
 
 Types are not written: every callback input is a `!qstack.bit`, a decoder always returns exactly one bit, and a selector returns a case label to the runtime rather than an SSA value. Declarations have no body and cannot be kernel-call targets. Selector and decoder implementations occupy separate runtime registry namespaces, but their declarations share the module's qstack symbol namespace, so a valid module cannot declare the same string as both.
 
@@ -179,7 +185,7 @@ For every callback invocation already present in a pass input, compilation must 
 
 The compiler does not inspect callback code. A callback is a deterministic stateful computation: its output and next state are fixed by its current source-local state and input values. Preserving the qualified declaration name and input values alone is therefore insufficient; order and multiplicity preserve the callback source's state evolution as well. The preserved order spans all callback symbols with the same source.
 
-This order is represented semantically by one derived **host wire** per callback source. A `decode` or `select` threads the wire named by its declaration's `source` attribute, and a call threads every host wire used transitively by its callee. Host wires are not printed in the IR. Operations unconnected by an SSA wire may otherwise be reordered without changing the kernel graph, but moving a pre-existing callback along its host wire changes program behavior. Callbacks on different host wires need no additional ordering unless an ordinary dataflow dependency connects them.
+This order is represented semantically by one derived **host wire** per callback source. A `decode` or `select` threads the wire identified by its declaration symbol, and a call threads every host wire used transitively by its callee. Host wires are not printed in the IR. Operations unconnected by an SSA wire may otherwise be reordered without changing the kernel graph, but moving a pre-existing callback along its host wire changes program behavior. Callbacks on different host wires need no additional ordering unless an ordinary dataflow dependency connects them.
 
 A semantic pass verifier checks callback preservation from the source module, target module, and pass witness. A pre-existing callback use must be an identity claim or part of an exact inline copy; a pass cannot wrap, retarget, change its callback source, drop, duplicate, or add a use of a callback declared in its source module. Exact inlining may copy the static operation while preserving the runtime trace, because an execution takes either the original call or the inline copy, never both.
 
@@ -231,14 +237,18 @@ The following parts of this design are implemented:
 
 - **Parser and printer syntax.** Every core operation has custom textual syntax and round-trips. `qstack.kernel` uses hand-written `parse`/`print`; the rest use declarative assembly formats.
 - **Executable-IR verifier.** `qstack.verifier.verify_module` enforces the current structural, linearity, declaration, and signature-compatibility rules.
-- **Runtime.** A `Machine(module, num_qubits=..., registry=..., seed=..., noise=..., qpu=...)` evaluates `@main` shot by shot against a `CallbackRegistry`, over a statevector or Stim backend.
+- **Runtime.** A `Machine(num_qubits=..., registry=..., seed=..., noise=..., qpu=...)` evaluates modules through `single_shot(module)` and `eval(module, shots=...)`. One machine can run multiple programs against its callback registry and physical-qubit budget. When `qpu` is omitted, it selects and caches a statevector or Stim backend per evaluated program; an explicit backend fixes that choice for the machine.
 - **Surface language.** QSTACKQASM is a parsed surface syntax with `extern selector`/`extern` declarations, `switch`/`case` continuations, and per-ISA `.inc` includes; it lowers to the IR above.
+- **Fresh-construction passes.** Lowering and optimization passes construct new kernels from explicit source-to-target SSA mappings. Lowering handlers replace one source operation at a time, and the initial Clifford peephole optimizer handles small multi-operation regions.
+- **Pass provenance.** Each successful pass records its stable identifier in
+  `qstack.pass_history`; its global position determines generated callback and
+  helper namespaces.
+- **Callback sources and state.** Compiler-created callbacks receive fresh `family.layer` sources, resolve through shared `family:name` implementations, and have source-local runtime state. Stateful callbacks receive that state explicitly, and each shot starts with fresh state.
 
-The implementation has not yet been updated for the reviewed pass-verification design:
+The remaining gaps relative to the reviewed pass-verification design are:
 
 - **Witness-producing passes and semantic verification.** Passes do not yet emit representation relations, rules, or claims, and there is no checker for them or for the derived host wires.
-- **Fresh generated callbacks.** The repetition-code and Steane passes currently use reserved canonical callback symbols and may reuse matching declarations from their source module. They must instead generate fresh declarations and uses for each transformation. Steane must do so for both its decoder and syndrome selector.
-- **Callback sources.** Callback declarations do not yet carry the `source` attribute, registry lookup does not yet resolve `family.layer:name` through the shared `family:name` implementation, and the runtime does not yet partition callback state or derive one host wire per source.
+- **Host-wire derivation and checking.** Callback sources and runtime state isolation are implemented, but the semantic verifier does not yet derive or compare the implicit host wires.
 - **Error tags** on select cases, described in Section 1.2 and in `verification-design.md`.
 - **Callback-obligation data format**, the artifact a pass emits for a classical verifier to discharge.
 - **Noisy semantics**, including any fault-tolerance claim.

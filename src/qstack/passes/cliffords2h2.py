@@ -7,59 +7,26 @@ import math
 from xdsl.dialects.builtin import ModuleOp
 from xdsl.ir import Operation, SSAValue
 
-from qstack.dialect.cliffords import (
-    CxOp,
-    CzOp,
-    HOp,
-    SOp,
-    XOp,
-    YOp,
-    ZOp,
-)
+from qstack.dialect.cliffords import CxOp, CzOp, HOp, SOp, XOp, YOp, ZOp
 from qstack.dialect.h2 import RzOp, U1Op, ZzOp
-from qstack.passes.base import BaseOpRewriter
+from qstack.passes.base import LoweringPass, copy_operation_metadata
 
 
-def _insert_before(op: Operation, replacements: list[Operation]) -> None:
-    block = op.parent_block()
-    for replacement in replacements:
-        block.insert_op_before(replacement, op)
+class CliffordsToH2Lowering(LoweringPass):
+    """Operation-wise lowering from canonical Cliffords to H2 operations."""
 
+    pass_id = "qstack.cliffords-to-h2"
 
-def _replace_single(op: Operation, replacements: list[Operation], result: SSAValue) -> None:
-    _insert_before(op, replacements)
-    op.results[0].replace_all_uses_with(result)
-    op.detach()
-    op.erase()
-
-
-def _replace_double(
-    op: Operation,
-    replacements: list[Operation],
-    first: SSAValue,
-    second: SSAValue,
-) -> None:
-    _insert_before(op, replacements)
-    op.results[0].replace_all_uses_with(first)
-    op.results[1].replace_all_uses_with(second)
-    op.detach()
-    op.erase()
-
-
-class CliffordsToH2Compiler(BaseOpRewriter):
-    """Handler-driven lowering from canonical Cliffords to H2 operations."""
-
-    def __init__(self) -> None:
-        self.handlers = {
-            XOp: self._handle_x,
-            YOp: self._handle_y,
-            ZOp: self._handle_z,
-            SOp: self._handle_s,
-            HOp: self._handle_h,
-            CzOp: self._handle_cz,
-            CxOp: self._handle_cx,
+    def operation_handlers(self):
+        return {
+            XOp: self._lower_x,
+            YOp: self._lower_y,
+            ZOp: self._lower_z,
+            SOp: self._lower_s,
+            HOp: self._lower_h,
+            CzOp: self._lower_cz,
+            CxOp: self._lower_cx,
         }
-        super().__init__()
 
     @staticmethod
     def _h_sequence(qubit: SSAValue) -> tuple[list[Operation], SSAValue]:
@@ -69,8 +36,7 @@ class CliffordsToH2Compiler(BaseOpRewriter):
 
     @staticmethod
     def _cz_sequence(
-        control: SSAValue,
-        target: SSAValue,
+        control: SSAValue, target: SSAValue
     ) -> tuple[list[Operation], SSAValue, SSAValue]:
         zz = ZzOp(control, target)
         rz_control = RzOp(zz.first_out, -math.pi / 2)
@@ -78,41 +44,49 @@ class CliffordsToH2Compiler(BaseOpRewriter):
         return [zz, rz_control, rz_target], rz_control.result, rz_target.result
 
     @staticmethod
-    def _handle_x(op: XOp) -> None:
-        u1 = U1Op(op.qubit, math.pi, 0)
-        _replace_single(op, [u1], u1.result)
+    def _finish(source, operations, *outputs):
+        for target in operations:
+            target.location = source.location
+        operations[-1].attributes.update(source.attributes)
+        return operations, tuple(outputs)
 
-    @staticmethod
-    def _handle_y(op: YOp) -> None:
-        u1 = U1Op(op.qubit, math.pi, math.pi / 2)
-        _replace_single(op, [u1], u1.result)
+    def _lower_x(self, source, operands, context):
+        target = U1Op(operands[0], math.pi, 0)
+        copy_operation_metadata(source, target)
+        return [target], (target.result,)
 
-    @staticmethod
-    def _handle_z(op: ZOp) -> None:
-        rz = RzOp(op.qubit, math.pi)
-        _replace_single(op, [rz], rz.result)
+    def _lower_y(self, source, operands, context):
+        target = U1Op(operands[0], math.pi, math.pi / 2)
+        copy_operation_metadata(source, target)
+        return [target], (target.result,)
 
-    @staticmethod
-    def _handle_s(op: SOp) -> None:
-        rz = RzOp(op.qubit, math.pi / 2)
-        _replace_single(op, [rz], rz.result)
+    def _lower_z(self, source, operands, context):
+        target = RzOp(operands[0], math.pi)
+        copy_operation_metadata(source, target)
+        return [target], (target.result,)
 
-    def _handle_h(self, op: HOp) -> None:
-        replacements, result = self._h_sequence(op.qubit)
-        _replace_single(op, replacements, result)
+    def _lower_s(self, source, operands, context):
+        target = RzOp(operands[0], math.pi / 2)
+        copy_operation_metadata(source, target)
+        return [target], (target.result,)
 
-    def _handle_cz(self, op: CzOp) -> None:
-        replacements, control, target = self._cz_sequence(op.control, op.target)
-        _replace_double(op, replacements, control, target)
+    def _lower_h(self, source, operands, context):
+        operations, result = self._h_sequence(operands[0])
+        return self._finish(source, operations, result)
 
-    def _handle_cx(self, op: CxOp) -> None:
-        before, target = self._h_sequence(op.target)
-        middle, control, target = self._cz_sequence(op.control, target)
+    def _lower_cz(self, source, operands, context):
+        operations, control, target = self._cz_sequence(
+            operands[0], operands[1]
+        )
+        return self._finish(source, operations, control, target)
+
+    def _lower_cx(self, source, operands, context):
+        before, target = self._h_sequence(operands[1])
+        middle, control, target = self._cz_sequence(operands[0], target)
         after, target = self._h_sequence(target)
-        _replace_double(op, [*before, *middle, *after], control, target)
+        return self._finish(source, [*before, *middle, *after], control, target)
 
 
-def compile_cliffords_to_h2(module: ModuleOp) -> ModuleOp:
-    """Return an H2-lowered copy of ``module``."""
-
-    return CliffordsToH2Compiler().compile(module)
+def lower_cliffords_to_h2(module: ModuleOp) -> ModuleOp:
+    """Return a fresh module with canonical Cliffords lowered to H2."""
+    return CliffordsToH2Lowering().run(module)

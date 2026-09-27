@@ -9,5 +9,6 @@ def test_prepare_one_executes_from_main() -> None:
     def choose(bits):
         return "done" if bits[0] else "retry"
 
-    results = Machine(_build_module(), num_qubits=2, registry=registry).eval(shots=100)
+    module = _build_module()
+    results = Machine(num_qubits=2, registry=registry).eval(module, shots=100)
     assert all(result == [1] for result in results)

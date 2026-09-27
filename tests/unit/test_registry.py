@@ -31,9 +31,10 @@ def test_register_and_lookup_selector() -> None:
     def fn(bits):
         return "done" if bits[0] == 1 else "retry"
 
-    assert reg.get_selector("repeat_until_one") is fn
-    assert reg.get_selector("repeat_until_one")((1,)) == "done"
-    assert reg.get_selector("repeat_until_one")((0,)) == "retry"
+    entry = reg.get_selector("repeat_until_one")
+    assert entry.function is fn
+    assert entry.function((1,)) == "done"
+    assert entry.function((0,)) == "retry"
 
 
 def test_register_and_lookup_decoder() -> None:
@@ -43,9 +44,10 @@ def test_register_and_lookup_decoder() -> None:
     def fn(bits):
         return 1 if sum(bits) >= 2 else 0
 
-    assert reg.get_decoder("majority_vote") is fn
-    assert reg.get_decoder("majority_vote")((1, 1, 0)) == 1
-    assert reg.get_decoder("majority_vote")((0, 1, 0)) == 0
+    entry = reg.get_decoder("majority_vote")
+    assert entry.function is fn
+    assert entry.function((1, 1, 0)) == 1
+    assert entry.function((0, 1, 0)) == 0
 
 
 def test_decorator_uses_function_name_when_bare() -> None:
@@ -55,7 +57,7 @@ def test_decorator_uses_function_name_when_bare() -> None:
     def my_selector(bits):
         return "done"
 
-    assert reg.get_selector("my_selector")((0,)) == "done"
+    assert reg.get_selector("my_selector").function((0,)) == "done"
 
 
 def test_duplicate_registration_rejected() -> None:
@@ -83,8 +85,8 @@ def test_selectors_and_decoders_have_separate_namespaces() -> None:
     def d(bits):
         return bits[0]
 
-    assert reg.get_selector("name") is s
-    assert reg.get_decoder("name") is d
+    assert reg.get_selector("name").function is s
+    assert reg.get_decoder("name").function is d
 
 
 def test_lookup_unregistered_raises() -> None:
@@ -93,3 +95,22 @@ def test_lookup_unregistered_raises() -> None:
         reg.get_selector("missing")
     with pytest.raises(UnregisteredCallback, match="missing"):
         reg.get_decoder("missing")
+
+
+def test_stateful_registration_is_explicit() -> None:
+    reg = CallbackRegistry()
+
+    @reg.decoder("family:decode", stateful=True)
+    def decode(bits, context):
+        return bits[0] + context.get("offset", 0)
+
+    entry = reg.get_decoder("family.2:decode")
+    assert entry.function is decode
+    assert entry.stateful
+    assert entry == reg.get_decoder("family.3:decode")
+
+    @reg.selector(stateful=True)
+    def stateful_selector(bits, context):
+        return "done"
+
+    assert reg.get_selector("stateful_selector").stateful

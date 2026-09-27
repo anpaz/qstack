@@ -36,12 +36,11 @@ def test_depolarizing_kraus_count_matches_dim() -> None:
 def test_noiseless_machine_matches_existing_bell() -> None:
     module = lower(parse(BELL_PROGRAM))
     machine = Machine(
-        module,
         num_qubits=4,
         registry=CallbackRegistry(),
         noise=NoiselessChannel(),
     )
-    hist = dict(machine.eval(shots=4000).histogram())
+    hist = dict(machine.eval(module, shots=4000).histogram())
     # Without noise, the Bell histogram concentrates on (0,0) and (1,1).
     assert set(hist.keys()) == {(0, 0), (1, 1)}
 
@@ -49,12 +48,11 @@ def test_noiseless_machine_matches_existing_bell() -> None:
 def test_depolarizing_noise_smears_bell_distribution() -> None:
     module = lower(parse(BELL_PROGRAM))
     machine = Machine(
-        module,
         num_qubits=4,
         registry=CallbackRegistry(),
         noise=DepolarizingNoise(0.5),
     )
-    hist = dict(machine.eval(shots=4000).histogram())
+    hist = dict(machine.eval(module, shots=4000).histogram())
     # With p=0.5 depolarizing noise on every gate, the off-diagonal
     # outcomes (0,1) and (1,0) must appear with non-negligible weight.
     off_diag = hist.get((0, 1), 0) + hist.get((1, 0), 0)

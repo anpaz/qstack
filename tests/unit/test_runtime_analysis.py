@@ -1,6 +1,6 @@
 """Tests for runtime backend-compatibility analysis."""
 
-from qstack.passes.toy2cliffords import compile_toy_to_cliffords
+from qstack.passes.toy2cliffords import lower_toy_to_cliffords
 from qstack.runtime.analysis import check_stim_compatible, is_stim_compatible
 from qstack.surface.lowering import lower
 from qstack.surface.parser import parse
@@ -65,6 +65,6 @@ measure q[1] -> c[1];
 
     assert not is_stim_compatible(module)
 
-    module = compile_toy_to_cliffords(module)
+    module = lower_toy_to_cliffords(module)
 
     assert is_stim_compatible(module)

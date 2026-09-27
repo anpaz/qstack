@@ -1,10 +1,11 @@
 import pytest
-from xdsl.dialects.builtin import ModuleOp
+from xdsl.dialects.builtin import ModuleOp, StringAttr
 from xdsl.ir import Block, Region
 
+from qstack.callbacks import resolve_callback
 from qstack.dialect import BitType, QubitType
 from qstack.dialect.cliffords import CxOp, HOp
-from qstack.dialect.core import CallOp, KernelOp, MeasureOp, ReturnOp
+from qstack.dialect.core import CallOp, DecoderOp, KernelOp, MeasureOp, ReturnOp
 from qstack.verifier import LinearityError, verify_module
 
 
@@ -69,3 +70,30 @@ def test_verifier_accepts_a_kernel_returning_more_qubits_than_it_borrows() -> No
     main = _kernel("main", [], [BitType()], main_block)
 
     verify_module(ModuleOp([prepare, main]))
+
+
+def test_verifier_checks_qualified_callback_symbol_shape() -> None:
+    block = Block(arg_types=[])
+    block.add_op(ReturnOp(operands=[]))
+    main = _kernel("main", [], [], block)
+
+    malformed = DecoderOp("rep3_bit.0:decode", 1)
+    with pytest.raises(LinearityError, match="family.layer"):
+        verify_module(ModuleOp([malformed, main.clone()]))
+
+    legacy_attribute = DecoderOp("rep3_bit.1:decode", 1)
+    legacy_attribute.attributes["source"] = StringAttr("rep3_bit.1")
+    with pytest.raises(LinearityError, match="encode its source in its symbol"):
+        verify_module(ModuleOp([legacy_attribute, main.clone()]))
+
+
+def test_callback_identity_is_derived_from_its_symbol() -> None:
+    qualified = resolve_callback("feedback.12:decode")
+    assert qualified.source == "feedback.12"
+    assert qualified.family == "feedback"
+    assert qualified.implementation == "feedback:decode"
+
+    unqualified = resolve_callback("decode")
+    assert unqualified.source == ""
+    assert unqualified.family == ""
+    assert unqualified.implementation == "decode"

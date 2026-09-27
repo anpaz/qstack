@@ -3,7 +3,7 @@
 Modeled on the legacy ``qstack.machine.Results`` so notebooks using the
 new MLIR runtime feel familiar:
 
-    results = machine.eval(shots=1000)
+    results = machine.eval(module, shots=1000)
     results.histogram()        # -> OrderedDict[tuple, int]
     results.plot_histogram()   # matplotlib bar chart
 """

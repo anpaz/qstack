@@ -1,16 +1,20 @@
-"""Structural verifier for the kernel-only qstack IR.
+"""IR verification and structural checks for pass construction.
 
 This module enforces the executable shape from :mod:`docs.DESIGN`; it does
 not attempt semantic equivalence checking or callback-obligation generation.
+The pass checks account for source operations and connect target fragments
+according to the declared encoding; they do not prove semantic equivalence.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING
 
-from xdsl.dialects.builtin import ModuleOp, SymbolRefAttr
+from xdsl.dialects.builtin import ArrayAttr, ModuleOp, StringAttr, SymbolRefAttr
 from xdsl.ir import Operation, SSAValue
 
+from qstack.callbacks import resolve_callback
 from qstack.dialect.core import (
     BitType,
     CallOp,
@@ -25,9 +29,18 @@ from qstack.dialect.core import (
     UnitaryGateOp,
 )
 
+if TYPE_CHECKING:
+    from qstack.passes.base import Encoding, QubitGroup, Replacement
+
+PASS_HISTORY_ATTR = "qstack.pass_history"
+
 
 class LinearityError(Exception):
     """Raised for any structural or linearity violation in a qstack module."""
+
+
+class PassStructureError(Exception):
+    """Raised when a pass's structural replacement contract is not satisfied."""
 
 
 def _type_list(values: Iterable[SSAValue]) -> list[object]:
@@ -61,7 +74,7 @@ def _linear_values(kernel: KernelOp) -> Iterable[SSAValue]:
         yield from op.results
 
 
-def _verify_kernel_body_ops(kernel: KernelOp) -> None:
+def _check_kernel_body_ops(kernel: KernelOp) -> None:
     block = kernel.body.blocks[0]
     allowed = (UnitaryGateOp, MeasureOp, DecodeOp, SelectOp, CallOp, ReturnOp)
     for op in block.ops:
@@ -77,7 +90,7 @@ def _verify_kernel_body_ops(kernel: KernelOp) -> None:
             raise LinearityError(f"{op.name} bit operands must all be bits")
 
 
-def _verify_kernel_shape(kernel: KernelOp) -> None:
+def _check_kernel_shape(kernel: KernelOp) -> None:
     if len(kernel.body.blocks) != 1:
         raise LinearityError(f"kernel @{kernel.sym_name.data} must have exactly one block")
     if kernel.allocation_count < 0:
@@ -96,20 +109,28 @@ def _verify_kernel_shape(kernel: KernelOp) -> None:
         kernel.declared_result_types,
         f"qstack.return in @{kernel.sym_name.data} does not match the declared result types",
     )
-    _verify_kernel_body_ops(kernel)
+    _check_kernel_body_ops(kernel)
     for value in _linear_values(kernel):
         if _is_linear(value):
             _check_single_use(value, f"kernel @{kernel.sym_name.data}")
 
 
-def _verify_callback_declaration(op: SelectorOp | DecoderOp) -> None:
+def _check_callback_declaration(op: SelectorOp | DecoderOp) -> None:
     if op.input_count < 0:
         raise LinearityError(f"callback @{op.sym_name.data} has a negative bit-input count")
     if isinstance(op, DecoderOp) and op.input_count == 0:
         raise LinearityError(f"decoder @{op.sym_name.data} must accept at least one bit")
+    if "source" in op.attributes:
+        raise LinearityError(
+            f"callback @{op.sym_name.data} must encode its source in its symbol"
+        )
+    try:
+        resolve_callback(op.sym_name.data)
+    except ValueError as exc:
+        raise LinearityError(str(exc)) from exc
 
 
-def _verify_call(op: CallOp, kernels: dict[str, KernelOp]) -> None:
+def _check_call(op: CallOp, kernels: dict[str, KernelOp]) -> None:
     name = _symbol_name(op.callee)
     kernel = kernels.get(name)
     if kernel is None:
@@ -118,7 +139,7 @@ def _verify_call(op: CallOp, kernels: dict[str, KernelOp]) -> None:
     _check_same_types(_type_list(op.results), kernel.declared_result_types, f"qstack.call @{name} has wrong result types")
 
 
-def _verify_decode(op: DecodeOp, decoders: dict[str, DecoderOp]) -> None:
+def _check_decode(op: DecodeOp, decoders: dict[str, DecoderOp]) -> None:
     name = _symbol_name(op.callee)
     decoder = decoders.get(name)
     if decoder is None:
@@ -127,7 +148,7 @@ def _verify_decode(op: DecodeOp, decoders: dict[str, DecoderOp]) -> None:
         raise LinearityError(f"qstack.decode @{name} has wrong bit-operand count")
 
 
-def _verify_select(
+def _check_select(
     op: SelectOp,
     kernels: dict[str, KernelOp],
     selectors: dict[str, SelectorOp],
@@ -165,6 +186,15 @@ def verify_module(module: ModuleOp) -> None:
     semantics.
     """
 
+    history = module.attributes.get(PASS_HISTORY_ATTR)
+    if history is not None and (
+        not isinstance(history, ArrayAttr)
+        or any(not isinstance(entry, StringAttr) for entry in history)
+    ):
+        raise LinearityError(
+            f"module attribute {PASS_HISTORY_ATTR!r} must be an array of strings"
+        )
+
     top_level = list(module.body.ops)
     allowed = (KernelOp, SelectorOp, DecoderOp)
     for op in top_level:
@@ -190,13 +220,160 @@ def verify_module(module: ModuleOp) -> None:
         raise LinearityError("qstack.kernel @main cannot return a qubit")
 
     for callback in [*selectors.values(), *decoders.values()]:
-        _verify_callback_declaration(callback)
+        _check_callback_declaration(callback)
     for kernel in kernels.values():
-        _verify_kernel_shape(kernel)
+        _check_kernel_shape(kernel)
         for op in kernel.body.blocks[0].ops:
             if isinstance(op, CallOp):
-                _verify_call(op, kernels)
+                _check_call(op, kernels)
             elif isinstance(op, DecodeOp):
-                _verify_decode(op, decoders)
+                _check_decode(op, decoders)
             elif isinstance(op, SelectOp):
-                _verify_select(op, kernels, selectors)
+                _check_select(op, kernels, selectors)
+
+
+def _flatten_representation(
+    values: Sequence[SSAValue | QubitGroup],
+) -> tuple[SSAValue, ...]:
+    """Expand target qubit groups for structural type and wiring checks."""
+    return tuple(
+        qubit
+        for value in values
+        for qubit in ((value,) if isinstance(value, SSAValue) else value.qubits)
+    )
+
+
+def check_value_pairs(
+    pairs: Sequence[tuple[SSAValue, SSAValue | QubitGroup]],
+    encoding: Encoding,
+) -> None:
+    """Check scalar types and qubit-group widths against the encoding."""
+    for source_value, target_value in pairs:
+        expected_types = encoding.map_types((source_value.type,))
+        actual_types = tuple(
+            value.type for value in _flatten_representation((target_value,))
+        )
+        expects_group = (
+            isinstance(source_value.type, QubitType) and not encoding.is_identity
+        )
+        if (not isinstance(target_value, SSAValue)) != expects_group:
+            kind = "a qubit group" if expects_group else "a scalar value"
+            raise PassStructureError(
+                f"replacement for {source_value!r} must be {kind}"
+            )
+        if actual_types != expected_types:
+            raise PassStructureError(
+                f"replacement for {source_value!r} has types {actual_types}, "
+                f"expected {expected_types}"
+            )
+
+
+def check_replacement(
+    replacement: Replacement,
+    preceding: dict[SSAValue, SSAValue | QubitGroup],
+    encoding: Encoding,
+) -> None:
+    """Check a fragment's boundary correspondence and detached target wiring."""
+    check_value_pairs((*replacement.inputs, *replacement.outputs), encoding)
+    for source_value, target_value in replacement.inputs:
+        if preceding.get(source_value) != target_value:
+            raise PassStructureError(
+                "replacement input disagrees with the preceding boundary"
+            )
+
+    available = set(
+        _flatten_representation(tuple(value for _, value in replacement.inputs))
+    )
+    seen: set[Operation] = set()
+    for operation in replacement.target_operations:
+        if operation.parent is not None:
+            raise PassStructureError(
+                f"replacement operation {operation.name} is already attached"
+            )
+        if operation in seen:
+            raise PassStructureError(
+                "replacement contains a duplicate target operation"
+            )
+        if operation.regions:
+            raise PassStructureError(
+                "replacement operations cannot contain nested regions"
+            )
+        if any(value not in available for value in operation.operands):
+            raise PassStructureError(
+                "target operation uses a value outside its replacement boundary"
+            )
+        available.update(operation.results)
+        seen.add(operation)
+    if any(
+        value not in available
+        for value in _flatten_representation(
+            tuple(value for _, value in replacement.outputs)
+        )
+    ):
+        raise PassStructureError(
+            "replacement output is not defined by its inputs or target operations"
+        )
+
+
+def check_replacements(
+    source: KernelOp,
+    snapshot: KernelOp,
+    replacements: Sequence[Replacement],
+    inputs: dict[SSAValue, SSAValue | QubitGroup],
+    encoding: Encoding,
+) -> None:
+    """Check that lowering left the source intact and covered its body exactly.
+
+    Source fragments must reconstruct the original body in order.  An input
+    enters a fragment from outside it; an output is a result used outside it
+    or an unused terminal result.  Internal wires need no correspondence.
+    """
+    if not source.is_structurally_equivalent(snapshot) or any(
+        tuple(op.result_types) != tuple(saved.result_types)
+        for op, saved in zip(source.walk(), snapshot.walk(), strict=True)
+    ):
+        raise PassStructureError("body lowering modified the source kernel")
+    operations = tuple(source.body.block.ops)
+    covered = tuple(op for r in replacements for op in r.source_operations)
+    if covered != tuple(operations):
+        raise PassStructureError(
+            "replacements must cover the source body exactly once in order"
+        )
+    preceding = dict(inputs)
+    target_operations: set[Operation] = set()
+    for replacement in replacements:
+        members = set(replacement.source_operations)
+        if not members:
+            raise PassStructureError(
+                "body replacement must identify source operations"
+            )
+        boundary_inputs = tuple(
+            dict.fromkeys(
+                value
+                for operation in replacement.source_operations
+                for value in operation.operands
+                if value.owner not in members
+            )
+        )
+        boundary_outputs = tuple(
+            value
+            for operation in replacement.source_operations
+            for value in operation.results
+            if not value.uses
+            or any(use.operation not in members for use in value.uses)
+        )
+        if tuple(value for value, _ in replacement.inputs) != boundary_inputs:
+            raise PassStructureError(
+                "replacement inputs do not match the source fragment boundary"
+            )
+        if tuple(value for value, _ in replacement.outputs) != boundary_outputs:
+            raise PassStructureError(
+                "replacement outputs do not match the source fragment boundary"
+            )
+        if target_operations.intersection(replacement.target_operations):
+            raise PassStructureError(
+                "target operation belongs to multiple replacements"
+            )
+        check_replacement(replacement, preceding, encoding)
+        target_operations.update(replacement.target_operations)
+        preceding.update(replacement.outputs)

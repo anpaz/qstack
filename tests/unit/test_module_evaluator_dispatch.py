@@ -13,7 +13,8 @@ def test_direct_kernel_call_dispatches() -> None:
     main_body = Block(arg_types=[QubitType()]); call = CallOp("flip", [main_body.args[0]], [QubitType()]); main_body.add_op(call)
     measure = MeasureOp(operand=call.results[0]); main_body.add_op(measure); main_body.add_op(ReturnOp(operands=[measure.result]))
     main = KernelOp("main", input_types=[], result_types=[BitType()], allocates=1, region=Region([main_body]))
-    assert Machine(ModuleOp([flip, main]), num_qubits=1).single_shot() == [1]
+    module = ModuleOp([flip, main])
+    assert Machine(num_qubits=1).single_shot(module) == [1]
 
 
 def test_select_dispatches_case_kernel_directly() -> None:
@@ -26,4 +27,5 @@ def test_select_dispatches_case_kernel_directly() -> None:
     registry = CallbackRegistry()
     @registry.selector("pick")
     def pick(bits): return "flip"
-    assert Machine(ModuleOp([SelectorOp("pick", 1), flip, main]), num_qubits=2, registry=registry).single_shot() == [1]
+    module = ModuleOp([SelectorOp("pick", 1), flip, main])
+    assert Machine(num_qubits=2, registry=registry).single_shot(module) == [1]

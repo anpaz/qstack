@@ -2,10 +2,10 @@
 
 from qstack.dialect.cliffords import CxOp, CzOp, HOp, SOp, XOp, YOp, ZOp
 from qstack.dialect.h2 import RzOp, U1Op, ZzOp
-from qstack.passes.cliffords2h2 import compile_cliffords_to_h2
-from qstack.passes.rep3_bit import compile_rep3_bit, register_rep3_bit_callbacks
-from qstack.passes.rep3_phase import compile_rep3_phase, register_rep3_phase_callbacks
-from qstack.passes.toy2cliffords import compile_toy_to_cliffords
+from qstack.passes.cliffords2h2 import lower_cliffords_to_h2
+from qstack.passes.rep3_bit import lower_rep3_bit
+from qstack.passes.rep3_phase import lower_rep3_phase
+from qstack.passes.toy2cliffords import lower_toy_to_cliffords
 from qstack.runtime import CallbackRegistry, Machine
 from qstack.surface.lowering import lower
 from qstack.surface.parser import parse
@@ -40,51 +40,51 @@ def _has_cliffords(module) -> bool:
 
 def test_toy_to_cliffords_to_h2_executes_bell_program() -> None:
     module = lower(parse(_TOY_BELL))
-    module = compile_toy_to_cliffords(module)
-    module = compile_cliffords_to_h2(module)
+    module = lower_toy_to_cliffords(module)
+    module = lower_cliffords_to_h2(module)
     verify_module(module)
 
     assert not _has_cliffords(module)
     assert any(isinstance(op, (U1Op, RzOp, ZzOp)) for op in module.walk())
 
-    histogram = dict(Machine(module, num_qubits=2).eval(shots=2000).histogram())
+    histogram = dict(Machine(num_qubits=2).eval(module, shots=2000).histogram())
     assert set(histogram) <= {(0, 0), (1, 1)}
     for outcome in ((0, 0), (1, 1)):
         assert 800 < histogram.get(outcome, 0) < 1200
 
 
 def test_rep3_to_h2_executes() -> None:
-    module = compile_rep3_bit(lower(parse(_FLIP)))
-    module = compile_cliffords_to_h2(module)
+    registry = CallbackRegistry()
+    module = lower_rep3_bit(lower(parse(_FLIP)), registry)
+    module = lower_cliffords_to_h2(module)
     verify_module(module)
 
-    registry = CallbackRegistry()
-    register_rep3_bit_callbacks(registry)
-    results = Machine(module, num_qubits=3, registry=registry).eval(shots=100)
+    results = Machine(num_qubits=3, registry=registry).eval(module, shots=100)
     assert all(result == [1] for result in results)
     assert not _has_cliffords(module)
 
 
 def test_repeated_rep3_to_h2_executes() -> None:
-    module = compile_rep3_bit(compile_rep3_bit(lower(parse(_FLIP))))
-    module = compile_cliffords_to_h2(module)
+    registry = CallbackRegistry()
+    module = lower_rep3_bit(
+        lower_rep3_bit(lower(parse(_FLIP)), registry), registry
+    )
+    module = lower_cliffords_to_h2(module)
     verify_module(module)
 
-    registry = CallbackRegistry()
-    register_rep3_bit_callbacks(registry)
-    results = Machine(module, num_qubits=9, registry=registry).eval(shots=20)
+    results = Machine(num_qubits=9, registry=registry).eval(module, shots=20)
     assert all(result == [1] for result in results)
     assert not _has_cliffords(module)
 
 
 def test_rep3_bit_plus_phase_to_h2_executes() -> None:
-    module = compile_rep3_phase(compile_rep3_bit(lower(parse(_FLIP))))
-    module = compile_cliffords_to_h2(module)
+    registry = CallbackRegistry()
+    module = lower_rep3_phase(
+        lower_rep3_bit(lower(parse(_FLIP)), registry), registry
+    )
+    module = lower_cliffords_to_h2(module)
     verify_module(module)
 
-    registry = CallbackRegistry()
-    register_rep3_bit_callbacks(registry)
-    register_rep3_phase_callbacks(registry)
-    results = Machine(module, num_qubits=9, registry=registry).eval(shots=20)
+    results = Machine(num_qubits=9, registry=registry).eval(module, shots=20)
     assert all(result == [1] for result in results)
     assert not _has_cliffords(module)

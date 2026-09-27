@@ -1,190 +1,163 @@
-"""Kernel-only three-bit repetition-code lowering."""
+"""Lower Clifford kernels into a three-qubit bit repetition representation.
+
+Each source qubit becomes an ordered group of three target qubits.  A fresh
+group already represents logical zero as ``|000>`` and therefore needs no
+preparation circuit.  Supported gates are reproduced at each corresponding
+position in the group.
+
+Measurement consumes all three physical qubits and passes their results to a
+majority-vote decoder, which returns the one source-level bit.  This pass does
+not emit syndrome-extraction or active-correction kernels; the repetition code
+is decoded only at the measurement boundary.
+"""
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from xdsl.dialects.builtin import ModuleOp
+from xdsl.ir import Operation
 
-from xdsl.dialects.builtin import ModuleOp, SymbolRefAttr
-from xdsl.ir import Attribute, Block, Operation, Region, SSAValue
-
-from qstack.dialect import BitType, QubitType
+from qstack.dialect import QubitType
 from qstack.dialect.cliffords import CxOp, CzOp, HOp, SOp, XOp, ZOp
-from qstack.dialect.core import CallOp, DecodeOp, DecoderOp, KernelOp, MeasureOp, ReturnOp, SelectOp, SelectorOp
-from qstack.verifier import verify_module
+from qstack.dialect.core import DecodeOp, DecoderOp, MeasureOp
+from qstack.passes.base import (
+    Encoding,
+    LoweringContext,
+    LoweringPass,
+    PassError,
+    QubitGroup,
+    require_qubit_group,
+)
+from qstack.runtime.registry import CallbackRegistry
 
 _WIDTH = 3
-_DECODER = "__qstack_rep3_bit_decode"
-_ONE_QUBIT_GATES = (HOp, XOp, ZOp, SOp)
-_TWO_QUBIT_GATES = (CxOp, CzOp)
+_FAMILY = "rep3_bit"
+_IMPLEMENTATION = f"{_FAMILY}:decode"
 
 
-class Rep3BitCompileError(Exception):
-    """Raised when a module contains an operation outside the Rep3 fragment."""
-
-
-def _expand_type(typ: Attribute) -> list[Attribute]:
-    return [QubitType() for _ in range(_WIDTH)] if isinstance(typ, QubitType) else [typ]
-
-
-def _expand_types(types: Iterable[Attribute]) -> list[Attribute]:
-    return [expanded for typ in types for expanded in _expand_type(typ)]
-
-
-def _has_canonical_decoder(module: ModuleOp) -> bool:
-    """Return whether ``module`` already declares this code's decoder."""
-    for op in module.body.ops:
-        if not hasattr(op, "sym_name") or op.sym_name.data != _DECODER:
-            continue
-        if isinstance(op, DecoderOp) and op.input_count == _WIDTH:
-            return True
-        raise Rep3BitCompileError(f"reserved callback symbol @{_DECODER} has an incompatible declaration")
-    return False
+class Rep3BitLoweringError(PassError):
+    """Raised when a module is outside the supported bit-code fragment."""
 
 
 def _majority_vote(bits: tuple[int, ...]) -> int:
-    return 1 if sum(bits) >= 2 else 0
+    """Decode three physical measurement outcomes as their majority value."""
+    return int(sum(bits) >= 2)
 
 
-def register_rep3_bit_callbacks(registry) -> None:
-    """Install the canonical three-bit majority decoder."""
-    if not registry.has_decoder(_DECODER):
-        registry.decoder(_DECODER)(_majority_vote)
+def _register_callbacks(registry: CallbackRegistry) -> None:
+    """Install the stateless decoder implementation shared by all pass layers.
+
+    Each layer emits its own qualified decoder declaration, but registry lookup
+    removes the layer component and resolves all of them to this implementation.
+    """
+    if not registry.has_decoder(_IMPLEMENTATION):
+        registry.decoder(_IMPLEMENTATION)(_majority_vote)
 
 
-class _KernelRewriter:
-    def __init__(self, signatures: dict[str, tuple[list[Attribute], list[Attribute]]], decoder: str):
-        self.signatures = signatures
-        self.decoder = decoder
-        self.values: dict[SSAValue, tuple[SSAValue, ...]] = {}
+class Rep3BitLowering(LoweringPass):
+    """Represent each source qubit in the three-qubit computational-basis code.
 
-    def rewrite(self, source: KernelOp) -> KernelOp:
-        inputs, results = self.signatures[source.sym_name.data]
-        block = Block(arg_types=[*[QubitType() for _ in range(source.allocation_count * _WIDTH)], *inputs])
-        self._map_values(source.body.block.args, block.args)
-        for op in source.body.block.ops:
-            self._rewrite_op(op, block)
-        return KernelOp(
-            source.sym_name.data,
-            input_types=inputs,
-            result_types=results,
-            allocates=source.allocation_count * _WIDTH,
-            region=Region([block]),
+    The declared encoding widens kernel signatures and allocations.  Fresh
+    target qubits need no additional preparation because their initial
+    ``|000>`` state represents source ``|0>``; source ``|1>`` is represented
+    by ``|111>``, with superpositions extended linearly.  Operation handlers
+    transform all three corresponding target values, while ``lower_measure``
+    collapses the three physical results back to one bit.
+    """
+
+    pass_id = "qstack.rep3-bit"
+    preserve_unhandled_operations = False
+    encoding = Encoding(1, _WIDTH)
+
+    def error(self, context: LoweringContext, message: str) -> PassError:
+        return Rep3BitLoweringError(str(super().error(context, message)))
+
+    def prepare_run(self, module: ModuleOp) -> LoweringContext:
+        """Updates the context with the decoder callback declaration"""
+        context = super().prepare_run(module)
+        decoder = f"{_FAMILY}.{context.pass_index}:decode"
+        context.compiler_callbacks["decoder"] = DecoderOp(decoder, _WIDTH)
+        return context
+
+    def operation_handlers(self):
+        """Map every gate supported by this lowering to a group-wise handler."""
+        return {
+            HOp: self._lower_one_qubit,
+            XOp: self._lower_one_qubit,
+            ZOp: self._lower_one_qubit,
+            SOp: self._lower_one_qubit,
+            CxOp: self._lower_two_qubit,
+            CzOp: self._lower_two_qubit,
+        }
+
+    def _clone_gate(self, source: Operation, operands, result_count: int):
+        """Rebuild ``source`` for one position while preserving its metadata."""
+        return type(source).create(
+            operands=operands,
+            result_types=[QubitType() for _ in range(result_count)],
+            properties=dict(source.properties),
+            attributes=dict(source.attributes),
+            location=source.location,
         )
 
-    def _map_values(self, old: Sequence[SSAValue], new: Sequence[SSAValue]) -> None:
-        cursor = 0
-        for value in old:
-            width = _WIDTH if isinstance(value.type, QubitType) else 1
-            mapped = tuple(new[cursor : cursor + width])
-            self.values[value] = mapped
-            cursor += width
+    def _lower_one_qubit(self, source, operands, context):
+        """Apply a one-qubit source gate independently at all three positions."""
+        operations = []
+        outputs = []
+        group = require_qubit_group(
+            operands[0], pass_=self, context=context, description=source.name
+        )
+        for qubit in group.qubits:
+            target = self._clone_gate(source, [qubit], 1)
+            operations.append(target)
+            outputs.append(target.results[0])
+        return operations, (QubitGroup(tuple(outputs)),)
 
-    def _mapped(self, value: SSAValue) -> tuple[SSAValue, ...]:
-        try:
-            return self.values[value]
-        except KeyError as exc:
-            raise Rep3BitCompileError(f"no rewritten value for {value!r}") from exc
+    def _lower_two_qubit(self, source, operands, context):
+        """Apply a two-qubit source gate to corresponding positions in two groups."""
+        operations = []
+        first = []
+        second = []
+        control_group = require_qubit_group(
+            operands[0], pass_=self, context=context, description="control"
+        )
+        target_group = require_qubit_group(
+            operands[1], pass_=self, context=context, description="target"
+        )
+        for control, target_value in zip(
+            control_group.qubits, target_group.qubits, strict=True
+        ):
+            target = self._clone_gate(source, [control, target_value], 2)
+            operations.append(target)
+            first.append(target.results[0])
+            second.append(target.results[1])
+        return operations, (QubitGroup(tuple(first)), QubitGroup(tuple(second)))
 
-    def _single(self, value: SSAValue) -> SSAValue:
-        mapped = self._mapped(value)
-        if len(mapped) != 1:
-            raise Rep3BitCompileError(f"expected one bit value for {value!r}")
-        return mapped[0]
-
-    def _flatten(self, values: Iterable[SSAValue]) -> list[SSAValue]:
-        return [new for value in values for new in self._mapped(value)]
-
-    def _map_results(self, old: Sequence[SSAValue], new: Sequence[SSAValue]) -> None:
-        self._map_values(old, new)
-
-    def _rewrite_op(self, op: Operation, block: Block) -> None:
-        if isinstance(op, _ONE_QUBIT_GATES):
-            results: list[SSAValue] = []
-            for qubit in self._mapped(op.operands[0]):
-                gate = type(op).create(operands=[qubit], result_types=[QubitType()], properties=dict(op.properties))
-                block.add_op(gate)
-                results.append(gate.results[0])
-            self.values[op.results[0]] = tuple(results)
-            return
-        if isinstance(op, _TWO_QUBIT_GATES):
-            first: list[SSAValue] = []
-            second: list[SSAValue] = []
-            for control, target in zip(self._mapped(op.operands[0]), self._mapped(op.operands[1]), strict=True):
-                gate = type(op).create(
-                    operands=[control, target], result_types=[QubitType(), QubitType()], properties=dict(op.properties)
-                )
-                block.add_op(gate)
-                first.append(gate.results[0])
-                second.append(gate.results[1])
-            self.values[op.results[0]] = tuple(first)
-            self.values[op.results[1]] = tuple(second)
-            return
-        if isinstance(op, MeasureOp):
-            physical_bits: list[SSAValue] = []
-            for qubit in self._mapped(op.qubit):
-                measure = MeasureOp(operand=qubit)
-                block.add_op(measure)
-                physical_bits.append(measure.result)
-            decode = DecodeOp(callee=self.decoder, bit_operands=physical_bits)
-            block.add_op(decode)
-            self.values[op.result] = (decode.result,)
-            return
-        if isinstance(op, CallOp):
-            _, result_types = self.signatures[op.callee.root_reference.data]
-            call = CallOp(op.callee, self._flatten(op.arguments), result_types)
-            block.add_op(call)
-            self._map_results(op.results, call.results)
-            return
-        if isinstance(op, DecodeOp):
-            decode = DecodeOp(callee=op.callee, bit_operands=[self._single(bit) for bit in op.bit_operands])
-            block.add_op(decode)
-            self.values[op.result] = (decode.result,)
-            return
-        if isinstance(op, SelectOp):
-            result_types = _expand_types(result.type for result in op.results)
-            select = SelectOp(
-                callee=op.callee,
-                bit_operands=[self._single(bit) for bit in op.bit_operands],
-                cases=dict(op.cases.data),
-                case_arguments=self._flatten(op.case_arguments),
-                result_types=result_types,
-            )
-            block.add_op(select)
-            self._map_results(op.results, select.results)
-            return
-        if isinstance(op, ReturnOp):
-            block.add_op(ReturnOp(operands=self._flatten(op.operands)))
-            return
-        raise Rep3BitCompileError(f"unsupported operation {op.name!r}")
+    def lower_measure(self, source, mapped_operands, context):
+        """Measure the group and decode its three outcomes to one logical bit."""
+        operations = []
+        bits = []
+        group = require_qubit_group(
+            mapped_operands[0],
+            pass_=self,
+            context=context,
+            description="measured qubit",
+        )
+        for qubit in group.qubits:
+            measure = MeasureOp(operand=qubit)
+            measure.location = source.location
+            operations.append(measure)
+            bits.append(measure.result)
+        decoder = context.compiler_callbacks["decoder"]
+        assert isinstance(decoder, DecoderOp)
+        decode = DecodeOp(callee=decoder.sym_name.data, bit_operands=bits)
+        decode.location = source.location
+        decode.attributes.update(source.attributes)
+        operations.append(decode)
+        return operations, (decode.result,)
 
 
-def _clone_declaration(op: SelectorOp | DecoderOp) -> SelectorOp | DecoderOp:
-    return type(op)(op.sym_name.data, op.input_count)
-
-
-def compile_rep3_bit(module: ModuleOp) -> ModuleOp:
-    """Return a fresh, three-wire encoded kernel-only module."""
-    verify_module(module)
-    decoder_name = _DECODER
-    needs_decoder_declaration = not _has_canonical_decoder(module)
-    signatures: dict[str, tuple[list[Attribute], list[Attribute]]] = {}
-    for op in module.body.ops:
-        if isinstance(op, KernelOp):
-            signatures[op.sym_name.data] = (
-                _expand_types(op.input_types),
-                _expand_types(op.declared_result_types),
-            )
-    output_ops: list[Operation] = []
-    for op in module.body.ops:
-        if isinstance(op, (SelectorOp, DecoderOp)):
-            output_ops.append(_clone_declaration(op))
-        elif isinstance(op, KernelOp):
-            output_ops.append(_KernelRewriter(signatures, decoder_name).rewrite(op))
-        else:  # pragma: no cover - pre-verification rejects this
-            raise Rep3BitCompileError(f"unsupported top-level operation {op.name!r}")
-    if needs_decoder_declaration:
-        output_ops.append(DecoderOp(decoder_name, _WIDTH))
-    output = ModuleOp(output_ops, attributes=dict(module.attributes), sym_name=module.properties.get("sym_name"))
-    output.verify()
-    verify_module(output)
+def lower_rep3_bit(module: ModuleOp, registry: CallbackRegistry) -> ModuleOp:
+    """Return a bit-repetition-lowered module and install its decoder."""
+    output = Rep3BitLowering().run(module)
+    _register_callbacks(registry)
     return output

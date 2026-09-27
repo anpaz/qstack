@@ -9,58 +9,25 @@ from xdsl.ir import Operation, SSAValue
 
 from qstack.dialect.atoms import CzOp as AtomsCzOp
 from qstack.dialect.atoms import RzOp, SxOp
-from qstack.dialect.cliffords import (
-    CxOp,
-    CzOp,
-    HOp,
-    SOp,
-    XOp,
-    YOp,
-    ZOp,
-)
-from qstack.passes.base import BaseOpRewriter
+from qstack.dialect.cliffords import CxOp, CzOp, HOp, SOp, XOp, YOp, ZOp
+from qstack.passes.base import LoweringPass, copy_operation_metadata
 
 
-def _insert_before(op: Operation, replacements: list[Operation]) -> None:
-    block = op.parent_block()
-    for replacement in replacements:
-        block.insert_op_before(replacement, op)
+class CliffordsToAtomsLowering(LoweringPass):
+    """Operation-wise lowering from canonical Cliffords to atom operations."""
 
+    pass_id = "qstack.cliffords-to-atoms"
 
-def _replace_single(op: Operation, replacements: list[Operation], result: SSAValue) -> None:
-    _insert_before(op, replacements)
-    op.results[0].replace_all_uses_with(result)
-    op.detach()
-    op.erase()
-
-
-def _replace_double(
-    op: Operation,
-    replacements: list[Operation],
-    first: SSAValue,
-    second: SSAValue,
-) -> None:
-    _insert_before(op, replacements)
-    op.results[0].replace_all_uses_with(first)
-    op.results[1].replace_all_uses_with(second)
-    op.detach()
-    op.erase()
-
-
-class CliffordsToAtomsCompiler(BaseOpRewriter):
-    """Handler-driven lowering from canonical Cliffords to atoms operations."""
-
-    def __init__(self) -> None:
-        self.handlers = {
-            XOp: self._handle_x,
-            YOp: self._handle_y,
-            ZOp: self._handle_z,
-            SOp: self._handle_s,
-            HOp: self._handle_h,
-            CzOp: self._handle_cz,
-            CxOp: self._handle_cx,
+    def operation_handlers(self):
+        return {
+            XOp: self._lower_x,
+            YOp: self._lower_y,
+            ZOp: self._lower_z,
+            SOp: self._lower_s,
+            HOp: self._lower_h,
+            CzOp: self._lower_cz,
+            CxOp: self._lower_cx,
         }
-        super().__init__()
 
     @staticmethod
     def _h_sequence(qubit: SSAValue) -> tuple[list[Operation], SSAValue]:
@@ -70,45 +37,49 @@ class CliffordsToAtomsCompiler(BaseOpRewriter):
         return [rz_before, sx, rz_after], rz_after.result
 
     @staticmethod
-    def _handle_x(op: XOp) -> None:
-        sx1 = SxOp(op.qubit)
-        sx2 = SxOp(sx1.result)
-        _replace_single(op, [sx1, sx2], sx2.result)
+    def _finish(source, operations, *outputs):
+        for target in operations:
+            target.location = source.location
+        operations[-1].attributes.update(source.attributes)
+        return operations, tuple(outputs)
 
-    @staticmethod
-    def _handle_y(op: YOp) -> None:
-        sx1 = SxOp(op.qubit)
-        sx2 = SxOp(sx1.result)
-        rz = RzOp(sx2.result, math.pi)
-        _replace_single(op, [sx1, sx2, rz], rz.result)
+    def _lower_x(self, source, operands, context):
+        first = SxOp(operands[0])
+        second = SxOp(first.result)
+        return self._finish(source, [first, second], second.result)
 
-    @staticmethod
-    def _handle_z(op: ZOp) -> None:
-        rz = RzOp(op.qubit, math.pi)
-        _replace_single(op, [rz], rz.result)
+    def _lower_y(self, source, operands, context):
+        first = SxOp(operands[0])
+        second = SxOp(first.result)
+        rz = RzOp(second.result, math.pi)
+        return self._finish(source, [first, second, rz], rz.result)
 
-    @staticmethod
-    def _handle_s(op: SOp) -> None:
-        rz = RzOp(op.qubit, math.pi / 2)
-        _replace_single(op, [rz], rz.result)
+    def _lower_z(self, source, operands, context):
+        target = RzOp(operands[0], math.pi)
+        copy_operation_metadata(source, target)
+        return [target], (target.result,)
 
-    def _handle_h(self, op: HOp) -> None:
-        replacements, result = self._h_sequence(op.qubit)
-        _replace_single(op, replacements, result)
+    def _lower_s(self, source, operands, context):
+        target = RzOp(operands[0], math.pi / 2)
+        copy_operation_metadata(source, target)
+        return [target], (target.result,)
 
-    @staticmethod
-    def _handle_cz(op: CzOp) -> None:
-        cz = AtomsCzOp(op.control, op.target)
-        _replace_double(op, [cz], cz.control_out, cz.target_out)
+    def _lower_h(self, source, operands, context):
+        operations, result = self._h_sequence(operands[0])
+        return self._finish(source, operations, result)
 
-    def _handle_cx(self, op: CxOp) -> None:
-        before, target = self._h_sequence(op.target)
-        cz = AtomsCzOp(op.control, target)
+    def _lower_cz(self, source, operands, context):
+        target = AtomsCzOp(operands[0], operands[1])
+        copy_operation_metadata(source, target)
+        return [target], (target.control_out, target.target_out)
+
+    def _lower_cx(self, source, operands, context):
+        before, target = self._h_sequence(operands[1])
+        cz = AtomsCzOp(operands[0], target)
         after, target = self._h_sequence(cz.target_out)
-        _replace_double(op, [*before, cz, *after], cz.control_out, target)
+        return self._finish(source, [*before, cz, *after], cz.control_out, target)
 
 
-def compile_cliffords_to_atoms(module: ModuleOp) -> ModuleOp:
-    """Return an atoms-lowered copy of ``module``."""
-
-    return CliffordsToAtomsCompiler().compile(module)
+def lower_cliffords_to_atoms(module: ModuleOp) -> ModuleOp:
+    """Return a fresh module with canonical Cliffords lowered to atom gates."""
+    return CliffordsToAtomsLowering().run(module)

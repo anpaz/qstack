@@ -78,6 +78,6 @@ def test_prepare_one_runs_1000_shots_all_one() -> None:
         return "0" if bits[0] == 1 else "1"  # 0 = done, 1 = retry
 
     m = _module(PREPARE_ONE)
-    machine = Machine(m, num_qubits=4, registry=reg)
-    results = machine.eval(shots=1000)
+    machine = Machine(num_qubits=4, registry=reg)
+    results = machine.eval(m, shots=1000)
     assert all(r == [1] for r in results)

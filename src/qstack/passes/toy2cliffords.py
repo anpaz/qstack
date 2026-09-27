@@ -1,71 +1,72 @@
-"""Toy → Cliffords rewrite pass (Phase 4.2).
-
-MLIR port of ``src/qstack/compilers/toy2cliffords.py``: rewrites the
-toy-ISA gates `flip`, `mix`, and `entangle` to their Clifford
-counterparts in a fresh module. ``toy.skew`` is intentionally **not** handled
-(it has no Clifford decomposition) and triggers an error so callers
-catch the case early instead of silently producing a broken module.
-
-The pass operates at module scope; it walks every named kernel body,
-swapping the matching ops one-for-one. Linear bit/qubit
-threading is preserved by reusing the original op's operands and giving
-the replacement the same single-/two-qubit shape.
-"""
+"""Lower the toy instruction set to canonical Clifford operations."""
 
 from __future__ import annotations
 
-from typing import Iterable
-
+from collections.abc import Sequence
 
 from xdsl.dialects.builtin import ModuleOp
-from xdsl.ir import Operation
+from xdsl.ir import Operation, SSAValue
 
 from qstack.dialect.cliffords import CxOp, HOp, XOp
 from qstack.dialect.toy import EntangleOp, FlipOp, MixOp, SkewOp
-from qstack.passes.base import BaseOpRewriter
+from qstack.passes.base import (
+    LoweringContext,
+    LoweringPass,
+    PassError,
+    QubitGroup,
+    copy_operation_metadata,
+)
 
 
-class ToyToCliffordsCompiler(BaseOpRewriter):
-    def __init__(self):
-        def _skew_handler(op):
-            bias = op.bias.value.data
-            raise NotImplementedError(
-                f"toy.skew(bias={bias}) has no Clifford decomposition; "
-                "this program cannot be compiled to the Cliffords ISA."
-            )
+class ToyToCliffordsLoweringError(PassError):
+    """Raised when a toy operation has no Clifford lowering."""
 
-        self.handlers = {
-            FlipOp: self._replace_single_qubit(FlipOp, XOp),
-            MixOp: self._replace_single_qubit(MixOp, HOp),
-            EntangleOp: self._replace_two_qubit(EntangleOp, CxOp),
-            SkewOp: _skew_handler,
+
+class ToyToCliffordsLowering(LoweringPass):
+    """Operation-wise lowering from toy gates to canonical Cliffords."""
+
+    pass_id = "qstack.toy-to-cliffords"
+
+    def operation_handlers(self):
+        return {
+            FlipOp: self._lower_flip,
+            MixOp: self._lower_mix,
+            EntangleOp: self._lower_entangle,
+            SkewOp: self._reject_skew,
         }
-        super().__init__()
+
+    def error(self, context: LoweringContext, message: str) -> PassError:
+        return ToyToCliffordsLoweringError(str(super().error(context, message)))
 
     @staticmethod
-    def _replace_single_qubit(src_type, tgt_type):
-        def handler(op):
-            new = tgt_type(op.qubit)
-            op.result.replace_all_uses_with(new.result)
-            op.parent_block().insert_op_before(new, op)
-            op.detach()
-            op.erase()
+    def _single(
+        source: Operation,
+        operands: tuple[SSAValue | QubitGroup, ...],
+        target_type,
+    ) -> tuple[Sequence[Operation], Sequence[SSAValue | QubitGroup]]:
+        target = target_type(operands[0])
+        copy_operation_metadata(source, target)
+        return [target], (target.result,)
 
-        return handler
+    def _lower_flip(self, source, operands, context):
+        return self._single(source, operands, XOp)
 
-    @staticmethod
-    def _replace_two_qubit(src_type, tgt_type):
-        def handler(op):
-            new = tgt_type(op.control, op.target)
-            op.control_out.replace_all_uses_with(new.control_out)
-            op.target_out.replace_all_uses_with(new.target_out)
-            op.parent_block().insert_op_before(new, op)
-            op.detach()
-            op.erase()
+    def _lower_mix(self, source, operands, context):
+        return self._single(source, operands, HOp)
 
-        return handler
+    def _lower_entangle(self, source, operands, context):
+        target = CxOp(operands[0], operands[1])
+        copy_operation_metadata(source, target)
+        return [target], (target.control_out, target.target_out)
+
+    def _reject_skew(self, source, operands, context):
+        assert isinstance(source, SkewOp)
+        raise self.error(
+            context,
+            f"toy.skew(bias={source.bias.value.data}) has no Clifford decomposition",
+        )
 
 
-def compile_toy_to_cliffords(module: ModuleOp) -> ModuleOp:
-    """Return a Clifford-lowered copy of ``module``."""
-    return ToyToCliffordsCompiler().compile(module)
+def lower_toy_to_cliffords(module: ModuleOp) -> ModuleOp:
+    """Return a fresh module with toy operations lowered to Cliffords."""
+    return ToyToCliffordsLowering().run(module)

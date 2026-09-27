@@ -114,23 +114,27 @@ measure q[1] -> c[0];
     assert len(teleport.declared_result_types) == 1
     verify_module(module)
 
-    hist = dict(Machine(module, num_qubits=8, registry=_registry()).eval(shots=4000).histogram())
+    hist = dict(
+        Machine(num_qubits=8, registry=_registry())
+        .eval(module, shots=4000)
+        .histogram()
+    )
     assert set(hist) == {(0,), (1,)}
 
 
 def test_teleport_preserves_one() -> None:
     # source = X|0> = |1>; after teleportation, target should always read 1.
     module = lower(parse(_teleport_program("x")))
-    machine = Machine(module, num_qubits=8, registry=_registry())
-    hist = dict(machine.eval(shots=1000).histogram())
+    machine = Machine(num_qubits=8, registry=_registry())
+    hist = dict(machine.eval(module, shots=1000).histogram())
     assert hist == {(1,): 1000}, f"expected target=|1> deterministically; got {hist!r}"
 
 
 def test_teleport_preserves_plus_state_statistics() -> None:
     # source = H|0> = |+>; measuring target in Z basis -> 50/50.
     module = lower(parse(_teleport_program("h")))
-    machine = Machine(module, num_qubits=8, registry=_registry())
-    hist = dict(machine.eval(shots=4000).histogram())
+    machine = Machine(num_qubits=8, registry=_registry())
+    hist = dict(machine.eval(module, shots=4000).histogram())
     assert set(hist.keys()) == {(0,), (1,)}
     for key in [(0,), (1,)]:
         assert 1600 < hist[key] < 2400, f"|+> teleportation outcome {key} count {hist[key]} outside [1600, 2400]"

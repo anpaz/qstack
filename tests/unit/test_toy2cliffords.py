@@ -4,7 +4,10 @@ import pytest
 
 from qstack.dialect.cliffords import CxOp, HOp, XOp
 from qstack.dialect.toy import EntangleOp, FlipOp, MixOp, SkewOp
-from qstack.passes.toy2cliffords import compile_toy_to_cliffords
+from qstack.passes.toy2cliffords import (
+    ToyToCliffordsLoweringError,
+    lower_toy_to_cliffords,
+)
 from qstack.runtime import Machine
 from qstack.surface.lowering import lower
 from qstack.surface.parser import parse
@@ -48,7 +51,7 @@ def test_toy_bell_lowers_with_toy_ops() -> None:
 
 def test_toy_to_cliffords_replaces_supported_ops() -> None:
     module = lower(parse(_TOY_BELL))
-    compiled = compile_toy_to_cliffords(module)
+    compiled = lower_toy_to_cliffords(module)
     types = {type(op).__name__ for op in _all_ops(compiled)}
     assert "MixOp" not in types
     assert "FlipOp" not in types
@@ -59,9 +62,9 @@ def test_toy_to_cliffords_replaces_supported_ops() -> None:
 
 
 def test_compiled_module_still_verifies_and_runs() -> None:
-    module = compile_toy_to_cliffords(lower(parse(_TOY_BELL)))
+    module = lower_toy_to_cliffords(lower(parse(_TOY_BELL)))
     verify_module(module)
-    hist = dict(Machine(module, num_qubits=4).eval(shots=2000).histogram())
+    hist = dict(Machine(num_qubits=4).eval(module, shots=2000).histogram())
     # Same bell distribution as the original toy program.
     assert set(hist.keys()) <= {(0, 0), (1, 1)}
     for key in [(0, 0), (1, 1)]:
@@ -81,5 +84,5 @@ skew(0.8) q[0];
 measure q[0] -> c[0];
 """
     module = lower(parse(src))
-    with pytest.raises(NotImplementedError, match="toy.skew"):
-        compile_toy_to_cliffords(module)
+    with pytest.raises(ToyToCliffordsLoweringError, match="toy.skew"):
+        lower_toy_to_cliffords(module)

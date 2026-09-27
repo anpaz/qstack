@@ -6,6 +6,7 @@ from qstack.runtime.machine import Machine
 from qstack.runtime.noise import DepolarizingNoise, NoiseChannel, NoiselessChannel
 from qstack.runtime.qpu import QPU, QPUProtocol
 from qstack.runtime.registry import (
+    CallbackEntry,
     CallbackRegistry,
     DuplicateRegistration,
     UnregisteredCallback,
@@ -16,6 +17,7 @@ from qstack.runtime.stim_qpu import StimQPU
 
 __all__ = [
     "CallbackRegistry",
+    "CallbackEntry",
     "CPU",
     "DepolarizingNoise",
     "DuplicateRegistration",

@@ -8,7 +8,15 @@ from xdsl.dialects.builtin import ModuleOp
 from xdsl.ir import Block, SSAValue
 
 from qstack.dialect import BitType
-from qstack.dialect.core import CallOp, DecodeOp, KernelOp, MeasureOp, ReturnOp, SelectOp, UnitaryGateOp
+from qstack.dialect.core import (
+    CallOp,
+    DecodeOp,
+    KernelOp,
+    MeasureOp,
+    ReturnOp,
+    SelectOp,
+    UnitaryGateOp,
+)
 from qstack.runtime.cpu import CPU
 from qstack.runtime.noise import NoiseChannel
 from qstack.runtime.qpu import GateApplication, QPU, QPUProtocol

@@ -1,4 +1,4 @@
-from qstack.passes.rep3_phase import compile_rep3_phase, register_rep3_phase_callbacks
+from qstack.passes.rep3_phase import lower_rep3_phase
 from qstack.runtime import CallbackRegistry, Machine
 from qstack.surface.lowering import lower
 from qstack.surface.parser import parse
@@ -11,7 +11,7 @@ qreg q[1]; creg c[1]; x q[0]; measure q[0] -> c[0];
 
 
 def test_phase_rep3_is_kernel_only_and_executes() -> None:
-    output = compile_rep3_phase(lower(parse(_PROGRAM)))
+    registry = CallbackRegistry()
+    output = lower_rep3_phase(lower(parse(_PROGRAM)), registry)
     verify_module(output)
-    registry = CallbackRegistry(); register_rep3_phase_callbacks(registry)
-    assert Machine(output, num_qubits=3, registry=registry).single_shot() == [1]
+    assert Machine(num_qubits=3, registry=registry).single_shot(output) == [1]

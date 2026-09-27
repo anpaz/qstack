@@ -11,16 +11,35 @@ def _module(include: str):
 
 
 def test_machine_executes_main_only() -> None:
-    machine = Machine(_module("qstack/cliffords.inc"), num_qubits=1)
-    assert machine.single_shot() == [1]
-    assert all(result == [1] for result in machine.eval(shots=5))
+    module = _module("qstack/cliffords.inc")
+    machine = Machine(num_qubits=1)
+    assert machine.single_shot(module) == [1]
+    assert all(result == [1] for result in machine.eval(module, shots=5))
 
 
-def test_machine_selects_stim_for_cliffords() -> None:
-    assert Machine(_module("qstack/cliffords.inc"), num_qubits=1).qpu.__class__.__name__ == "StimQPU"
+def test_machine_can_evaluate_multiple_programs() -> None:
+    one = _module("qstack/cliffords.inc")
+    zero = lower(parse('''QSTACKQASM 0.1; include "qstack/cliffords.inc"; qreg q[1]; creg c[1]; measure q[0] -> c[0];'''))
+    machine = Machine(num_qubits=1)
+
+    assert machine.single_shot(one) == [1]
+    assert machine.single_shot(zero) == [0]
+    assert machine.single_shot(one) == [1]
+
+
+def test_machine_without_fixed_qpu_selects_per_evaluation() -> None:
+    clifford = _module("qstack/cliffords.inc")
+    non_clifford = lower(parse('''QSTACKQASM 0.1; include "qstack/atoms.inc"; qreg q[1]; creg c[1]; sx q[0]; measure q[0] -> c[0];'''))
+    machine = Machine(num_qubits=1)
+
+    machine.single_shot(clifford)
+    machine.single_shot(non_clifford)
+
+    assert set(machine._qpus) == {"stim", "statevector"}
 
 
 def test_machine_rejects_stim_for_non_clifford_module() -> None:
     non_clifford = lower(parse('''QSTACKQASM 0.1; include "qstack/atoms.inc"; qreg q[1]; creg c[1]; sx q[0]; measure q[0] -> c[0];'''))
+    machine = Machine(num_qubits=1, qpu="stim")
     with pytest.raises(StimCompatibilityError):
-        Machine(non_clifford, num_qubits=1, qpu="stim")
+        machine.single_shot(non_clifford)
