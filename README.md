@@ -23,6 +23,38 @@ construction. Compiler passes progressively lower them through instruction-set
 dialects, with verification boundaries between layers. The resulting modules
 can be evaluated with the included state-vector and Stim-backed runtimes.
 
+The compiler entry point returns a `CompilationResult` rather than a bare
+module:
+
+```python
+from qstack.surface import compile_qasm
+from qstack.passes import lower_cliffords_to_h2
+from qstack.verification import verify
+
+source = compile_qasm(qasm_text)
+target = lower_cliffords_to_h2(source)
+target = target.save("step.qstack.json")
+report = verify(target)
+```
+
+Each pass writes a single-step artifact containing its exact source and target
+IR plus its witness. `verify` checks the artifact hashes, independently matches
+both IR graphs against the witness, and checks each distinct circuit rule. The
+shared pass runner emits witnesses for identity-encoding transformations that
+the current builder can represent. Unsupported claim shapes and encoded QEC
+transformations still return no witness and verify as `UNSUPPORTED`. The
+initial builder covers copied structural operations and unitary circuit
+rewrites.
+
+The dense-matrix rule verifier, **Quivalence**, is a separate distribution in
+`verifiers/quivalence/`. Install it with `pip install ./verifiers/quivalence`;
+`verify(target)` discovers it through the `qstack.rule_verifiers` entry-point
+group. It checks exact circuit matrices up to its configured numeric tolerance,
+including global phase. It can also check a serialized rule without installing
+qstack. The optional MQT QCEC plugin is a second distribution in
+`verifiers/qcec/`; install it with `pip install ./verifiers/qcec` to make it
+available to `verify(target)`. The frontend result has no pass witness.
+
 ## Installation
 
 qstack requires Python 3.12 or newer. To install it in a fresh virtual
@@ -54,6 +86,7 @@ python -m pip install -e '.[jupyter]'
 - `src/qstack/surface/` parses and lowers the supported OpenQASM 3 subset.
 - `src/qstack/runtime/` provides execution, noise, and callback infrastructure.
 - `src/qstack/verifier.py` enforces qstack-specific IR invariants.
+- `verifiers/` contains independently installable circuit-rule verifiers.
 - `tests/` contains unit and end-to-end compiler tests.
 
 The notebooks in `examples/` demonstrate application construction, compilation,
