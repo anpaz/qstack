@@ -13,6 +13,7 @@ from typing import Any, Literal
 
 from xdsl.dialects.builtin import ModuleOp
 
+from qstack.compilation import CompilationResult
 from qstack.runtime.analysis import StimCompatibilityError, check_stim_compatible
 from qstack.runtime.cpu import CPU
 from qstack.runtime.evaluator import ModuleEvaluator
@@ -52,13 +53,13 @@ class Machine:
             raise StimCompatibilityError("StimQPU does not support legacy NoiseChannel")
         self.cpu = CPU(registry)
 
-    def single_shot(self, module: ModuleOp) -> list[int]:
+    def single_shot(self, module: ModuleOp | CompilationResult) -> list[int]:
         """Run the unique ``qstack.kernel @main`` once."""
         return self._evaluator(module).run_main()
 
     def eval(
         self,
-        module: ModuleOp,
+        module: ModuleOp | CompilationResult,
         *,
         shots: int = 1000,
     ) -> Results:
@@ -66,7 +67,9 @@ class Machine:
         evaluator = self._evaluator(module)
         return Results([evaluator.run_main() for _ in range(shots)])
 
-    def _evaluator(self, module: ModuleOp) -> ModuleEvaluator:
+    def _evaluator(self, module: ModuleOp | CompilationResult) -> ModuleEvaluator:
+        if isinstance(module, CompilationResult):
+            module = module.module
         return ModuleEvaluator(
             num_qubits=self._num_qubits,
             module=module,

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import math
 
-from xdsl.dialects.builtin import ModuleOp
 from xdsl.ir import Operation, SSAValue
 
+from qstack.compilation import CompilationResult
 from qstack.dialect.cliffords import CxOp, CzOp, HOp, SOp, XOp, YOp, ZOp
 from qstack.dialect.h2 import RzOp, U1Op, ZzOp
 from qstack.passes.base import LoweringPass, copy_operation_metadata
@@ -87,6 +87,6 @@ class CliffordsToH2Lowering(LoweringPass):
         return self._finish(source, [*before, *middle, *after], control, target)
 
 
-def lower_cliffords_to_h2(module: ModuleOp) -> ModuleOp:
+def lower_cliffords_to_h2(result: CompilationResult) -> CompilationResult:
     """Return a fresh module with canonical Cliffords lowered to H2."""
-    return CliffordsToH2Lowering().run(module)
+    return CliffordsToH2Lowering().run(result)

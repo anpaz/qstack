@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quivalence"
+version = "0.1.0"
+description = "Standalone dense-matrix verifier for serialized quantum circuit rules"
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = ["numpy>=1.26"]
+
+[project.optional-dependencies]
+dev = ["pytest>=9"]
+
+[project.entry-points."qstack.rule_verifiers"]
+matrix = "quivalence:verify_rule"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["quivalence*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

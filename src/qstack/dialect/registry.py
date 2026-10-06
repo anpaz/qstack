@@ -23,6 +23,11 @@ def register_isa_dialect(dialect: Dialect) -> None:
     _DIALECTS[dialect.name] = dialect
 
 
+def registered_isa_dialects() -> tuple[Dialect, ...]:
+    """Return the ISA dialects available to the artifact parser."""
+    return tuple(_DIALECTS.values())
+
+
 def get_isa_dialect(name: str) -> Dialect:
     try:
         return _DIALECTS[name]
@@ -40,4 +45,3 @@ def get_isa_op(isa_name: str, gate_name: str) -> type[IRDLOperation]:
         f"include declares gate {gate_name!r} for ISA {isa_name!r}, "
         f"but IR op {op_name!r} was not found"
     )
-

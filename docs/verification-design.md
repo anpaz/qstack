@@ -14,7 +14,7 @@ Section 2 gives the semantic model, Section 3 the pass contract, Section 4 the c
 - **P2. The pass is untrusted but cooperative.** A pass reports what it did, and everything it reports is checked before it is used. A false witness is refuted; one the verifier cannot check yields UNSUPPORTED. A witness affects what can be verified, never what counts as correct.
 - **P3. Existing callbacks are interfaces.** A pass preserves every callback invocation in the source module, including its callback source and its order and multiplicity on that source's host wire, and never reasons about a callback's host implementation.
 - **P4. New callback behavior is an obligation.** When a pass introduces a decoder or selector, the verifier derives the classical behavior it must have and reports it for a classical verifier to check.
-- **P5. Rules are checked; kernels are composed.** Most quantum verifiers today compare the full source and target circuits for equivalence. qstack does not, for two reasons: a kernel's behavior depends on opaque callbacks, so it cannot be computed at all, and whole-program comparison grows exponentially with program size, so it does not scale. Instead the verifier checks that each small replacement preserves the semantics of the operation it replaces, and lifts those local results by composition to `@main`. Anything that does not arrive as such replacements is UNSUPPORTED, not guessed at.
+- **P5. Graphs are matched; rules are checked.** qstack's linear dataflow lets it check that the source and target have the same graph of claimed computations after each paired site is treated as one node. The encoding relates the source and target wires at each node's boundary. Separately, rule verifiers check the quantum behavior inside those nodes; they need only the small source and target fragments, not a whole kernel with opaque callbacks. These local results compose to `@main`. A missing claim is REFUTED; a complete claim whose obligation cannot be checked is UNSUPPORTED.
 - **P6. Failures are attributable.** A refutation names the rule, site, kernel, branch, or callback interface that failed.
 
 ### 1.2 Noiseless boundary
@@ -52,6 +52,15 @@ This graph view is not a new representation: linearity gives every qubit and bit
 The operations are the nodes; the SSA values are the wires. The sources are the borrowed inputs and the fresh `|0⟩` qubits; the sink is `qstack.return`. A `qstack.measure` is an interior node where a qubit wire ends and a bit wire begins. A `qstack.call` is a single opaque node; the callee's internals are not part of the caller's graph. A `qstack.select` references its case kernels, each a graph of its own.
 
 Two kernel bodies are the same kernel when their graphs match: same nodes, symbols, attributes, and wiring. In particular, the order of two operations connected by no wire is not part of the kernel graph. This is safe in the noiseless model, where operations on disjoint qubits commute: emitting them in either order produces the same graph. Order matters only where a wire carries it, and one more wire is needed for the order that matters to callbacks.
+
+This graph structure divides validation into two checks:
+
+1. **Graph agreement, checked by qstack.** Treat each paired claim site as one node and check that the source and target reduce to the same **graph of claims**. Each edge pairs an ordered group of source values with an ordered group of target values; qstack obtains qubit and bit types from the modules. The pass's encoding relates the groups on quantum edges; bits are paired by equality. The graph also carries the existing callback-source host wires, so their order cannot change. Every operation must be covered, each region must match its claim, and the paired regions must connect to the same boundary edges.
+2. **Local semantics, checked by rule verifiers.** Check that the source and target computations inside each circuit rule or unitary identity implementation preserve the relation at those boundaries. An external circuit verifier can discharge this check using only the paired fragments, gate semantics, and encoding; it need not parse the kernel or its witness graph.
+
+The checks meet at the claim boundaries: graph agreement alone does not establish that a replacement computes the right result, while a valid rule alone does not establish that the pass applied it at the claimed sites.
+
+For example, a repetition encoding pairs one logical qubit edge with an ordered group of three physical qubit wires. The source `X` and its three target `X` operations form one claim node with one input and one output edge in this shared graph. An allocation claim establishes the paired edge for a fresh logical qubit; a measurement claim ends it and restores one paired result bit through a decoder. Their local obligations remain those of Sections 3.2 and 4.3. Thus widening the representation changes the values associated with an edge, while the claim graph still records the same flow of logical computation. New callback sources and their obligations are handled separately under Sections 3.3 and 4.3.
 
 ### 2.3 Callback sources and host wires
 
@@ -234,7 +243,7 @@ The bit relation is equality, including at a measurement boundary. When a pass r
 
 The commuting square above defines correctness; it is not the algorithm used to check a pass. The verifier cannot compute `⟦K_S⟧` or `⟦K_T⟧` directly because kernel behavior depends on opaque callback implementations, and correctness must hold for every callback registry.
 
-Instead, the verifier checks that each witnessed replacement has the same local effect as the fragment it replaces (Sections 4.1 and 4.2), checks that every existing host wire is preserved (Section 2.3), and proves that those local facts compose into the square (Section 4.4).
+Instead, qstack checks that the claims cover and match both kernel graphs and induce the same graph of claims, including every existing host wire (Sections 2.2 and 4.2). Rule verifiers check the local effects of the paired fragments (Section 4.1). Together with the derived classical obligations of Section 4.3, those facts compose into the square (Section 4.4).
 
 ## 3. The pass contract
 
@@ -346,12 +355,12 @@ To discharge these obligations, the verifier tries the available backends in tur
 
 ### 4.2 Checking the claims
 
-The claims are checked structurally against both graphs:
+For each source-target kernel pair, qstack replaces every paired claim site by one abstract node. An empty region, such as the target of `H;H` cancellation, puts that node on the forwarded edge; an allocation claim puts it at the kernel's entry boundary. Each node's boundary bindings pair source and target values into the edges of a shared claim graph. The source and target graphs must both match this graph after their claimed sites are replaced; the encoding determines how many target qubits represent each source unit, while bits use equality. This graph check is independent of the semantic rule checks in Section 4.1. It consists of:
 
 1. **Explicit partition.** Every node of the source and target modules carries exactly one known claim identifier, every identifier resolves to one paired claim record, and the record lists exactly the nodes carrying it. There is no identity fallback and no node is shared.
 2. **Sites.** Each multi-node identity or sub-graph region holds together: no path leaves the region and re-enters it through an outside node. This is what lets the region stand alone as one action.
 3. **Instantiation.** A unitary identity region has exactly one source operation and the target boundary used by its semantic check; a measurement identity has the measure-tuple-decode shape above; and structural identity claims satisfy the per-operation conditions in Section 3.2. Each sub-graph site matches its rule's source body up to wire renaming, and its replacement matches the target body under the same renaming. An inline's copy must be the callee's source body with arguments substituted and names renamed. Freshness (C2, C3, C5) is checked against the source module's callback sources and symbols.
-4. **Claim boundaries and host wires.** The wiring between paired claims must correspond through `R_V` and `R_bit`; the sequence of pre-existing callback nodes on every existing host wire is identical on both sides; and introduced callbacks appear only on fresh host wires inside the claims that own them. After checking the claims, no remainder exists on either graph.
+4. **Shared graph, boundaries, and host wires.** The source and target claim nodes connect through the same paired boundary edges under `R_V` and `R_bit`, including the kernel's inputs and return. The sequence of pre-existing callback nodes on every existing host wire is identical on both sides; introduced callbacks appear only on fresh host wires inside the claims that own them. After checking the claims, no remainder exists on either graph.
 
 These checks are structural; Section 4.1 discharges the semantic obligations they identify. A witness that makes a false statement, such as a site that does not match its rule, or that is silent about any node or changed region, is REFUTED. The failure names the claim, site, or node.
 

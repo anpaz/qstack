@@ -15,9 +15,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from xdsl.dialects.builtin import ModuleOp
 from xdsl.ir import Operation, SSAValue
 
+from qstack.compilation import CompilationResult
 from qstack.dialect.cliffords import HOp, SOp, XOp, YOp, ZOp
 from qstack.passes.base import LoweringContext, OptimizationPass, QubitGroup, Replacement
 
@@ -109,10 +109,10 @@ class CliffordPeepholeOptimization(OptimizationPass):
         return replacements
 
 
-def optimize_cliffords(module: ModuleOp) -> ModuleOp:
+def optimize_cliffords(result: CompilationResult) -> CompilationResult:
     """Return a fresh module after one non-overlapping Clifford peephole sweep.
 
     The input module is not modified.  Invoke this function again when
     replacements from the first sweep should participate in further matches.
     """
-    return CliffordPeepholeOptimization().run(module)
+    return CliffordPeepholeOptimization().run(result)

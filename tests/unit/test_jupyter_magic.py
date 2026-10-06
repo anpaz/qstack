@@ -8,6 +8,7 @@ from IPython.testing.globalipapp import start_ipython  # noqa: E402
 from IPython.core.getipython import get_ipython  # noqa: E402
 from xdsl.dialects.builtin import ModuleOp  # noqa: E402
 
+from qstack.compilation import CompilationResult  # noqa: E402
 from qstack.jupyter import load_ipython_extension  # noqa: E402
 from qstack.visualize import dataflow  # noqa: E402
 
@@ -50,18 +51,20 @@ def ip():
 def test_qasm_magic_binds_module_in_user_namespace(ip) -> None:
     ip.run_cell_magic("qasm", "", PREPARE_ONE)
     assert "module" in ip.user_ns
-    assert isinstance(ip.user_ns["module"], ModuleOp)
+    assert isinstance(ip.user_ns["module"], CompilationResult)
+    assert isinstance(ip.user_ns["module"].module, ModuleOp)
+    assert ip.user_ns["module"].witness is None
 
 
 def test_qasm_magic_binds_under_custom_name(ip) -> None:
     ip.run_cell_magic("qasm", "mymod", PREPARE_ONE)
-    assert isinstance(ip.user_ns["mymod"], ModuleOp)
+    assert isinstance(ip.user_ns["mymod"], CompilationResult)
     assert "module" not in ip.user_ns
 
 
 def test_qasm_magic_returns_module(ip) -> None:
     result = ip.run_cell_magic("qasm", "", PREPARE_ONE)
-    assert isinstance(result, ModuleOp)
+    assert isinstance(result, CompilationResult)
 
 
 def test_extension_exposes_dataflow_helper(ip) -> None:

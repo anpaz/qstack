@@ -10,19 +10,16 @@ Usage in a notebook::
     ...
 
 The cell body is parsed by :mod:`qstack.surface.parser`, lowered to a
-``ModuleOp`` via :mod:`qstack.surface.lowering`, verified, and bound
+``CompilationResult`` via :mod:`qstack.surface`, verified structurally, and bound
 in the user namespace under the name given on the magic line (default
-``module``). The cell's *display value* is the ``ModuleOp`` itself, so
-Jupyter will render its textual IR.
+``module``). The result's ``.module`` holds the textual IR.
 """
 
 from __future__ import annotations
 
 from IPython.core.magic import Magics, cell_magic, magics_class
 
-from qstack.surface.lowering import lower
-from qstack.surface.parser import parse
-from qstack.verifier import verify_module
+from qstack.surface import compile_qasm
 from qstack.visualize import dataflow
 
 
@@ -31,10 +28,9 @@ class QStackMagics(Magics):
     @cell_magic
     def qasm(self, line: str, cell: str):
         var_name = line.strip() or "module"
-        module = lower(parse(cell))
-        verify_module(module)
-        self.shell.user_ns[var_name] = module
-        return module
+        result = compile_qasm(cell)
+        self.shell.user_ns[var_name] = result
+        return result
 
 
 def load_ipython_extension(ipython) -> None:

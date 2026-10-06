@@ -14,6 +14,8 @@ is decoded only at the measurement boundary.
 from __future__ import annotations
 
 from xdsl.dialects.builtin import ModuleOp
+
+from qstack.compilation import CompilationResult
 from xdsl.ir import Operation
 
 from qstack.dialect import QubitType
@@ -156,8 +158,8 @@ class Rep3BitLowering(LoweringPass):
         return operations, (decode.result,)
 
 
-def lower_rep3_bit(module: ModuleOp, registry: CallbackRegistry) -> ModuleOp:
+def lower_rep3_bit(result: CompilationResult, registry: CallbackRegistry) -> CompilationResult:
     """Return a bit-repetition-lowered module and install its decoder."""
-    output = Rep3BitLowering().run(module)
+    output = Rep3BitLowering().run(result)
     _register_callbacks(registry)
     return output

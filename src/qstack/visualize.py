@@ -13,6 +13,7 @@ from typing import Literal
 from xdsl.dialects.builtin import ModuleOp
 from xdsl.ir import SSAValue
 
+from qstack.compilation import CompilationResult
 from qstack.dialect.core import (
     BitType,
     CallOp,
@@ -163,7 +164,7 @@ class DataflowDiagram:
 
 
 def dataflow(
-    module: ModuleOp, *, kernel: str = "main", inline_calls: bool = True
+    module: ModuleOp | CompilationResult, *, kernel: str = "main", inline_calls: bool = True
 ) -> DataflowDiagram:
     """Return the SSA dataflow diagram for ``@kernel`` in ``module``.
 
@@ -175,6 +176,8 @@ def dataflow(
     Raises:
         ValueError: If the requested kernel is absent.
     """
+    if isinstance(module, CompilationResult):
+        module = module.module
     target = next(
         (
             op

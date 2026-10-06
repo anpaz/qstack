@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, TypeAlias, cast
@@ -9,6 +10,7 @@ from typing import Any, TypeAlias, cast
 from xdsl.dialects.builtin import ArrayAttr, ModuleOp, StringAttr
 from xdsl.ir import Attribute, Block, Operation, Region, SSAValue
 
+from qstack.compilation import CompilationResult, module_text
 from qstack.dialect import QubitType
 from qstack.dialect.core import (
     CallOp,
@@ -29,6 +31,7 @@ from qstack.verifier import (
     verify_module,
 )
 
+logger = logging.getLogger("qstack.verification.builder")
 
 class PassError(Exception):
     """Raised when a qstack pass cannot transform its input."""
@@ -176,6 +179,7 @@ class LoweringContext:
     helper_kernels: list[KernelOp] = field(default_factory=list)
     data: dict[str, Any] = field(default_factory=dict)
     current_kernel: str | None = None
+    replacements: dict[str, tuple[Replacement, ...]] = field(default_factory=dict)
 
     @property
     def pass_index(self) -> int:
@@ -212,8 +216,15 @@ class LoweringPass:
     encoding = Encoding.identity()
     pass_id: str | None = None
 
-    def run(self, module: ModuleOp) -> ModuleOp:
+    def run(self, result: CompilationResult) -> CompilationResult:
+        """Compile one result and record this step and any supported witness."""
+        # Directly constructed IR may still enter the pipeline at a pass.
+        # The result remains the only output shape.
+        if isinstance(result, ModuleOp):
+            result = CompilationResult.from_module(result)
+        module = result.module
         verify_module(module)
+        source_snapshot = module_text(module)
 
         context = self.prepare_run(module)
 
@@ -245,7 +256,21 @@ class LoweringPass:
         output.location = module.location
         output.verify()
         verify_module(output)
-        return output
+        witness = None
+        if self.encoding.is_identity:
+            from qstack.verification.builder import witness_from_replacements
+
+            try:
+                witness = witness_from_replacements(
+                    module, output, context.replacements, encoding=self.encoding
+                )
+            except NotImplementedError as exc:
+                # A pass may use a claim shape the current builder cannot encode.
+                # Its compilation result stays explicitly unverified.
+                logger.debug("%s: witness not built: %s", type(self).__name__, exc)
+        return CompilationResult.from_step(
+            result, output, witness, source_snapshot=source_snapshot
+        )
 
     def prepare_run(self, module: ModuleOp) -> LoweringContext:
         """Analyze the source module and create this invocation's run context."""
@@ -325,6 +350,7 @@ class LoweringPass:
 
         # Allocations are entry arguments, not body operations.  Prepare their
         # logical zero before handing the entry correspondence to lower_body.
+        preparations: list[Replacement] = []
         for source_value in source.body.block.args[: source.allocation_count]:
             incoming = value_map[source_value]
             operations, outputs = self.prepare_encoded_zero(incoming, context)
@@ -335,6 +361,7 @@ class LoweringPass:
                 outputs=self._pair_values((source_value,), outputs, context),
             )
             self._check_and_apply(preparation, target_block, value_map, context)
+            preparations.append(preparation)
 
         replacements = self.lower_body(
             source_operations, tuple(value_map.items()), context
@@ -350,6 +377,7 @@ class LoweringPass:
         )
         for replacement in replacements:
             self._apply_replacement(replacement, target_block, value_map)
+        context.replacements[source.sym_name.data] = (*preparations, *replacements)
 
         # The body hook owns neither the signature nor the allocation boundary.
         target = KernelOp(

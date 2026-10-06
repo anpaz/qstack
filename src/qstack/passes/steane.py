@@ -17,6 +17,8 @@ import logging
 from collections.abc import Sequence
 
 from xdsl.dialects.builtin import ModuleOp, SymbolRefAttr
+
+from qstack.compilation import CompilationResult
 from xdsl.ir import Block, Operation, Region, SSAValue
 
 from qstack.dialect import BitType, QubitType
@@ -437,8 +439,8 @@ def _correction_kernel(name: str, gate_type=None, index: int | None = None) -> K
     )
 
 
-def lower_steane(module: ModuleOp, registry: CallbackRegistry) -> ModuleOp:
+def lower_steane(result: CompilationResult, registry: CallbackRegistry) -> CompilationResult:
     """Return a Steane-lowered module and install its callback implementations."""
-    output = SteaneLowering().run(module)
+    output = SteaneLowering().run(result)
     _register_callbacks(registry)
     return output

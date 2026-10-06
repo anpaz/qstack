@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from xdsl.dialects.builtin import ModuleOp
 from xdsl.ir import Operation, SSAValue
 
+from qstack.compilation import CompilationResult
 from qstack.dialect.cliffords import CxOp, HOp, XOp
 from qstack.dialect.toy import EntangleOp, FlipOp, MixOp, SkewOp
 from qstack.passes.base import (
@@ -67,6 +67,6 @@ class ToyToCliffordsLowering(LoweringPass):
         )
 
 
-def lower_toy_to_cliffords(module: ModuleOp) -> ModuleOp:
+def lower_toy_to_cliffords(result: CompilationResult) -> CompilationResult:
     """Return a fresh module with toy operations lowered to Cliffords."""
-    return ToyToCliffordsLowering().run(module)
+    return ToyToCliffordsLowering().run(result)

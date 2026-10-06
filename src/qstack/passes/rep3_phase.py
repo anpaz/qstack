@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from xdsl.dialects.builtin import ModuleOp
 
+from qstack.compilation import CompilationResult
 from qstack.dialect.cliffords import CxOp, CzOp, HOp, XOp, ZOp
 from qstack.dialect.core import DecodeOp, DecoderOp, MeasureOp
 from qstack.passes.base import (
@@ -182,8 +183,8 @@ class Rep3PhaseLowering(LoweringPass):
         return operations, (decode.result,)
 
 
-def lower_rep3_phase(module: ModuleOp, registry: CallbackRegistry) -> ModuleOp:
+def lower_rep3_phase(result: CompilationResult, registry: CallbackRegistry) -> CompilationResult:
     """Return a phase-repetition-lowered module and install its decoder."""
-    output = Rep3PhaseLowering().run(module)
+    output = Rep3PhaseLowering().run(result)
     _register_callbacks(registry)
     return output

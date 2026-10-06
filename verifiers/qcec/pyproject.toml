@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qstack-qcec-verifier"
+version = "0.1.0"
+description = "MQT QCEC plugin for serialized qstack circuit rules"
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = ["mqt.qcec>=3.10,<4", "qiskit>=2.1"]
+
+[project.optional-dependencies]
+dev = ["pytest>=9"]
+
+[project.entry-points."qstack.rule_verifiers"]
+qcec = "qcec_verifier:verify_rule"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["qcec_verifier*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
