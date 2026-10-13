@@ -5,6 +5,8 @@ qstack is a research framework for building quantum compiler stacks on top of
 a surface language based on a subset of OpenQASM 3, compiler passes,
 verification, and execution backends in one Python codebase.
 
+qstack focuses on the quantum part of hybrid quantum-classical programs. All classical computation, such as decoders, branch conditions, or arithmetic on measurement results, sits behind opaque callbacks: the IR records which measurement bits flow into each callback and which quantum behavior it may select, but never the callback's body. Callbacks are host-language implementations registered by name, and compiler passes and verifiers never inspect them. As a result, qstack works with any hybrid program regardless of what evaluates its classical side, whether that is Python, a decoder library, an FPGA, or a separate classical runtime, and its passes and verification can concentrate entirely on quantum structure while preserving every callback boundary exactly.
+
 A central goal of qstack is **pass verification across every layer of the
 stack**. Each transformation should produce IR whose structure, types, and
 linear use of quantum and classical values can be checked before the next
