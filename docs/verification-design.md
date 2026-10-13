@@ -14,8 +14,8 @@ Section 2 gives the semantic model, Section 3 the pass contract, Section 4 the c
 - **P2. The pass is untrusted but cooperative.** A pass reports what it did, and everything it reports is checked before it is used. A false witness is refuted; one the verifier cannot check yields UNSUPPORTED. A witness affects what can be verified, never what counts as correct.
 - **P3. Existing callbacks are interfaces.** A pass preserves every callback invocation in the source module, including its callback source and its order and multiplicity on that source's host wire, and never reasons about a callback's host implementation.
 - **P4. New callback behavior is an obligation.** When a pass introduces a decoder or selector, the verifier derives the classical behavior it must have and reports it for a classical verifier to check.
-- **P5. Graphs are matched; rules are checked.** qstack's linear dataflow lets it check that the source and target have the same graph of claimed computations after each paired site is treated as one node. The encoding relates the source and target wires at each node's boundary. Separately, rule verifiers check the quantum behavior inside those nodes; they need only the small source and target fragments, not a whole kernel with opaque callbacks. These local results compose to `@main`. A missing claim is REFUTED; a complete claim whose obligation cannot be checked is UNSUPPORTED.
-- **P6. Failures are attributable.** A refutation names the rule, site, kernel, branch, or callback interface that failed.
+- **P5. Graphs are matched; rules are checked.** Every claim applies a rule at one place in a kernel. qstack's linear dataflow lets it check that a kernel's claims form a graph that expands into both the source and the target kernel; the encoding relates the source and target wires at each claim's boundary. Separately, rule verifiers check that each rule holds; they need only its two small patterns, not a whole kernel with opaque callbacks. These local results compose to `@main`. A missing claim is REFUTED; a complete set of claims whose rules cannot be checked is UNSUPPORTED.
+- **P6. Failures are attributable.** A refutation names the rule, claim, kernel, outcome, or callback interface that failed.
 
 ### 1.2 Noiseless boundary
 
@@ -55,12 +55,12 @@ Two kernel bodies are the same kernel when their graphs match: same nodes, symbo
 
 This graph structure divides validation into two checks:
 
-1. **Graph agreement, checked by qstack.** Treat each paired claim site as one node and check that the source and target reduce to the same **graph of claims**. Each edge pairs an ordered group of source values with an ordered group of target values; qstack obtains qubit and bit types from the modules. The pass's encoding relates the groups on quantum edges; bits are paired by equality. The graph also carries the existing callback-source host wires, so their order cannot change. Every operation must be covered, each region must match its claim, and the paired regions must connect to the same boundary edges.
-2. **Local semantics, checked by rule verifiers.** Check that the source and target computations inside each circuit rule or unitary identity implementation preserve the relation at those boundaries. An external circuit verifier can discharge this check using only the paired fragments, gate semantics, and encoding; it need not parse the kernel or its witness graph.
+1. **Graph agreement, checked by qstack.** A pass records a list of claims for each kernel. Each claim applies a **rule**, a pair of small source and target patterns, at one place in the kernel (Section 3.2). The claims form a **claim graph**: each claim is a node with its rule's inputs and outputs, and the edges are the claims' bindings. qstack checks that the claim graph is linear, acyclic, and well typed; that expanding it with every rule's source pattern gives the source kernel graph; and that expanding it with every rule's target pattern gives the target kernel graph. On the target side, each qubit edge of the claim graph stands for a bundle of target qubit edges, as the encoding dictates, while bit edges stand for single edges. The claim graph also carries the existing callback-source host wires, so their order cannot change.
+2. **Local semantics, checked by rule verifiers.** Check that each rule holds: that its target pattern implements its source pattern through the encoding. A rule is checked once, however many claims name it, using only its two patterns, gate semantics, and the encoding; the verifier need not parse the kernel or its claim graph.
 
-The checks meet at the claim boundaries: graph agreement alone does not establish that a replacement computes the right result, while a valid rule alone does not establish that the pass applied it at the claimed sites.
+The checks meet at the claim boundaries: graph agreement alone does not establish that a replacement computes the right result, while a valid rule alone does not establish that the pass applied it at the claimed places.
 
-For example, a repetition encoding pairs one logical qubit edge with an ordered group of three physical qubit wires. The source `X` and its three target `X` operations form one claim node with one input and one output edge in this shared graph. An allocation claim establishes the paired edge for a fresh logical qubit; a measurement claim ends it and restores one paired result bit through a decoder. Their local obligations remain those of Sections 3.2 and 4.3. Thus widening the representation changes the values associated with an edge, while the claim graph still records the same flow of logical computation. New callback sources and their obligations are handled separately under Sections 3.3 and 4.3.
+For example, the three-qubit repetition encoding pairs one source qubit edge with a bundle of three target qubit edges. A claim of the rule X3, whose source pattern is one `x` and whose target pattern applies `x` to each qubit of a bundle, is one node with one input and one output edge in the claim graph. An allocation rule starts the bundle for a fresh source qubit; a measurement rule ends it and restores one result bit through a decoder. Their checks are those of Sections 3.2 and 4.3. Thus widening the representation changes what each edge stands for in the target, while the claim graph still records the same flow of source computation. New callback sources and their obligations are handled separately under Sections 3.3 and 4.3.
 
 ### 2.3 Callback sources and host wires
 
@@ -165,7 +165,7 @@ A program exposes behavior to the host in two places: when it delivers bits to a
 
 A call from one kernel to another is not a host interface. Its arguments and results remain internal to the qstack program, and the compiler may change their representation. For example, a source call that passes one qubit may become a target call that passes an encoded block of qubits. No host code observes that change.
 
-Kernel boundaries are nevertheless **verification boundaries**. Because each source-target kernel pair is verified independently, their signatures must correspond through the representation relation: source and target qubit tuples are related by the pass's encoding applied to the appropriate representation units, while their bits are equal under `R_bit`. This allows the verifier to use a callee's result when checking its caller without inspecting the callee's graph.
+Kernel boundaries are nevertheless **verification boundaries**. Because each source-target kernel pair is verified independently, their signatures must correspond through the representation relation: each source qubit corresponds to a bundle of target qubits related by the pass's encoding, while their bits are equal under `R_bit`. This allows the verifier to use a callee's result when checking its caller without inspecting the callee's graph.
 
 A pass may therefore change internal measurement, encoding, and decoding plumbing, provided that:
 
@@ -175,15 +175,15 @@ A pass may therefore change internal measurement, encoding, and decoding plumbin
 
 ### 2.5 The correctness statement
 
-A pass declares one encoding isometry `V`, from the state space of an ordered source representation unit of `M` qubits to that of an ordered target unit of `N` qubits. This covers a one-to-one representation on distinct wire identities, a one-to-many code block, and a general `M`-to-`N` encoding. A pass that preserves representation declares the identity isometry. Each claim records which source and target wires instantiate the pass's fixed representation units.
+A pass declares one encoding isometry `E`, from the states of one qubit to the states of `n` qubits. For the three-qubit repetition code, `E|0⟩ = |000⟩` and `E|1⟩ = |111⟩`. A pass that preserves representation declares `E = I`, with `n = 1`. Each source qubit is represented by a bundle of `n` target qubits, in a fixed order.
 
-Together with equality on bits, this encoding induces the **representation relation** used below. For a source tuple state `ρ_S` and its corresponding target tuple state `ρ_T`, the quantum relation induced by `V` is:
+Together with equality on bits, this encoding induces the **representation relation** used below. For a state `ρ_S` of `k` source qubits and the state `ρ_T` of their `k` bundles, the quantum relation induced by `E` is:
 
 ```
-R_V(ρ_S, ρ_T)  iff  ρ_T = V ρ_S V†.
+R_E(ρ_S, ρ_T)  iff  ρ_T = E^⊗k ρ_S (E^⊗k)†.
 ```
 
-Thus the target state must lie in the image of `V`. Bits use the same relation in every pass:
+Thus the target state must lie in the image of `E^⊗k`. Bits use the same relation in every pass:
 
 ```
 R_bit(b_S, b_T)  iff  b_S = b_T.
@@ -191,7 +191,7 @@ R_bit(b_S, b_T)  iff  b_S = b_T.
 
 Bits use equality because existing callbacks are opaque: changing a bit could change callback behavior. Thus every pre-existing callback must receive exactly the source bit tuple, and independent kernel checks require the same equality at every kernel boundary. Internal target measurement bits must be decoded back to this equality before crossing one.
 
-At a kernel boundary containing `k` independent representation units, the induced encoding is `V^⊗k`. This is one pass-level `V` applied once per representation unit, not one separately declared isometry per wire or claim. It applies to the complete joint state, preserving correlations and entanglement.
+At a kernel boundary with `k` qubits, the induced encoding is `E^⊗k`. This is one pass-level `E` applied once per source qubit, not one separately declared isometry per wire or claim. It applies to the complete joint state, preserving correlations and entanglement.
 
 #### Kernel behavior by outcome
 
@@ -205,12 +205,12 @@ The trace of `ρ'_i` is the probability of outcome `i`, and the traces of all ou
 
 #### When two kernels are related
 
-Run the source kernel `K_S` on `ρ`. If its input contains `k_in` representation units, run the target kernel `K_T` on the related input `γ = V^⊗k_in ρ (V^⊗k_in)†`:
+Run the source kernel `K_S` on `ρ`. If its input contains `k_in` qubits, run the target kernel `K_T` on the related input `γ = E^⊗k_in ρ (E^⊗k_in)†`:
 
 ```mermaid
 flowchart LR
     S(["ρ"]) -- "⟦K_S⟧" --> S2(["{ (i, ρ'ᵢ) }"])
-    T(["γ = V^⊗kᵢₙ ρ (V^⊗kᵢₙ)†"]) -- "⟦K_T⟧" --> T2(["{ (i, γ'ᵢ) }"])
+    T(["γ = E^⊗kᵢₙ ρ (E^⊗kᵢₙ)†"]) -- "⟦K_T⟧" --> T2(["{ (i, γ'ᵢ) }"])
     S -. "R" .- T
     S2 -. "R" .- T2
 ```
@@ -220,10 +220,10 @@ Both kernels must return bits with the same arity and meaning, so their outcome-
 The kernels are related if, for every input `ρ` and every returned-bit outcome `i`:
 
 ```
-γ'_i  =  V^⊗k_out ρ'_i (V^⊗k_out)†
+γ'_i  =  E^⊗k_out ρ'_i (E^⊗k_out)†
 ```
 
-Here `k_out` is the number of returned representation units. In words: for each classical outcome, the target kernel's remaining quantum state must represent the source state through the pass's encoding. Because an isometry preserves trace, the two kernels also assign the same probability to that outcome.
+Here `k_out` is the number of returned qubits. In words: for each classical outcome, the target kernel's remaining quantum state must represent the source state through the pass's encoding. Because an isometry preserves trace, the two kernels also assign the same probability to that outcome.
 
 This one equation preserves all externally visible behavior:
 
@@ -237,13 +237,13 @@ The statement also covers consumed borrowed qubits and escaping fresh qubits bec
 
 #### Encoded measurement and decoder obligations
 
-The bit relation is equality, including at a measurement boundary. When a pass replaces source measurement with measurements of the represented target tuple, the target's raw measurement bits are internal. A fresh opaque decoder must turn them into the source-level bit or bit tuple that would have left the source measurement. The verifier derives this finite classical requirement from the measurement identity claim and reports it as an obligation; a classical verifier checks the registered decoder implementation. The decoder's required map is therefore not part of the representation relation or its declaration. For the three-qubit repetition encoding, the derived requirement is majority vote.
+The bit relation is equality, including at a measurement boundary. When a pass replaces source measurement with measurements of the represented target tuple, the target's raw measurement bits are internal. A fresh opaque decoder must turn them into the source-level bit or bit tuple that would have left the source measurement. The verifier derives this finite classical requirement from the measurement rule and reports it as an obligation; a classical verifier checks the registered decoder implementation. The decoder's required map is therefore not part of the representation relation or its declaration. For the three-qubit repetition encoding, the derived requirement is majority vote.
 
 #### What the verifier checks
 
 The commuting square above defines correctness; it is not the algorithm used to check a pass. The verifier cannot compute `⟦K_S⟧` or `⟦K_T⟧` directly because kernel behavior depends on opaque callback implementations, and correctness must hold for every callback registry.
 
-Instead, qstack checks that the claims cover and match both kernel graphs and induce the same graph of claims, including every existing host wire (Sections 2.2 and 4.2). Rule verifiers check the local effects of the paired fragments (Section 4.1). Together with the derived classical obligations of Section 4.3, those facts compose into the square (Section 4.4).
+Instead, qstack checks that each kernel's claims form a claim graph that expands into both kernel graphs, including every existing host wire (Sections 2.2 and 4.2). Rule verifiers check that every rule the claims name holds (Section 4.1). Together with the derived classical obligations of Section 4.3, those facts compose into the square (Section 4.4).
 
 ## 3. The pass contract
 
@@ -251,71 +251,80 @@ Instead, qstack checks that the claims cover and match both kernel graphs and in
 
 A pass emits, alongside its target module, a witness containing:
 
-1. its **encoding isometry**: the pass's single `V`, including the identity isometry for a same-representation pass;
-2. the **rules** its sub-graph claims reference (Section 3.2);
-3. the **claims**: an explicit claim identifier and claim kind for every node of the source and target modules, with the source and target regions of each claim recorded as one pair; and
-4. each claim's **arguments**, such as an inline's callee or a correction case's error tags.
+1. its **encoding isometry**: the pass's single `E`, including `E = I` for a same-representation pass;
+2. the **rules** its claims name (Section 3.2); and
+3. the **claims** of each kernel: each claim names one rule and binds the rule's inputs and outputs to the edges that enter and leave the place where it was applied.
 
-The witness is bookkeeping a rewrite driver records as it applies each claim, so pass authors do not write witnesses by hand. This sets the scope deliberately: qstack verifies passes built on its own pass framework, cooperative but untrusted, and does not try to reconstruct what an uninstrumented third-party pass did from the source and target modules alone.
+Error tags are not part of the witness: they are annotations on the cases of an introduced `select` in the target module (Section 3.3).
 
-A pass applies everything in one shot through its induced relation: an encoding pass applies its unitary implementations together with the relation's measurement and allocation checks, and no intermediate module ever exists to be valid or invalid. Verification sees the source module, the target module, and the witness.
+The witness is bookkeeping a rewrite driver records as it applies each rule, so pass authors do not write witnesses by hand. This sets the scope deliberately: qstack verifies passes built on its own pass framework, cooperative but untrusted, and does not try to reconstruct what an uninstrumented third-party pass did from the source and target modules alone.
+
+A pass applies everything in one shot through its induced relation: an encoding pass applies its gate, allocation, and measurement rules together, and no intermediate module ever exists to be valid or invalid. Verification sees the source module, the target module, and the witness.
 
 A pass transforms the program kernel by kernel. The unit of compilation and verification is a pair of source and target kernel graphs, not one whole-program graph. The verifier checks each pair independently: a call remains an opaque node in the caller's graph, while its callee pair is verified separately. Section 4.4 then composes the per-kernel results into the end-to-end claim about `@main`.
 
-This independence restricts a call to exactly two replacements: inline it, or preserve the call with the callee's transformed signature. Any other rewrite of a call would tie the caller's check to the callee's internals.
+This independence restricts a call to exactly two replacements: inline it, or keep the call, with an identity rule or, under a non-identity encoding, a widening rule for the callee's widened signature. Any other rewrite of a call would tie the caller's check to the callee's internals.
 
-### 3.2 Claims
+### 3.2 Rules and claims
 
-Every node of the source and target modules belongs explicitly to exactly one claim. Each claim has one identifier whose source and target regions are recorded together; every node in either region carries that identifier in the witness. The one-to-one correspondence is between these paired claim occurrences, not between their nodes: one source operation may correspond to a target region containing several operations. A claim kind states how the pair was transformed and determines its check. There are three executable-region kinds today: identity, inline, and sub-graph; allocation has the explicit boundary claim described below because it is not an operation node. The vocabulary is closed but extensible: a new claim kind, classical claims included, needs a defined check before any pass may use it (Section 5). Not every verifier backend can check every claim; Section 4.1 describes how backends are tried.
+A **rule** is a pair of small graphs with the same numbered inputs and outputs, its **source pattern** and its **target pattern**. A rule **holds** if its target pattern implements its source pattern through `E`. A **claim** applies a rule at one place in a kernel: it names the rule and binds the rule's inputs and outputs to the edges that enter and leave that place. The pieces of the source and target kernels it accounts for are the rule's two patterns, placed at those edges.
 
-There is no default claim. An untagged node, a node carrying more than one claim identifier, an unknown identifier, or a claim whose recorded regions do not agree with the tags makes the witness malformed and is REFUTED. A claim may have an empty region only where its kind explicitly permits one, as when a sub-graph optimization deletes operations; the empty region is still present in the paired claim record.
+Since every claim that names a rule uses that rule's patterns, checking the rule once covers all of them: a rule applied at a thousand places is one rule to check and a thousand claims. A pass therefore uses one rule for each distinct rewrite it performs; two rewrites that differ in either pattern, even in how their gates are wired, are different rules. Rules are concrete: gate angles and other parameters are actual attributes from the site, not symbolic variables. Rules are written as pairs of small kernels, which reuses the parser, linearity checks, and signature syntax already used for program kernels; these kernels are proof artifacts, not kernels invoked by the program.
 
-**Identity.** Identity means **relational identity**, not necessarily node-for-node syntactic identity. An identity claim says that one source operation and its paired target region are the same logical operation through `R_V` and `R_bit`. The source region therefore contains exactly one operation, while under a non-identity encoding the target region may contain one or many: one logical unitary may be implemented by a region of physical unitaries, and one logical measurement is implemented by measurements of its represented tuple followed by a decoder. When the pass declares the identity representation relation, an identity claim is the degenerate case and requires one corresponding target operation; a lowering to a different operation or region uses a sub-graph claim.
+Every claim names a rule, including the claims for operations the pass leaves untouched, and there is no default claim. The claims of a kernel form its claim graph, which must expand into both kernels (Section 4.2); because the expansions give exactly the two kernels, every node of each is accounted for by exactly one claim. A node no claim accounts for makes the expansion fail, and the witness is REFUTED. Under a non-identity encoding, each port of a target pattern that corresponds to a source qubit is a bundle of `n` ports, in the fixed order of the encoding.
 
-Identity is checked intentionally for every executable operation kind:
+The rule kinds below are a closed but extensible vocabulary: a new kind, classical rules included, needs a defined check before any pass may use it (Section 5). Not every verifier backend can check every rule; Section 4.1 describes how backends are tried.
 
-- A **unitary** identity claim checks the target region as the encoded implementation of the one source unitary: if its net action is `U_T`, then `U_T V^⊗k_in = V^⊗k_out U_S`. Under a non-identity encoding, the target region may use the same internal measurement-and-fresh-selector structure allowed for a rule, with every reachable branch implementing this equation.
-- A **`measure`** identity claim consumes the target tuple representing the source qubit, measures that tuple, and passes the raw target bits to one fresh `decode`. Its one escaping bit must equal the source measurement result. This is the measurement shape supplied by the relation, and it produces the decoder obligation in Section 4.3. Thus measurement is not exceptional because one operation expands to a region—unitaries do that too—but because the region must restore a source-level classical value.
-- A pre-existing **`decode`** identity claim contains one corresponding target `decode` and preserves its callback source, symbol, arity, and bit operand order. Its operands and result are equal through `R_bit`.
-- A **`call`** identity claim contains one corresponding target call, keeps its callee, and relates the widened arguments and results through the independently checked callee pair (Section 4.4).
-- A pre-existing **`select`** identity claim contains one corresponding target `select` and preserves its callback source, symbol, arity, bit operand order, and case map. Its case arguments and results may widen through `V`, and each case kernel is related to the kernel named by the same label.
-- A **`return`** identity claim contains one corresponding target return. It returns corresponding values, with qubit tuples related by the appropriate tensor power of `V` and bits by `R_bit`.
+**Identity.** Both patterns are the same single operation. An identity rule holds trivially and is checked syntactically. It claims every operation the pass leaves untouched, including every pre-existing `decode` and `select`. Under a non-identity encoding, only operations without qubit ports, such as `decode`, keep identity rules.
 
-Case kernel bodies and signatures may be transformed by their own explicitly tagged claims, but the callback-visible interface does not change. Allocation is not an executable operation node—fresh qubits are kernel entry values—so it is covered by the explicit allocation claim described below rather than by an operation identity claim.
+**Widening.** Under a non-identity encoding, an operation the pass leaves alone still changes if it has qubit ports, because those ports widen into bundles. A widening rule's target pattern is its source pattern with every qubit port widened into a bundle. It claims a `call`, `select`, or `return` with qubit ports, and is checked syntactically. A widened `call` keeps its callee, and a widened `select` keeps its callback source, symbol, arity, bit operand order, and case map; what the callee or each case kernel does is verified by its own kernel pair (Section 4.4).
 
-**Inline.** A call replaced by a copy of the callee's source body: arguments substituted for the borrowed entry values, SSA names renamed fresh, and the callee's `allocates` merged into the caller's. The check is purely syntactic, because a direct call already denotes the callee's instrument at that point. Inlining is exact substitution, so any callee qualifies, including one that measures or invokes callbacks: the copied callback uses execute exactly when the call would have, keeping every host wire intact. A pass that wants to rewrite across a call boundary inlines first and rewrites the copy in a second pass; the module between the two passes is an ordinary valid program. Because the copy is verbatim, inlining under a non-identity relation cannot typecheck (a source-representation copy cannot wire into target-representation surroundings), so inlining happens before the encoding pass or after it. A callee left unreachable may be dropped. Outlining, the inverse, has no claim type (Section 3.4).
+**Inline.** The source pattern is a single call; the target pattern is the callee's body as it is in the source module, even if the pass also rewrites the callee itself. The callee's parameters become the pattern's inputs, the operands of its `return` become the pattern's outputs, and its fresh qubits become fresh qubits of the caller. Each inlined callee therefore has its own rule, checked by graph matching. Inlining is exact substitution, so any callee qualifies, including one that measures or invokes callbacks: the copied callback uses execute exactly when the call would have, keeping every host wire intact. A pass that wants to rewrite across a call boundary inlines first and rewrites the copy in a second pass; the module between the two passes is an ordinary valid program. Because the copy is verbatim, inlining under a non-identity encoding cannot typecheck (a source-representation copy cannot wire into target-representation surroundings), so inlining happens before the encoding pass or after it. A callee left unreachable may be dropped. Outlining, the inverse, has no rule kind (Section 3.4).
 
-**Sub-graph.** A sub-graph claim says that a source region was transformed by a rule rather than preserved operation by operation through an encoding. This is the claim for optimizations such as combining `S;S` into `Z` and for dialect lowering under the identity representation relation. The encoded implementation of one source operation under a non-identity relation instead uses relational identity, even when its target implementation is a region. The rule and the claim play different roles:
-
-- The **rule** is a reusable description of a permitted rewrite. It is written as a pair of small kernels: one source body and one target body, with signatures corresponding through the representation relation. These kernels are proof artifacts, not kernels invoked by the program.
-- The **claim** records one concrete use of that rule. It names the source and target nodes at the replacement site and the wire renaming that makes those nodes match the rule.
-
-The verifier checks the rule semantically once, then checks each claim by matching its nodes and wires against that rule. Many claims can therefore reuse one rule without repeating its semantic check. Writing rules as kernels also reuses the parser, linearity checks, and signature syntax already used for program kernels.
-
-The source and target rule bodies must have the same effect through the relation. Writing `U_S` and `U_T` for their net actions, a rule with `k_in` input and `k_out` output representation units must satisfy:
+**Gate.** Both patterns contain only gates. Writing `g` for the unitary of a source pattern on `k` qubits and `G` for that of its target pattern, a gate rule holds if:
 
 ```
-U_T V^⊗k_in = V^⊗k_out U_S
+G E^⊗k = E^⊗k g
 ```
 
-For an identity relation, this is ordinary unitary equality. A rule may, for example, replace `S;S` with `Z`. Under the three-qubit repetition relation, the operation-wise replacement of one source `X` by one target `X` on each of the three corresponding target wires is instead a relational identity claim. Its implementation is checked by the same equation and may be cached and reused just like a rule check.
+With `E = I`, this is ordinary unitary equality, and gate rules cover optimizations and dialect lowering: `S;S → Z`, `x → sx;sx`, or `H;H → ε`, whose empty target pattern connects its one input directly to its one output. Under the three-qubit repetition encoding, the rule that implements one source `x` by an `x` on each qubit of a bundle is also a gate rule.
 
-An ordinary rule's source body contains only unitaries. Its target body may allocate ancillas, measure them, and drive one fresh select, provided that no bit leaves the rule and every reachable execution path still implements `U_S` through the relation. A unitary identity implementation has the same permitted target shape. T-injection has this shape: the target measures a prepared ancilla and uses a fresh selector to apply the correction that makes every reachable outcome implement `T`. A tagged unreachable correction case is checked by its correction identity instead (Section 4.3).
+**Allocation.** Under a non-identity encoding, a fresh source qubit starts in `|0⟩`, so its bundle must start in `E|0⟩`. An allocation rule pairs one fresh qubit with `n` fresh qubits followed by a circuit that prepares `E|0⟩` from `|0…0⟩`. For the repetition code this circuit is empty. Fresh qubits are kernel entry values rather than operations, so the claim graph gives each one a node to claim.
 
-A rule body never contains a call or a pre-existing callback. A call must be inlined before a rule can see the callee's operations, and C1 keeps existing callbacks outside sub-graph claims. Rules are concrete: gate angles and other parameters are actual attributes from the site, not symbolic variables.
-
-**The relation's endpoint checks.** Identity implementations and ordinary sub-graph rules describe computations on wires that already exist. A non-identity encoding must also account for where a representation unit begins and ends. The pass does not write these checks.
-
-The **allocation claim** establishes the relation when a fresh source representation unit is created. The target allocates the corresponding target unit and prepares it as `V|0…0⟩`. Allocation lives in the kernel's entry block rather than in an operation, but it still needs an explicit paired claim because the pass must account for the preparation of every represented fresh unit.
-
-The **measurement identity check** recovers the source observable when a represented target tuple is measured. It checks the source measurement against target measurements followed by a fresh decode:
+**Measurement.** Under a non-identity encoding, measuring a source qubit becomes measuring its whole bundle and passing the `n` raw bits to one fresh `decode`, which returns one bit:
 
 ```
 source:  measure one qubit ──────────────────────────────→ one bit
-target:  measure the target tuple → fresh decode ────────→ one bit
+target:  measure the bundle → fresh decode ──────────────→ one bit
 ```
 
-The raw target measurement results remain inside the identity region. The bit that leaves must equal the source measurement result. The fresh `qstack.decoder` callback remains opaque; the verifier derives and reports the finite behavior it must have for classical discharge under Section 4.3. This is the only identity or sub-graph shape that hands out a newly created bit, which keeps `R_bit` equal at every kernel and host boundary.
+The rule holds if that bit is always the one the source measurement would have produced. The raw target bits remain inside the target pattern. The fresh `qstack.decoder` callback remains opaque; the verifier derives and reports the finite behavior it must have for classical discharge under Section 4.3. This is the only rule whose target pattern hands out a newly created bit, which keeps `R_bit` equal at every kernel and host boundary.
+
+**Fixup.** Some rewrites implement a gate with a measurement followed by a correction. A fixup rule's source pattern contains only gates. Its target pattern may allocate qubits, apply gates, measure, and pass the outcomes to one `select` whose selector is fresh; the cases of that `select` are gate-only kernels the pass adds to the target module. No bit leaves the target pattern.
+
+T-injection is a fixup rule. Its source pattern is a single `t`; its target pattern prepares an ancilla in `T|+⟩`, entangles it with the qubit, measures the ancilla, and lets a fresh selector choose the correction:
+
+```text
+source:  %r = t(%q)
+
+target:  %a = h(%0)                       // %0 is a fresh ancilla
+         %b = t(%a)
+         %c, %d = cx(%q, %b)
+         %m = measure(%d)
+         %r = select @tfix(%m) [%c] {"0" = @id, "1" = @s}
+```
+
+A fixup rule pairs each possible outcome `m` of its measurements with one case. Fixing the outcome to `m` and replacing the `select` with the body of the case paired with `m` gives a circuit `G_m`, with the measured qubits projected onto `m`. The rule holds if, for every `m`:
+
+```
+G_m E^⊗k = c_m E^⊗k g
+```
+
+for some scalar `c_m`, where `|c_m|²` is the probability of `m`. Every outcome then leaves `g` applied through `E`, and an outcome with `G_m = 0` cannot occur and imposes nothing. For T-injection, outcome `0` leaves `T` applied and outcome `1` leaves `T†`, which `@s` corrects to `T`. The rule also requires the selector to return, for each outcome, the label of the case paired with it; the verifier derives that outcome-to-case map and reports it as the selector's classical obligation (Section 4.3). For T-injection, `@tfix` must map `0` to `"0"` and `1` to `"1"`.
+
+A case that cannot be reached in the noiseless semantics, such as a QEC correction case, imposes nothing under this check. It carries an **error tag**, an annotation on the case that names the error the case claims to correct, and is checked by its correction identity (Section 4.3). Error tags are specified but not yet implemented.
+
+**Gates, calls, and callbacks.** Apart from identity, widening, and inline rules, no pattern contains a call or a pre-existing callback. A call must be inlined before a rule can see the callee's operations, and C1 keeps existing callbacks out of every other rule.
 
 For example, an encoded transformation of
 
@@ -323,60 +332,65 @@ For example, an encoded transformation of
 allocate → X → measure → return
 ```
 
-is covered by four explicit claims: the relation's allocation claim prepares the target block, a relational identity claim implements `X`, a measurement identity claim measures and decodes the block, and a return identity claim preserves the boundary. The identity claims explain the operation-wise computation inside and out of the representation; the allocation claim establishes that representation for the fresh unit. Under an identity representation relation these claims are still explicit, although their paired regions are normally one node on each side and allocation needs no separate preparation.
+is covered by four claims: an allocation rule prepares the bundle, the gate rule X3 implements `X`, a measurement rule measures and decodes the bundle, and an identity rule preserves the `return`, which returns a bit. Under `E = I`, the same kernel is covered by identity rules wherever the pass leaves an operation alone, and allocation needs no preparation.
 
-Two asymmetries keep these claims sound. A target implementation or rule may introduce measurements because measurements carry no hidden host state, but it may not introduce a use of a pre-existing callback, which may be stateful. And except for a measurement identity claim, every claim must consume any bits it creates.
+Two asymmetries keep these rules sound. A target pattern may introduce measurements, because measurements carry no hidden host state, but it may not introduce a use of a pre-existing callback, which may be stateful. And except for a measurement rule, no target pattern lets a bit it creates leave the pattern.
 
 ### 3.3 Callback conditions
 
 Conditions on the witness; Section 4 rejects one that violates them.
 
-- **C1. Existing callbacks are untouchable.** Every pre-existing `decode` and `select` node belongs to an identity claim or an inline copy, and to nothing else. No rule contains a pre-existing callback, so no sub-graph claim can touch one. Its declaration symbol, and therefore its callback source, is preserved. Case kernel bodies may be transformed, but the callback-visible case map does not change, and the callback is not reverified.
-- **C2. A new decode appears only in a measurement identity claim.** Its output stands for the source measurement's bit. A decode is never introduced to pre-process bits for an introduced selector: a selector is an arbitrary function of its bits, so that computation belongs inside it, keeping each introduced callback's obligation standalone. The declaration and every new use are fresh relative to the source module.
-- **C3. A new select appears only inside a unitary identity implementation or a sub-graph rule's target region.** Its selector declaration and use are fresh. A case reachable in the noiseless semantics is justified by the implementation or rule's branch check; an unreachable case, as a QEC correction case is, carries an error tag naming the error it claims to correct (a tag for an error at another point must state that point) and is checked by its correction identity. Once introduced, the selector and its cases are fixed: later passes preserve them under C1 like any other callback.
+- **C1. Existing callbacks are untouchable.** Every pre-existing `decode` and `select` node is claimed by an identity or widening rule, or copied by an inline rule, and appears in no other rule. Its declaration symbol, and therefore its callback source, is preserved. Case kernel bodies may be transformed, but the callback-visible case map does not change, and the callback is not reverified.
+- **C2. A new decode appears only in a measurement rule.** Its output stands for the source measurement's bit. A decode is never introduced to pre-process bits for an introduced selector: a selector is an arbitrary function of its bits, so that computation belongs inside it, keeping each introduced callback's obligation standalone. The declaration and every new use are fresh relative to the source module.
+- **C3. A new select appears only in a fixup rule's target pattern.** Its selector declaration and use are fresh. A case reachable in the noiseless semantics is justified by the rule's per-outcome check; an unreachable case, as a QEC correction case is, carries an error tag annotation naming the error it claims to correct (a tag for an error at another point must state that point) and is checked by its correction identity. Once introduced, the selector and its cases are fixed: later passes preserve them under C1 like any other callback.
 - **C4. Introduced bits are internal.** Bits created for a new decoder or selector must not reach a pre-existing callback or a `@main` result without an explicit relation restoring the source observable. A transformation may not add a new opaque classical interface.
 - **C5. Introduced callback sources are fresh.** Every introduced callback declaration has a qualified symbol whose nonempty source prefix is absent from the source module. Callbacks introduced together may share a fresh source only when their stateful behavior is covered by one joint classical obligation; otherwise their sources are distinct. Runtime state is partitioned by callback source, so a new source cannot perturb the state carried by an existing host wire.
 
 ### 3.4 Transformations outside the contract
 
-A transformation that has a complete witness but whose claim kind or semantic obligation the verifier cannot check gets UNSUPPORTED rather than a refutation. Today that includes outlining a fragment into a new kernel (the inverse of inlining, with no claim kind yet) and any rewrite of a source region containing a measurement or pre-existing callback other than the operation-wise identity shapes above. Reordering two operations connected by no wire is not on this list, because it is not a transformation: the source and target modules have the same graph. Moving a pre-existing callback along its host wire or changing its callback source is a shape change and is refuted. The verifier never searches for unwitnessed correspondences: a node or rewrite absent from the claims makes the witness malformed and is REFUTED, even if the transformation happens to be correct.
+A transformation that has a complete witness but whose rule kind or semantic obligation the verifier cannot check gets UNSUPPORTED rather than a refutation. Today that includes outlining a fragment into a new kernel (the inverse of inlining, with no rule kind yet) and any rewrite of a source region containing a measurement or pre-existing callback other than through the identity, widening, inline, and measurement rules above. Reordering two operations connected by no wire is not on this list, because it is not a transformation: the source and target modules have the same graph. Moving a pre-existing callback along its host wire or changing its callback source is a shape change and is refuted. The verifier never searches for unwitnessed correspondences: a node or rewrite absent from the claims makes the witness malformed and is REFUTED, even if the transformation happens to be correct.
 
 **Example: Pauli-frame tracking.** An encoding pass may try to defer Pauli corrections into later measurement decoding instead of materializing them with `qstack.select`. The current relation cannot represent the tracked frame, so such a transformation is UNSUPPORTED; it requires the frame-enriched qubit relation deferred in Section 5. A later pass also cannot remove an already materialized correction select: doing so changes its host wire and is REFUTED.
 
 ## 4. How verification checks the witness
 
-### 4.1 Checking identity implementations and rules
+### 4.1 Checking rules
 
-Before a unitary identity implementation or a sub-graph rule can justify a claim, the verifier checks the semantic obligation from Section 3.2. For identity, `U_S` is the action of its one source operation; for a sub-graph rule, it is the net action of the rule's source body. In both cases the verifier checks `U_T V^⊗k_in = V^⊗k_out U_S`, using gate matrices supplied by the dialect definitions. Distinct identity regions are checked independently, while repeated normalized source-operation/target-region shapes may reuse a cached result.
+Each rule is checked once, on its own, however many claims name it. Rules are only as big as the rewrite, not the program, so these checks stay small even when the program is large or calls opaque callbacks. Different kinds of rules call for different checks:
 
-If the target region performs internal measurements, the verifier checks every reachable outcome separately. Each outcome must implement the same source action through the relation. This check also derives the outcome-to-case behavior required of a fresh selector. Tagged unreachable correction cases are checked separately under Section 4.3.
+- **Identity and widening rules** are checked syntactically: the target pattern must be the source pattern itself or, for a widening rule, the source pattern with every qubit port widened into a bundle.
+- **Inline rules** are checked by graph matching: the target pattern must be the same graph as the callee in the source module.
+- **Gate rules** are checked against `G E^⊗k = E^⊗k g`, using gate matrices supplied by the dialect definitions.
+- **Allocation rules** are checked by confirming that the preparation circuit takes `|0…0⟩` to `E|0⟩`.
+- **Measurement rules** are checked by deriving the decoder's requirement from `E` and reporting it as a classical obligation (Section 4.3).
+- **Fixup rules** are checked one outcome at a time against `G_m E^⊗k = c_m E^⊗k g`. The same check derives the outcome-to-case map required of the fresh selector. Tagged unreachable correction cases are checked separately under Section 4.3.
 
-To discharge these obligations, the verifier tries the available backends in turn: dense matrices for small regions, stabilizer methods for Clifford regions, and external equivalence checkers for larger ones. A backend either verifies, refutes, or declines. The first definitive answer wins: a verification from any sound backend suffices, a refutation is final and refutes the pass no matter how many claims reuse the result, and if every backend declines, the result is UNSUPPORTED, naming the identity implementation or rule. Some backends need the relation in a specific form, such as an encoding given by its stabilizer generators; that side data and the integration API are deferred (Section 5).
+Identity, widening, and inline checks are built in. For the circuit checks, the verifier tries the available backends in turn: dense matrices for small rules, stabilizer methods for Clifford rules, and external equivalence checkers for larger ones. A backend either verifies, refutes, or declines. The first definitive answer wins: a verification from any sound backend suffices, a refutation is final and refutes the pass no matter how many claims name the rule, and if every backend declines, the result is UNSUPPORTED, naming the rule. Some backends need the encoding in a specific form, such as one given by its stabilizer generators; that side data and the integration API are deferred (Section 5).
 
 ### 4.2 Checking the claims
 
-For each source-target kernel pair, qstack replaces every paired claim site by one abstract node. An empty region, such as the target of `H;H` cancellation, puts that node on the forwarded edge; an allocation claim puts it at the kernel's entry boundary. Each node's boundary bindings pair source and target values into the edges of a shared claim graph. The source and target graphs must both match this graph after their claimed sites are replaced; the encoding determines how many target qubits represent each source unit, while bits use equality. This graph check is independent of the semantic rule checks in Section 4.1. It consists of:
+For each source-target kernel pair, qstack builds the claim graph from the kernel's claims. Its sources are the sources of the source kernel: its parameters and the host source. Each claim is a node whose inputs and outputs are those of its rule, and the edges, which are the claims' bindings, run from a source or from an output of one claim to an input of another. **Expanding** the claim graph with the source patterns replaces each claim node with its rule's source pattern, attaching the pattern's inputs and outputs to the claim's edges; where a pattern connects an input directly to an output, as the target of `H;H → ε` does, the two edges become one. Expanding with the target patterns works the same way, except that under a non-identity encoding each qubit edge becomes a bundle, and the `j`-th edge of each bundle joins the `j`-th port of the next pattern. This graph check is independent of the rule checks in Section 4.1. It consists of:
 
-1. **Explicit partition.** Every node of the source and target modules carries exactly one known claim identifier, every identifier resolves to one paired claim record, and the record lists exactly the nodes carrying it. There is no identity fallback and no node is shared.
-2. **Sites.** Each multi-node identity or sub-graph region holds together: no path leaves the region and re-enters it through an outside node. This is what lets the region stand alone as one action.
-3. **Instantiation.** A unitary identity region has exactly one source operation and the target boundary used by its semantic check; a measurement identity has the measure-tuple-decode shape above; and structural identity claims satisfy the per-operation conditions in Section 3.2. Each sub-graph site matches its rule's source body up to wire renaming, and its replacement matches the target body under the same renaming. An inline's copy must be the callee's source body with arguments substituted and names renamed. Freshness (C2, C3, C5) is checked against the source module's callback sources and symbols.
-4. **Shared graph, boundaries, and host wires.** The source and target claim nodes connect through the same paired boundary edges under `R_V` and `R_bit`, including the kernel's inputs and return. The sequence of pre-existing callback nodes on every existing host wire is identical on both sides; introduced callbacks appear only on fresh host wires inside the claims that own them. After checking the claims, no remainder exists on either graph.
+1. **Well-formed claims.** Every claim names a known rule and binds every input and output of that rule.
+2. **A valid claim graph.** The claim graph is linear, acyclic, and well typed. Acyclicity is what lets each claim's pattern stand alone as one action: no path leaves the piece a claim expands into and comes back into it.
+3. **Expansion.** Expanding with the source patterns gives the same graph as the source kernel, and expanding with the target patterns gives the same graph as the target kernel. Since the expansions give exactly the two kernels, every node of each is accounted for by exactly one claim, and no remainder exists on either graph. Freshness (C2, C3, C5) is checked against the source module's callback sources and symbols.
+4. **Host wires.** Because pre-existing callbacks appear only in identity, widening, and inline rules (C1), the host wire of every existing callback source passes through the same callbacks, in the same order and with the same inputs, in both kernels. Introduced callbacks appear only on fresh host wires inside the patterns that introduce them.
 
-These checks are structural; Section 4.1 discharges the semantic obligations they identify. A witness that makes a false statement, such as a site that does not match its rule, or that is silent about any node or changed region, is REFUTED. The failure names the claim, site, or node.
+These checks are structural; Section 4.1 discharges the semantic obligations they identify. A witness that makes a false statement, such as a claim whose expansion does not match the kernel, or that is silent about any node, is REFUTED. The failure names the claim, rule, or node.
 
 ### 4.3 Derived classical obligations
 
 An introduced callback's required behavior is derived from the quantum relation, never trusted (P4).
 
-For a decoder introduced by a measurement identity claim, the verifier does not execute or inspect the implementation. It derives and reports a finite obligation: the callback source, qualified declaration symbol, and shared implementation key; the input layout; the reachable input tuples in the noiseless relation; the required output for each; and any explicitly unconstrained tuples. A classical verifier checks the registered decoder against it; until then, the quantum result is verified modulo the reported obligation.
+For a decoder introduced by a measurement rule, the verifier does not execute or inspect the implementation. It derives and reports a finite obligation: the callback source, qualified declaration symbol, and shared implementation key; the input layout; the reachable input tuples in the noiseless relation; the required output for each; and any explicitly unconstrained tuples. A classical verifier checks the registered decoder against it; until then, the quantum result is verified modulo the reported obligation.
 
-For a selector introduced by a unitary identity implementation or a sub-graph rule, the verifier derives the outcome-to-case behavior required on every reachable branch (Section 4.1) and checks each tagged unreachable case at its declared point. For an error `E` occurring after a replaced operation `U`, the correction case kernel `C_E` must satisfy:
+For a selector introduced by a fixup rule, the verifier derives the outcome-to-case behavior required on every reachable outcome (Section 4.1) and checks each tagged unreachable case at its declared point. For an error `F` occurring after a replaced operation `U`, the correction case kernel `C_F` must satisfy:
 
 ```
-C_E E U = U
+C_F F U = U
 ```
 
-Equivalently, `C_E E = I` on the image of the code space where `E` occurs; a tag naming an error at another point uses the correspondingly conjugated relation. From the measurement structure and the tags, the verifier then reports the finite syndrome-to-case behavior required of the selector, together with its callback source, qualified declaration symbol, and shared implementation key, for a classical verifier to check against the registered implementation.
+Equivalently, `C_F F = I` on the image of the code space where `F` occurs; a tag naming an error at another point uses the correspondingly conjugated relation. From the measurement structure and the tags, the verifier then reports the finite syndrome-to-case behavior required of the selector, together with its callback source, qualified declaration symbol, and shared implementation key, for a classical verifier to check against the registered implementation.
 
 When several callbacks share a fresh source such as `rep3.1`, their per-callback requirements form one joint classical obligation. That obligation follows their ordered invocations on the source's host wire and accounts for any state they share. Giving each callback a distinct source avoids this joint reasoning.
 
@@ -384,9 +398,9 @@ When several callbacks share a fresh source such as `rep3.1`, their per-callback
 
 The end-to-end claim rests on these facts:
 
-- **Local composition.** Related replacements compose sequentially, so an introduced decoder or selector is justified at its site rather than against an enclosing kernel.
+- **Local composition.** Claims compose along the claim graph, so an introduced decoder or selector is justified at the claim that introduces it rather than against an enclosing kernel.
 - **Kernel calls.** If a callee pair is related, the corresponding target call preserves the caller's relation.
-- **Kernel composition.** If all claims in a kernel are related and every existing host wire is preserved, the source and target kernels are related.
+- **Kernel composition.** If a kernel's claims relate it to its target, every rule they name holds, and every existing host wire is preserved, the source and target kernels are related.
 - **Root adequacy.** If every reachable kernel pair is related, all pre-existing callback uses and sources are preserved, and every added obligation is discharged, the source and target `@main` are related for the fixed registry and initial state of each callback source.
 
 These rely on linearity and the host wires: together they leave no unaccounted wires, copies, discards, or unordered host interactions within a callback source.
@@ -397,7 +411,7 @@ Quantum verification produces one of:
 
 - **VERIFIED**: all quantum obligations discharged, no classical obligations generated;
 - **VERIFIED MODULO CLASSICAL OBLIGATIONS**, with the finite decoder and/or selector contracts still to be checked;
-- **REFUTED**, naming the failing rule, site, kernel, branch, relation, or callback interface; or
+- **REFUTED**, naming the failing rule, claim, kernel, outcome, relation, or callback interface; or
 - **UNSUPPORTED**, when a rule exceeds every backend or the transformation lies outside what the witness can express.
 
 The handoff to a classical verifier is part of the design boundary; its data format and integration APIs are not fixed here.
@@ -408,11 +422,11 @@ This document does not yet choose:
 
 - concrete rule-checking backends and the API that selects one per rule, including per-backend side data such as an encoding given by its stabilizer generators;
 - the witness serialization: rule format, claim encoding, claim arguments;
-- additional claim types beyond identity, inline, and sub-graph, including classical claims over the decode and select structure;
+- additional rule kinds beyond those of Section 3.2, including classical rules over the decode and select structure;
 - the classical obligation data structure and pass-manager integration;
 - an API through which a pass declares its encoding isometry or error tags;
-- channel-valued rules: rules whose source body contains a measurement, or whose bodies denote an instrument rather than a single unitary, checked as channel equivalence; today the source body is unitary, every declared rule denotes one unitary, and a source measurement whose bit must survive is owned operation-wise by a measurement identity claim;
-- kernel summaries: a call to a transitively unitary, non-recursive kernel summarized by its unitary, letting the call join a rule site without inlining first;
+- channel-valued rules: rules whose source pattern contains a measurement, or whose patterns denote an instrument rather than a single unitary, checked as channel equivalence; today every gate or fixup rule's source pattern is unitary, and a source measurement whose bit must survive is claimed by an identity or measurement rule;
+- kernel summaries: a call to a transitively unitary, non-recursive kernel summarized by its unitary, letting the call appear in a gate rule's source pattern without inlining first;
 - the frame-enriched qubit relation for encoding passes that track Pauli frames instead of materializing corrections;
 - relational obligations for trace-changing rewrites, all of one shape: a subgraph of pre-existing callbacks is replaced by fresh ones, with the obligation that the two are equal as functions of the removed symbols and a statelessness requirement on each removed callback. Correction-select removal is the instance with quantum content (yielding `decoder(s, m) = m ⊕ flip(fix(s))` by conjugating each case's Pauli through the intervening Cliffords); fusing stacked decode chains and select towers is purely classical. Section 2.3 forbids all such trace changes today; or
 - noisy and fault-tolerance verification.
@@ -423,9 +437,9 @@ Those are implementation-planning work after this document and `DESIGN.md` have 
 
 These are downsides of the architecture itself, not missing features: each one is the price of a decision this document defends, and the first three can be softened while the last cannot.
 
-- **Calls are optimization fences.** A rewrite spanning a call boundary, such as a gate at the end of a callee cancelling a gate after the call site, is invisible to every claim type: rules cannot see into an opaque node, and identity keeps the call as is. The workaround is staging: inline in one verified pass, rewrite the copy in the next. Kernel summaries (Section 5) will recover the transitively-unitary case without inlining.
+- **Calls are optimization fences.** A rewrite spanning a call boundary, such as a gate at the end of a callee cancelling a gate after the call site, is invisible to every rule kind: patterns cannot see into an opaque call, and identity and widening rules keep the call as is. The workaround is staging: inline in one verified pass, rewrite the copy in the next. Kernel summaries (Section 5) will recover the transitively-unitary case without inlining.
 - **Inlining is blunt and one-way.** It duplicates the callee's body per call site, there is no outlining claim to fold structure back, and a recursive kernel can never be fully inlined, so a recursive call boundary is a fence nothing removes.
-- **No retargeting.** An identity claim keeps the callee symbol, so a pass cannot specialize a kernel for some call sites, merge duplicate kernels, or change a callee's signature. This is the deepest of the three call limitations, because it cannot be fixed with a better claim type: every obligation in this design has the shape "this pass transformed this kernel correctly," while retargeting needs "these two kernels are equivalent," an equivalence between independently written kernels, which is exactly the whole-instrument comparison P5 refuses. The one cheap special case is retargeting to a syntactically identical kernel, which a future claim could check like an inline copy; the general case is out of reach by design.
+- **No retargeting.** Identity and widening rules keep the callee symbol, so a pass cannot specialize a kernel for some call sites, merge duplicate kernels, or change a callee's signature. This is the deepest of the three call limitations, because it cannot be fixed with a better rule kind: every obligation in this design has the shape "this pass transformed this kernel correctly," while retargeting needs "these two kernels are equivalent," an equivalence between independently written kernels, which is exactly the whole-instrument comparison P5 refuses. The one cheap special case is retargeting to a syntactically identical kernel, which a future rule kind could check like an inline copy; the general case is out of reach by design.
 - **No context-sensitive correctness.** Each kernel pair must satisfy the square for every input state, because callees are verified in isolation. A rewrite that is correct only for the states a caller actually supplies, for instance a callee that always receives `|0⟩`, is refuted or unsupported even when the whole program would be fine. Whole-program verifiers can accept such rewrites; this design trades them away for per-kernel cost and attribution, and no staging recovers them.
 
 ## 7. Related work and lineage

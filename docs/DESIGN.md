@@ -4,16 +4,16 @@
 
 This document specifies qstack's executable IR and its noiseless semantics.
 
-qstack is a quantum IR with opaque host-language callbacks. A program is a closed collection of named kernels rooted at `@main`; quantum work is expressed only in those kernels, and the host is reached only through explicit `qstack.select` and `qstack.decode` operations. Compiler passes transform one closed module into another and do not inspect registered host callback implementations.
+qstack is a quantum IR with opaque host-language callbacks. Its unit of quantum code is the **kernel**: a named, function-like definition that borrows qubits and bits from its caller, may allocate fresh qubits, applies gates and measurements, may hand measurement bits to a callback or call other kernels, and returns qubits and bits to its caller. Unlike a host function, a kernel is not a value: it is reached only by naming it, and its body is a linear dataflow graph rather than a sequence of statements with control flow. A program is a closed collection of named kernels rooted at `@main`; quantum work is expressed only in those kernels, and the host is reached only through explicit `qstack.select` and `qstack.decode` operations. Compiler passes transform one closed module into another and do not inspect registered host callback implementations.
 
 Textual syntax in this document is the syntax the implementation actually parses and prints. Blocks fenced as `mlir` are complete modules that parse and pass `qstack.verifier.verify_module`; blocks fenced as `text` are syntax templates with placeholders.
 
 ### 1.1 Principles
 
 1. **A program is rooted at a kernel.** A module has exactly one entry kernel, `qstack.kernel @main`; executing it executes the statically reachable collection of kernels that makes up the program.
-2. **A kernel is a quantum instrument.** It maps its borrowed qubits and bits to its declared results, producing classical outcomes along the way. It is the only construct that creates qubits, and its allocation count is a detail of how the instrument is realized, not part of what it means.
-3. **The core is quantum plus explicit callback boundaries.** A kernel contains only target-dialect unitaries, measurement, decoding, selection, and calls to other kernels.
-4. **Qubits and bits are linear.** Each is used once. Gates thread a qubit to a new SSA name; measurement is the only core qubit destructor.
+2. **The core is quantum plus explicit callback boundaries.** A kernel contains only target-dialect unitaries, measurement, decoding, selection, and calls to other kernels.
+3. **Qubits and bits are linear.** Each is used once. Gates thread a qubit to a new SSA name; measurement is the only core qubit destructor.
+4. **A kernel means its instrument, not its realization.** A kernel denotes the quantum instrument it implements (§3.2). Its gates, decompositions, and allocation count are details of how that instrument is realized, so a pass may change them as long as the instrument is preserved.
 5. **Existing callbacks are fixed interfaces.** A callback is registered once under its family-qualified implementation name and may be stateful: its output and next state are determined by its source-local state and received values. Callbacks from the same source may share state, so a pass preserves their order on that source's host wire as well as every existing callback invocation's interface and multiplicity. Different sources have disjoint host state. A callback introduced by a pass uses a fresh source and carries a finite classical obligation derived by semantic verification.
 
 ### 1.2 Noiseless scope
@@ -25,12 +25,6 @@ This specification makes no claim about code distance, fault tolerance, faulty s
 ## 2. Module and kernel model
 
 A module contains only named `qstack.kernel` definitions and `qstack.selector`/`qstack.decoder` declarations. Exactly one kernel is named `@main`; it has no kernel arguments. Private kernels may be called directly or selected as cases. Every invocation target is therefore statically known, although not every declared kernel need be reachable from `@main`. No other executable top-level construct exists.
-
-A transformed module may also carry `qstack.pass_history`, an ordered string
-array of stable pass identifiers. This is compiler provenance rather than an
-executable operation. A successful pass appends one entry; its one-based
-position in the complete history supplies the layer number for compiler-created
-symbols.
 
 ### 2.1 Named kernel definitions
 
@@ -125,7 +119,7 @@ qstack.decoder @rep3.1:decode arity 3
 
 An unqualified callback symbol belongs to the empty source and resolves by its exact symbol; `@repeat_until_one` therefore uses the registry entry `repeat_until_one`.
 
-A compiler-introduced declaration has the form `family.layer:name`, where `layer` is the positive, global pass-history position of the pass that introduced it. The `family.layer` prefix is its callback source; it is authoritative rather than repeated in a separate attribute. The decoder above therefore has the qualified identity `rep3.1:decode`. A second immediately applied repetition pass uses `rep3.2:decode`; if another pass occurs between them, its layer reflects the later global position instead. Registry lookup removes the layer component, so all of these declarations use the single registered implementation `rep3:decode`. The full source remains significant for state: declarations from different layers have distinct host wires and distinct state even when they execute the same implementation.
+A compiler-introduced declaration has the form `family.layer:name`, where `layer` is the one-based position, in the module's compilation history, of the pass that introduced it. The `family.layer` prefix is its callback source; it is authoritative rather than repeated in a separate attribute. The decoder above therefore has the qualified identity `rep3.1:decode`. A second immediately applied repetition pass uses `rep3.2:decode`; if another pass occurs between them, its layer reflects the later global position instead. Registry lookup removes the layer component, so all of these declarations use the single registered implementation `rep3:decode`. The full source remains significant for state: declarations from different layers have distinct host wires and distinct state even when they execute the same implementation.
 
 Callbacks with the same full source may share state, while callbacks with different sources cannot observe or modify one another's state. A compiler preserves an existing declaration's full symbol, including whether it is qualified, and assigns a fresh qualified source prefix to each new callback layer it introduces.
 
@@ -187,15 +181,15 @@ The compiler does not inspect callback code. A callback is a deterministic state
 
 This order is represented semantically by one derived **host wire** per callback source. A `decode` or `select` threads the wire identified by its declaration symbol, and a call threads every host wire used transitively by its callee. Host wires are not printed in the IR. Operations unconnected by an SSA wire may otherwise be reordered without changing the kernel graph, but moving a pre-existing callback along its host wire changes program behavior. Callbacks on different host wires need no additional ordering unless an ordinary dataflow dependency connects them.
 
-A semantic pass verifier checks callback preservation from the source module, target module, and pass witness. A pre-existing callback use must be an identity claim or part of an exact inline copy; a pass cannot wrap, retarget, change its callback source, drop, duplicate, or add a use of a callback declared in its source module. Exact inlining may copy the static operation while preserving the runtime trace, because an execution takes either the original call or the inline copy, never both.
+A semantic pass verifier checks callback preservation from the source module, target module, and pass witness. A pre-existing callback use must be claimed by an identity or widening rule or copied by an inline rule; a pass cannot wrap, retarget, change its callback source, drop, duplicate, or add a use of a callback declared in its source module. Exact inlining may copy the static operation while preserving the runtime trace, because an execution takes either the original call or the inline copy, never both.
 
-A callback introduced by a pass must use a declaration, use, and callback source fresh relative to the source module. Its fresh source gives it a separate host wire and state domain. Callbacks introduced together may share that source only when their stateful behavior is verified jointly. A new decoder appears only in a measurement identity claim; a new selector appears only in a unitary identity implementation or a sub-graph rule's target region. Its required finite behavior is derived as a classical obligation. The full witness conditions and obligation handoff are specified in [`verification-design.md`](verification-design.md).
+A callback introduced by a pass must use a declaration, use, and callback source fresh relative to the source module. Its fresh source gives it a separate host wire and state domain. Callbacks introduced together may share that source only when their stateful behavior is verified jointly. A new decoder appears only in a measurement rule; a new selector appears only in a fixup rule. Its required finite behavior is derived as a classical obligation. The full witness conditions and obligation handoff are specified in [`verification-design.md`](verification-design.md).
 
 ### 4.5 Semantic pass verification
 
 Executable-IR verification and pass verification are separate checks. The former validates one closed module structurally. The latter checks a source module, target module, and pass-produced witness together, and returns VERIFIED, VERIFIED MODULO CLASSICAL OBLIGATIONS, REFUTED, or UNSUPPORTED.
 
-A witness records the pass's encoding isometry and explicitly partitions the source and target graphs into identity, inline, and sub-graph claims; no node receives an implicit default. Identity means preservation of one logical operation through the representation relation, so under a non-identity encoding one source operation may correspond to a multi-operation target region. Reusable rules justify other transformations of source regions, while explicit allocation claims establish fresh represented units and measurement identity claims derive decoder obligations. Each source-target kernel pair is checked independently, and the local results compose through calls to the claim about `@main`. Rewrites outside this claim vocabulary are unsupported rather than accepted by whole-program guessing, while incomplete or inconsistent claim tagging refutes the witness. The complete contract, including its known limitations, is specified in [`verification-design.md`](verification-design.md).
+A witness records the pass's encoding isometry, the rules the pass applied, and the claims of each kernel. A rule is a pair of small source and target patterns; a claim applies one rule at one place in a kernel. The claims of a kernel form a claim graph that must expand, with the rules' source patterns, into the source kernel and, with their target patterns, into the target kernel, so every node is accounted for by exactly one claim. Rules come in a closed but extensible set of kinds: identity and widening rules are checked syntactically, inline rules by graph matching, gate and allocation rules by circuit equivalence through the encoding, and measurement and fixup rules, which introduce a decoder or a selector, by deriving that callback's classical obligation. Each source-target kernel pair is checked independently, and the local results compose through calls to the claim about `@main`. Rewrites outside this rule vocabulary are unsupported rather than accepted by whole-program guessing, while claims that fail to expand into either kernel refute the witness. The complete contract, including its known limitations, is specified in [`verification-design.md`](verification-design.md).
 
 ## 5. Example: repeat until one
 
@@ -247,7 +241,7 @@ The following parts of this design are implemented:
 
 The remaining gaps relative to the reviewed pass-verification design are:
 
-- **Witness-producing passes and semantic verification.** Passes do not yet emit representation relations, rules, or claims, and there is no checker for them or for the derived host wires.
+- **Witness-producing passes and semantic verification.** Passes do not yet emit encodings, rules, or claims, and there is no checker for them or for the derived host wires.
 - **Host-wire derivation and checking.** Callback sources and runtime state isolation are implemented, but the semantic verifier does not yet derive or compare the implicit host wires.
 - **Error tags** on select cases, described in Section 1.2 and in `verification-design.md`.
 - **Callback-obligation data format**, the artifact a pass emits for a classical verifier to discharge.
