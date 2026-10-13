@@ -67,7 +67,7 @@ class MatrixVerifier:
     def check(self, rule: Mapping[str, Any]) -> dict[str, Any]:
         """Return a JSON-serializable rule verdict; no qstack imports are used."""
         rule_id = str(rule.get("id", "<unknown>"))
-        configuration = {"max_qubits": self.max_qubits, "atol": self.atol}
+        configuration = {"max_qubits": self.max_qubits, "atol": self.atol, "equivalence": "global_phase"}
         common = {
             "rule": rule_id,
             "backend": "matrix",
@@ -83,7 +83,12 @@ class MatrixVerifier:
             target = circuit_matrix(target_circuit, max_qubits=self.max_qubits)
         except (KeyError, TypeError, ValueError) as exc:
             return {**common, "status": "UNSUPPORTED", "detail": str(exc)}
-        difference = np.abs(source - target)
+        # Instruments are unchanged by one input-independent global phase.
+        # Align the whole matrix once; aligning columns separately would hide
+        # relative phases and accept semantically different circuits.
+        overlap = np.vdot(target, source)
+        phase = overlap / abs(overlap) if abs(overlap) else 1.0
+        difference = np.abs(source - phase * target)
         worst = tuple(int(index) for index in np.unravel_index(np.argmax(difference), difference.shape))
         error = float(difference[worst])
         if error > self.atol:
@@ -95,7 +100,7 @@ class MatrixVerifier:
                     f"source={source[worst]!r}, target={target[worst]!r}"
                 ),
             }
-        return {**common, "status": "VERIFIED", "detail": f"maximum matrix error {error:.6g}"}
+        return {**common, "status": "VERIFIED", "detail": f"maximum matrix error up to global phase {error:.6g}"}
 
 
 def verify_rule(rule: Mapping[str, Any]) -> dict[str, Any]:

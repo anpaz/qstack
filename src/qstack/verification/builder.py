@@ -8,12 +8,12 @@ from dataclasses import asdict
 from typing import Mapping, Sequence
 
 from xdsl.dialects.builtin import ModuleOp
-from xdsl.ir import BlockArgument, OpResult, Operation, SSAValue
+from xdsl.ir import BlockArgument, OpResult, SSAValue
 
-from qstack.dialect.core import KernelOp, UnitaryGateOp
+from qstack.dialect.core import CallOp, KernelOp, UnitaryGateOp
 from qstack.passes.base import Encoding, QubitGroup, Replacement
-from qstack.verification.witness_check import _KernelSide, _circuit_at
-from qstack.verification.model import Edge, KernelBoundary, Node, Rule, ValueRef, Witness
+from qstack.verification.witness_check import _KernelSide, _pattern_at, _callback_sources
+from qstack.verification.model import Claim, Edge, KernelBoundary, Rule, ValueRef, Witness
 
 
 def _kernels(module: ModuleOp) -> dict[str, KernelOp]:
@@ -58,7 +58,8 @@ def witness_from_replacements(
     if set(source_kernels) != set(target_kernels) or set(replacements) != set(source_kernels):
         raise ValueError("replacement records must cover the same kernel symbols on both sides")
 
-    all_nodes: list[Node] = []
+    all_claims: list[Claim] = []
+    source_hosts, target_hosts = _callback_sources(source), _callback_sources(target)
     all_edges: list[Edge] = []
     all_boundaries: list[KernelBoundary] = []
     all_rules: dict[str, Rule] = {}
@@ -78,7 +79,7 @@ def witness_from_replacements(
 
         old_args = tuple(old_kernel.body.block.args)
         new_args = tuple(new_kernel.body.block.args)
-        if len(old_args) != len(new_args) or old_kernel.allocation_count != new_kernel.allocation_count:
+        if len(old_kernel.input_types) != len(new_kernel.input_types):
             raise NotImplementedError("widened kernel boundaries require an encoding witness")
         borrowed = tuple(
             edge(old, new)
@@ -96,39 +97,63 @@ def witness_from_replacements(
             target_ops = tuple(new_side.op_index[op] for op in replacement.target_operations)
             inputs = tuple(edge(old, new) for old, new in replacement.inputs)
             outputs = tuple(edge(old, new) for old, new in replacement.outputs)
+            source_allocations: tuple[int, ...] = ()
+            target_allocations: tuple[int, ...] = ()
             if not source_ops:
                 if target_ops or inputs != outputs or len(outputs) != 1:
-                    raise NotImplementedError("only bare identity allocations are implemented")
-                all_nodes.append(Node(node_id, kernel_name, "allocation", (), (), (), outputs))
-                continue
-            old_op = replacement.source_operations[0]
-            new_op = replacement.target_operations[0] if target_ops else None
-            copied = (
-                len(source_ops) == len(target_ops) == 1
-                and new_op is not None
-                and old_op.name == new_op.name
-                and old_op.attributes == new_op.attributes
-                and old_op.properties == new_op.properties
+                    raise NotImplementedError("encoded allocation needs an encoding witness")
+                source_allocations = (local_edges[outputs[0]].source[0].index,)
+                target_allocations = (local_edges[outputs[0]].target[0].index,)
+                inputs = ()
+            else:
+                boundary_values = {_scalar(value) for _, value in replacement.inputs}
+                target_allocations = tuple(sorted({
+                    value.index
+                    for value in (
+                        *(value for op in replacement.target_operations for value in op.operands),
+                        *(_scalar(value) for _, value in replacement.outputs),
+                    )
+                    if isinstance(value, BlockArgument)
+                    and value.owner is new_kernel.body.block
+                    and value.index < new_kernel.allocation_count
+                    and value not in boundary_values
+                }))
+            provisional = Claim(
+                node_id, kernel_name, "", source_ops, target_ops, inputs, outputs,
+                source_allocations, target_allocations,
             )
-            if copied:
-                all_nodes.append(Node(node_id, kernel_name, "identity", source_ops, target_ops, inputs, outputs))
-                continue
-            if not all(isinstance(op, UnitaryGateOp) for op in (*replacement.source_operations, *replacement.target_operations)):
-                raise NotImplementedError(f"{node_id}: nonunitary rewrite needs another claim kind")
-            provisional = Node(node_id, kernel_name, "rule", source_ops, target_ops, inputs, outputs)
-            source_circuit = _circuit_at(provisional, old_side, local_edges, "source")
-            target_circuit = _circuit_at(provisional, new_side, local_edges, "target")
+            old_pattern = _pattern_at(provisional, old_side, local_edges, "source", source_hosts)
+            new_pattern = _pattern_at(provisional, new_side, local_edges, "target", target_hosts)
+            callee = None
+            if old_pattern == new_pattern and len(old_pattern.operations) == 1:
+                kind = "identity"
+            elif len(source_ops) == 1 and isinstance(replacement.source_operations[0], CallOp):
+                kind = "inline"
+                callee = replacement.source_operations[0].callee.root_reference.data
+            elif (
+                all(isinstance(op, UnitaryGateOp) for op in (
+                    *replacement.source_operations, *replacement.target_operations,
+                ))
+                and not source_allocations
+                and not target_allocations
+            ):
+                kind = "gate"
+            else:
+                raise NotImplementedError(f"{node_id}: nonunitary rewrite needs another rule kind")
             payload = json.dumps(
-                {"source": asdict(source_circuit), "target": asdict(target_circuit)},
-                sort_keys=True, separators=(",", ":"),
+                {"kind": kind, "callee": callee, "source": asdict(old_pattern), "target": asdict(new_pattern)},
+                sort_keys=True, separators=(",", ":"), allow_nan=False,
             )
-            rule_id = "rule-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
-            all_rules.setdefault(rule_id, Rule(rule_id, source_circuit, target_circuit))
-            all_nodes.append(Node(node_id, kernel_name, "rule", source_ops, target_ops, inputs, outputs, rule_id))
+            rule_id = "rule-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+            all_rules.setdefault(rule_id, Rule(rule_id, old_pattern, new_pattern, kind, callee))
+            all_claims.append(Claim(
+                node_id, kernel_name, rule_id, source_ops, target_ops, inputs, outputs,
+                source_allocations, target_allocations,
+            ))
         all_edges.extend(local_edges.values())
 
     return Witness.bind(
         source, target,
-        rules=tuple(all_rules.values()), nodes=tuple(all_nodes),
+        rules=tuple(all_rules.values()), claims=tuple(all_claims),
         edges=tuple(all_edges), kernels=tuple(all_boundaries),
     )

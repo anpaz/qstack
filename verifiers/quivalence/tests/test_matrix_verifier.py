@@ -33,8 +33,8 @@ def test_cancellation_and_global_phase() -> None:
     assert json.loads(json.dumps(cancellation)) == cancellation
 
     phase = verify_rule(_rule([_gate("x", X)], [_gate("-x", NEGATIVE_X)]))
-    assert phase["status"] == "REFUTED"
-    assert "matrix entry" in phase["detail"]
+    assert phase["status"] == "VERIFIED"
+    assert phase["configuration"]["equivalence"] == "global_phase"
 
 
 def test_unsupported_inputs() -> None:
@@ -45,10 +45,15 @@ def test_unsupported_inputs() -> None:
 
 def test_cli_reports_verdict_and_exit_code(tmp_path) -> None:
     rule_path = tmp_path / "rule.json"
-    rule_path.write_text(json.dumps(_rule([_gate("x", X)], [_gate("-x", NEGATIVE_X)])))
+    rule_path.write_text(json.dumps(_rule([_gate("h", H)], [_gate("x", X)])))
     process = subprocess.run(
         [sys.executable, "-m", "quivalence", str(rule_path)],
         check=False, capture_output=True, text=True,
     )
     assert process.returncode == 1
     assert json.loads(process.stdout)["status"] == "REFUTED"
+
+
+def test_relative_phase_is_not_global_phase() -> None:
+    z = [[(1., 0.), (0., 0.)], [(0., 0.), (-1., 0.)]]
+    assert verify_rule(_rule([], [_gate("z", z)]))["status"] == "REFUTED"

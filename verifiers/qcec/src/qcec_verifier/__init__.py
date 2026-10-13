@@ -18,6 +18,7 @@ def _qiskit_circuit(circuit: Mapping[str, Any]):
             "cliffords.h": "h", "cliffords.x": "x", "cliffords.y": "y",
             "cliffords.z": "z", "cliffords.s": "s", "cliffords.cx": "cx",
             "cliffords.cz": "cz", "atoms.rz": "rz", "atoms.sx": "sx",
+            "qstack.swap": "swap",
             "atoms.cz": "cz", "h2.u1": "r", "h2.rz": "rz",
             "h2.rzz": "rzz", "h2.zz": "rzz",
         }.get(name)
@@ -60,7 +61,7 @@ class QCECVerifier:
             return {**common, "status": "UNSUPPORTED", "detail": f"QCEC failed: {exc}"}
         criterion = result.equivalence
         raw = getattr(criterion, "name", str(criterion)).lower().rsplit(".", 1)[-1]
-        if raw in {"equivalent", "equivalent_up_to_global_phase", "equivalent_up_to_phase"}:
+        if raw in {"equivalent", "equivalent_up_to_global_phase"}:
             status = "VERIFIED"
         elif raw == "not_equivalent":
             status = "REFUTED"

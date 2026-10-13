@@ -108,40 +108,104 @@ class Circuit:
 
 
 @dataclass(frozen=True)
+class PatternOp:
+    """A concrete operation and its ordered input wires in a rule pattern."""
+
+    name: str
+    operands: tuple[ValueRef, ...]
+    result_types: tuple[str, ...]
+    properties: tuple[tuple[str, str], ...] = ()
+    attributes: tuple[tuple[str, str], ...] = ()
+    gate: Gate | None = None
+    hosts: tuple[str, ...] = ()
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> PatternOp:
+        return cls(
+            str(data["name"]),
+            tuple(ValueRef.from_dict(item) for item in data["operands"]),
+            tuple(str(item) for item in data["result_types"]),
+            tuple((str(k), str(v)) for k, v in data["properties"]),
+            tuple((str(k), str(v)) for k, v in data["attributes"]),
+            None if data["gate"] is None else Gate.from_dict(data["gate"]),
+            tuple(str(source) for source in data["hosts"]),
+        )
+
+
+@dataclass(frozen=True)
+class Pattern:
+    """A small graph with ordered boundary ports, independent of an IR site.
+
+    Argument references name input ports; result references name operation
+    outputs. Allocations are explicit zero-input ``qstack.alloc`` nodes.
+    Outputs may forward inputs, including an entirely empty target pattern.
+    """
+
+    inputs: tuple[str, ...]
+    operations: tuple[PatternOp, ...]
+    outputs: tuple[ValueRef, ...]
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Pattern:
+        return cls(
+            tuple(str(item) for item in data["inputs"]),
+            tuple(PatternOp.from_dict(item) for item in data["operations"]),
+            tuple(ValueRef.from_dict(item) for item in data["outputs"]),
+        )
+
+
+@dataclass(frozen=True)
 class Rule:
+    """A reusable rewrite, including syntactic identity and inline rules."""
+
+    id: str
+    source: Pattern
+    target: Pattern
+    kind: Literal["identity", "gate", "inline"]
+    callee: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Rule:
+        return cls(
+            str(data["id"]), Pattern.from_dict(data["source"]),
+            Pattern.from_dict(data["target"]), data["kind"],
+            None if data.get("callee") is None else str(data["callee"]),
+        )
+
+
+@dataclass(frozen=True)
+class CircuitRule:
+    """The portable circuit-only payload sent to existing verifier plugins."""
+
     id: str
     source: Circuit
     target: Circuit
 
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> Rule:
-        return cls(str(data["id"]), Circuit.from_dict(data["source"]), Circuit.from_dict(data["target"]))
-
 
 @dataclass(frozen=True)
-class Node:
-    """One paired claim occurrence in one kernel."""
+class Claim:
+    """One application of a named rule, with both IR sites and edge bindings."""
 
     id: str
     kernel: str
-    kind: Literal["rule", "identity", "allocation"]
+    rule: str
     source_ops: tuple[int, ...]
     target_ops: tuple[int, ...]
     inputs: tuple[str, ...]
     outputs: tuple[str, ...]
-    rule: str | None = None
+    source_allocations: tuple[int, ...] = ()
+    target_allocations: tuple[int, ...] = ()
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> Node:
+    def from_dict(cls, data: dict[str, Any]) -> Claim:
         return cls(
-            str(data["id"]),
-            str(data["kernel"]),
-            data["kind"],
+            str(data["id"]), str(data["kernel"]), str(data["rule"]),
             tuple(int(index) for index in data["source_ops"]),
             tuple(int(index) for index in data["target_ops"]),
             tuple(str(edge) for edge in data["inputs"]),
             tuple(str(edge) for edge in data["outputs"]),
-            None if data.get("rule") is None else str(data["rule"]),
+            tuple(int(index) for index in data["source_allocations"]),
+            tuple(int(index) for index in data["target_allocations"]),
         )
 
 
@@ -164,7 +228,7 @@ class Witness:
     source_width: int
     target_width: int
     rules: tuple[Rule, ...]
-    nodes: tuple[Node, ...]
+    claims: tuple[Claim, ...]
     edges: tuple[Edge, ...]
     kernels: tuple[KernelBoundary, ...]
 
@@ -175,7 +239,7 @@ class Witness:
         target_module: Any,
         *,
         rules: tuple[Rule, ...],
-        nodes: tuple[Node, ...],
+        claims: tuple[Claim, ...],
         edges: tuple[Edge, ...],
         kernels: tuple[KernelBoundary, ...],
         source_width: int = 1,
@@ -188,7 +252,7 @@ class Witness:
         target_hash = sha256(module_text(target_module).encode("utf-8")).hexdigest()
         return cls(
             source_hash, target_hash, source_width, target_width,
-            rules, nodes, edges, kernels,
+            rules, claims, edges, kernels,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -204,7 +268,7 @@ class Witness:
             int(data["source_width"]),
             int(data["target_width"]),
             tuple(Rule.from_dict(item) for item in data["rules"]),
-            tuple(Node.from_dict(item) for item in data["nodes"]),
+            tuple(Claim.from_dict(item) for item in data["claims"]),
             tuple(Edge.from_dict(item) for item in data["edges"]),
             tuple(KernelBoundary.from_dict(item) for item in data["kernels"]),
         )

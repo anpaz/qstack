@@ -39,23 +39,14 @@ target = target.save("step.qstack.json")
 report = verify(target)
 ```
 
-Each pass writes a single-step artifact containing its exact source and target
-IR plus its witness. `verify` checks the artifact hashes, independently matches
-both IR graphs against the witness, and checks each distinct circuit rule. The
-shared pass runner emits witnesses for identity-encoding transformations that
-the current builder can represent. Unsupported claim shapes and encoded QEC
-transformations still return no witness and verify as `UNSUPPORTED`. The
-initial builder covers copied structural operations and unitary circuit
-rewrites.
+`verify` independently checks a compiler pass using its source, target, and
+transformation witness. It reports `VERIFIED`, `REFUTED`, or `UNSUPPORTED`;
+encoded/QEC verification is not yet supported.
 
-The dense-matrix rule verifier, **Quivalence**, is a separate distribution in
-`verifiers/quivalence/`. Install it with `pip install ./verifiers/quivalence`;
-`verify(target)` discovers it through the `qstack.rule_verifiers` entry-point
-group. It checks exact circuit matrices up to its configured numeric tolerance,
-including global phase. It can also check a serialized rule without installing
-qstack. The optional MQT QCEC plugin is a second distribution in
-`verifiers/qcec/`; install it with `pip install ./verifiers/qcec` to make it
-available to `verify(target)`. The frontend result has no pass witness.
+For circuit checks, install a verifier such as
+[Quivalence](verifiers/quivalence/) (`pip install ./verifiers/quivalence`) or
+[MQT QCEC](verifiers/qcec/). Installed verifiers are discovered automatically.
+See the [verification design](docs/verification-design.md) for details.
 
 ## Installation
 

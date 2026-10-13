@@ -11,3 +11,8 @@ Installation registers a `qcec` backend in the `qstack.rule_verifiers` entry-poi
 group. The plugin translates supported gate names to Qiskit circuits and passes
 them to MQT QCEC. Unrecognized gates and unavailable dependencies produce an
 `UNSUPPORTED` verdict.
+
+Only exact equivalence or equivalence up to a single global phase verifies a
+rule. A generic phase-related verdict is unsupported, since it does not by
+itself establish preservation of relative phases on arbitrary inputs. Reports
+retain QCEC's raw criterion.

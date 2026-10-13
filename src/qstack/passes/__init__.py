@@ -19,6 +19,7 @@ from qstack.passes.cliffords2atoms import (
     lower_cliffords_to_atoms,
 )
 from qstack.passes.cliffords2h2 import CliffordsToH2Lowering, lower_cliffords_to_h2
+from qstack.passes.inline import InlineCalls
 from qstack.passes.rep3_bit import (
     Rep3BitLowering,
     lower_rep3_bit,
@@ -41,6 +42,7 @@ __all__ = [
     "CliffordsToAtomsLowering",
     "CliffordsToH2Lowering",
     "Encoding",
+    "InlineCalls",
     "LoweringContext",
     "LoweringPass",
     "OptimizationPass",

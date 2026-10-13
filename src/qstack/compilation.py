@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from qstack.verification.model import Witness
 
 
-ARTIFACT_VERSION = 1
+ARTIFACT_VERSION = 2
 
 
 class ArtifactError(ValueError):

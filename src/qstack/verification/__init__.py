@@ -12,7 +12,11 @@ from qstack.compilation import ArtifactError, CompilationResult, load_artifact, 
 from qstack.verification.plugins import RuleBackend, RuleResult, Status, installed_rule_backends
 from qstack.verification.builder import witness_from_replacements
 from qstack.verification.witness_check import WitnessError, UnsupportedWitnessError, check_witness_structure
-from qstack.verification.model import Circuit, Edge, Gate, KernelBoundary, Node, Rule, ValueRef, Witness
+from qstack.verification.model import (
+    Circuit, CircuitRule, Claim, Edge, Gate, KernelBoundary,
+    Pattern, PatternOp, Rule, ValueRef, Witness,
+)
+from qstack.verification.rules import check_structural_rule
 
 logger = logging.getLogger("qstack.verification")
 
@@ -67,32 +71,39 @@ def verify(
     configured = tuple(backends) if backends is not None else installed_rule_backends()
     results: list[RuleResult] = []
     for rule in artifact.witness.rules:
-        sites = tuple(node.id for node in artifact.witness.nodes if node.rule == rule.id)
-        outcome = RuleResult(rule.id, "none", "UNSUPPORTED", "no rule backend configured")
-        for backend in configured:
-            checked = backend.check(rule)
+        sites = tuple(claim.id for claim in artifact.witness.claims if claim.rule == rule.id)
+        checked_rule = check_structural_rule(rule, source)
+        if isinstance(checked_rule, RuleResult):
             outcome = RuleResult(
-                checked.rule, checked.backend, checked.status, checked.detail,
-                checked.raw_result, checked.backend_version, checked.configuration, sites,
+                checked_rule.rule, checked_rule.backend, checked_rule.status, checked_rule.detail,
+                sites=sites,
             )
-            logger.debug("rule %s at %s: %s %s", rule.id, sites, outcome.status, outcome.detail)
-            if outcome.status != "UNSUPPORTED":
-                break
+        else:
+            outcome = RuleResult(rule.id, "none", "UNSUPPORTED", "no rule backend configured", sites=sites)
+            for backend in configured:
+                checked = backend.check(checked_rule)
+                outcome = RuleResult(
+                    checked.rule, checked.backend, checked.status, checked.detail,
+                    checked.raw_result, checked.backend_version, checked.configuration, sites,
+                )
+                logger.debug("rule %s at %s: %s %s", rule.id, sites, outcome.status, outcome.detail)
+                if outcome.status != "UNSUPPORTED":
+                    break
         results.append(outcome)
     if any(item.status == "REFUTED" for item in results):
         status: Status = "REFUTED"
-        detail = "one or more circuit rules were refuted"
+        detail = "one or more rules were refuted"
     elif any(item.status == "UNSUPPORTED" for item in results):
         status = "UNSUPPORTED"
-        detail = "one or more circuit rules could not be checked"
+        detail = "one or more rules could not be checked"
     else:
         status = "VERIFIED"
-        detail = "claim graphs and circuit rules verified"
+        detail = "claim graphs and rules verified"
     return VerificationReport(status, detail, artifact_path, tuple(results))
 
 
 __all__ = [
-    "Circuit", "Edge", "Gate", "KernelBoundary", "Node",
+    "Circuit", "CircuitRule", "Claim", "Edge", "Gate", "KernelBoundary", "Pattern", "PatternOp",
     "Rule", "RuleResult", "ValueRef", "VerificationReport",
     "Witness", "installed_rule_backends", "verify",
     "witness_from_replacements",

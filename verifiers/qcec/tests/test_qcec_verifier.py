@@ -21,7 +21,13 @@ def _rule():
     }
 
 
-def test_qcec_checks_only_serialized_rule(monkeypatch) -> None:
+@pytest.mark.parametrize("criterion, status", [
+    ("equivalent", "VERIFIED"),
+    ("equivalent_up_to_global_phase", "VERIFIED"),
+    ("equivalent_up_to_phase", "UNSUPPORTED"),
+    ("not_equivalent", "REFUTED"),
+])
+def test_qcec_checks_only_serialized_rule(monkeypatch, criterion, status) -> None:
     calls = []
 
     class QuantumCircuit:
@@ -34,7 +40,7 @@ def test_qcec_checks_only_serialized_rule(monkeypatch) -> None:
 
     def compare(source, target, **configuration):
         calls.append((source, target, configuration))
-        return SimpleNamespace(equivalence=SimpleNamespace(name="equivalent"))
+        return SimpleNamespace(equivalence=SimpleNamespace(name=criterion))
 
     qiskit = ModuleType("qiskit")
     qiskit.QuantumCircuit = QuantumCircuit
@@ -44,8 +50,8 @@ def test_qcec_checks_only_serialized_rule(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "mqt", mqt)
 
     verdict = QCECVerifier({"timeout": 3}).check(_rule())
-    assert verdict["status"] == "VERIFIED"
-    assert verdict["raw_result"] == "equivalent"
+    assert verdict["status"] == status
+    assert verdict["raw_result"] == criterion
     assert calls[0][0].gates == [("h", 0), ("h", 0)]
     assert calls[0][1].gates == []
     assert calls[0][2] == {"timeout": 3}

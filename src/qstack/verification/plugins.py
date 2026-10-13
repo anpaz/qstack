@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from importlib.metadata import EntryPoint, entry_points
 from typing import Literal, Mapping, Protocol
 
-from qstack.verification.model import Rule
+from qstack.verification.model import CircuitRule
 
 Status = Literal["VERIFIED", "REFUTED", "UNSUPPORTED"]
 
@@ -28,7 +28,7 @@ class RuleResult:
 class RuleBackend(Protocol):
     name: str
 
-    def check(self, rule: Rule) -> RuleResult: ...
+    def check(self, rule: CircuitRule) -> RuleResult: ...
 
 
 @dataclass(frozen=True)
@@ -41,7 +41,7 @@ class ExternalRuleBackend:
     def name(self) -> str:
         return self.entry_point.name
 
-    def check(self, rule: Rule) -> RuleResult:
+    def check(self, rule: CircuitRule) -> RuleResult:
         try:
             payload = json.loads(json.dumps(asdict(rule), allow_nan=False))
             verdict = self.entry_point.load()(payload)
