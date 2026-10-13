@@ -20,10 +20,12 @@ The project is primarily intended for researchers and developers working on:
 - qubit layout and hardware-lowering passes; and
 - compiler analyses for hybrid quantum-classical programs.
 
-Programs enter qstack through the supported OpenQASM 3 subset or direct IR
-construction. Compiler passes progressively lower them through instruction-set
+Programs enter qstack through the [supported OpenQASM 3 subset](docs/QSTACKQASM-design.md)
+or direct IR construction. Compiler passes progressively lower them through instruction-set
 dialects, with verification boundaries between layers. The resulting modules
 can be evaluated with the included state-vector and Stim-backed runtimes.
+
+To learn more about using qstack, take a look at the [examples folder](examples/).
 
 The compiler entry point returns a `CompilationResult` rather than a bare
 module:
