@@ -13,6 +13,11 @@ def handle_h(inst: QuantumInstruction):
     return Kernel(target=None, instructions=[cliffords.H(f"{inst.targets[0]}.{i}") for i in range(3)])
 
 
+def handle_cx(inst: QuantumInstruction):
+    control, target = inst.targets
+    return Kernel(target=None, instructions=[cliffords.CX(f"{control}.{i}", f"{target}.{i}") for i in range(3)])
+
+
 def decode(context: ClassicContext):
     m0 = context.consume()
     m1 = context.consume()
@@ -35,6 +40,7 @@ class TrivialRepetitionCompiler(Compiler):
             handlers={
                 cliffords.X.name: handle_x,
                 cliffords.H.name: handle_h,
+                cliffords.CX.name: handle_cx,
             },
             compiler_callbacks={Decode},
         )
