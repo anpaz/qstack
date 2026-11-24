@@ -22,8 +22,8 @@ include "qstack/cliffords.inc";
 extern selector teleport_fix(bit, bit) -> int;
 
 def teleport(qubit target) {{
-  qreg shared[1];
-  qreg source[1];
+  qubit[1] shared;
+  qubit[1] source;
   bit m0;
   bit m1;
 
@@ -38,16 +38,16 @@ def teleport(qubit target) {{
   measure shared[0] -> m1;
 
   switch (teleport_fix(m0, m1)) {{
-    case 0: {{ }}
-    case 1: {{ x target; }}
-    case 2: {{ z target; }}
-    case 3: {{ x target; z target; }}
+    case 0 {{ }}
+    case 1 {{ x target; }}
+    case 2 {{ z target; }}
+    case 3 {{ x target; z target; }}
   }}
 }}
 
-qreg q[1];
-creg c[1];
-teleport q[0];
+qubit[1] q;
+bit[1] c;
+teleport(q[0]);
 measure q[0] -> c[0];
 """
 
@@ -79,7 +79,7 @@ include "qstack/cliffords.inc";
 extern selector teleport_fix(bit, bit) -> int;
 
 def teleport(qubit source, qubit target) {
-  qreg shared[1];
+  qubit[1] shared;
   bit m0;
   bit m1;
 
@@ -91,17 +91,17 @@ def teleport(qubit source, qubit target) {
   measure shared[0] -> m1;
 
   switch (teleport_fix(m0, m1)) {
-    case 0: { }
-    case 1: { x target; }
-    case 2: { z target; }
-    case 3: { x target; z target; }
+    case 0 { }
+    case 1 { x target; }
+    case 2 { z target; }
+    case 3 { x target; z target; }
   }
 }
 
-qreg q[2];
-creg c[2];
+qubit[2] q;
+bit[2] c;
 h q[0];
-teleport q[0], q[1];
+teleport(q[0], q[1]);
 measure q[1] -> c[0];
 measure q[0] -> c[1];
 """

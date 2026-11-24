@@ -16,8 +16,8 @@ def test_clifford_module_is_stim_compatible() -> None:
 QSTACKQASM 0.1;
 include "qstack/cliffords.inc";
 
-qreg q[2];
-creg c[2];
+qubit[2] q;
+bit[2] c;
 h q[0];
 cx q[0], q[1];
 measure q[0] -> c[0];
@@ -34,8 +34,8 @@ def test_non_clifford_dialect_is_not_stim_compatible() -> None:
 QSTACKQASM 0.1;
 include "qstack/atoms.inc";
 
-qreg q[1];
-creg c[1];
+qubit[1] q;
+bit[1] c;
 sx q[0];
 measure q[0] -> c[0];
 """
@@ -54,8 +54,8 @@ def test_toy_module_becomes_stim_compatible_after_lowering_to_cliffords() -> Non
 QSTACKQASM 0.1;
 include "qstack/toy.inc";
 
-qreg q[2];
-creg c[2];
+qubit[2] q;
+bit[2] c;
 mix q[0];
 entangle q[0], q[1];
 measure q[0] -> c[0];

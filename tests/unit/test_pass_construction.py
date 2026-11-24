@@ -32,7 +32,7 @@ def _toy(program: str):
         parse(
             f'''QSTACKQASM 0.1;
 include "qstack/toy.inc";
-qreg q[1]; creg c[1]; {program} measure q[0] -> c[0];'''
+qubit[1] q; bit[1] c; {program} measure q[0] -> c[0];'''
         )
     )
 

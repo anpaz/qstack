@@ -7,7 +7,7 @@ from qstack.surface.parser import parse
 
 
 def _module(include: str):
-    return lower(parse(f'''QSTACKQASM 0.1; include "{include}"; qreg q[1]; creg c[1]; x q[0]; measure q[0] -> c[0];'''))
+    return lower(parse(f'''QSTACKQASM 0.1; include "{include}"; qubit[1] q; bit[1] c; x q[0]; measure q[0] -> c[0];'''))
 
 
 def test_machine_executes_main_only() -> None:
@@ -19,7 +19,7 @@ def test_machine_executes_main_only() -> None:
 
 def test_machine_can_evaluate_multiple_programs() -> None:
     one = _module("qstack/cliffords.inc")
-    zero = lower(parse('''QSTACKQASM 0.1; include "qstack/cliffords.inc"; qreg q[1]; creg c[1]; measure q[0] -> c[0];'''))
+    zero = lower(parse('''QSTACKQASM 0.1; include "qstack/cliffords.inc"; qubit[1] q; bit[1] c; measure q[0] -> c[0];'''))
     machine = Machine(num_qubits=1)
 
     assert machine.single_shot(one) == [1]
@@ -29,7 +29,7 @@ def test_machine_can_evaluate_multiple_programs() -> None:
 
 def test_machine_without_fixed_qpu_selects_per_evaluation() -> None:
     clifford = _module("qstack/cliffords.inc")
-    non_clifford = lower(parse('''QSTACKQASM 0.1; include "qstack/atoms.inc"; qreg q[1]; creg c[1]; sx q[0]; measure q[0] -> c[0];'''))
+    non_clifford = lower(parse('''QSTACKQASM 0.1; include "qstack/atoms.inc"; qubit[1] q; bit[1] c; sx q[0]; measure q[0] -> c[0];'''))
     machine = Machine(num_qubits=1)
 
     machine.single_shot(clifford)
@@ -39,7 +39,7 @@ def test_machine_without_fixed_qpu_selects_per_evaluation() -> None:
 
 
 def test_machine_rejects_stim_for_non_clifford_module() -> None:
-    non_clifford = lower(parse('''QSTACKQASM 0.1; include "qstack/atoms.inc"; qreg q[1]; creg c[1]; sx q[0]; measure q[0] -> c[0];'''))
+    non_clifford = lower(parse('''QSTACKQASM 0.1; include "qstack/atoms.inc"; qubit[1] q; bit[1] c; sx q[0]; measure q[0] -> c[0];'''))
     machine = Machine(num_qubits=1, qpu="stim")
     with pytest.raises(StimCompatibilityError):
         machine.single_shot(non_clifford)

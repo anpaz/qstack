@@ -1,16 +1,20 @@
 // QSTACKQASM 0.1 — qstack surface language (lark grammar).
 //
-// QSTACKQASM is a qstack-owned dialect that shares its file extension
-// (.qasm) with OpenQASM 3.0 so editor highlighting carries over, but is
-// not a subset of QASM3 and is not compatible with QASM3 toolchains.
+// QSTACKQASM borrows OpenQASM 3's syntax and shares its file extension
+// (.qasm) so editor highlighting carries over, but it is not a subset of
+// OpenQASM 3 and is not compatible with OpenQASM 3 toolchains. Beyond its own
+// header, the only new syntax is the `selector` modifier on `extern`.
+// QSTACKQASM also lifts one OpenQASM scope rule: qubits can be declared
+// inside a `def` and in any block.
 //
-// Covers what `prepare_one.qasm` needs:
+// Covers:
 //   - QSTACKQASM header, include
-//   - extern (decoder) and extern selector
-//   - def with qreg / bit / measure / gate-call / switch / call statement
-//   - top-level qreg / creg, gate-call, measure, def-call
+//   - extern (decoder) and extern selector declarations
+//   - def with qubit / bit declarations, gate application, def call,
+//     measure, decoder call, switch, while, for
+//   - the same statements at the top level
 
-start: header include* decl* top_stmt*
+start: header include* decl* stmt*
 
 header: "QSTACKQASM" NUMBER ";"
 include: "include" STRING ";"
@@ -31,51 +35,72 @@ param: type IDENT
 type: "qubit"    -> qubit_type
     | "bit"     -> bit_type
     | "int"     -> int_type
+    | "bool"    -> bool_type
 type_list: (type ("," type)*)?
 
 block: "{" stmt* "}"
 
-?stmt: qreg_stmt
+?stmt: qubit_stmt
      | bit_stmt
-     | creg_stmt
      | apply_stmt
+     | call_stmt
      | measure_stmt
+     | decode_stmt
      | switch_stmt
+     | while_stmt
+     | for_stmt
 
-// declarations & allocations inside blocks
-qreg_stmt: "qreg" IDENT "[" NUMBER "]" ";"
-creg_stmt: "creg" IDENT "[" NUMBER "]" ";"
-bit_stmt:  "bit"  IDENT ";"
+// declarations:  qubit q;   qubit[3] a;   bit m;   bit[3] c;
+// a block's qubits are local to it
+qubit_stmt: "qubit" designator? IDENT ";"
+bit_stmt:   "bit" designator? IDENT ";"
+designator: "[" NUMBER "]"
 
-// gate or def application:  h q;     cx q, ancilla[0];   prepare_one q;
+// gate application:  h q;     cx q, ancilla[0];
 // Parametric gates carry a parenthesised list of numeric arguments:
 //   skew(0.8) q;
-// Disambiguation between built-in gate and user-def call happens at
-// lowering time by looking the symbol up in the gate/def tables.
 apply_stmt: IDENT gate_params? qubit_arg ("," qubit_arg)* ";"
 gate_params: "(" gate_param ("," gate_param)* ")"
 gate_param: SIGNED_NUMBER
 
+// def call:  prepare_one(q);     teleport(a[0], b);
+call_stmt: IDENT "(" (qubit_arg ("," qubit_arg)*)? ")" ";"
+
 // measurement:  measure q[0] -> c[0];   |   measure ancilla[0] -> m;
 measure_stmt: "measure" qubit_arg "->" bit_target ";"
 
-// switch (selector_call(b1, b2, ...)) { case 0: { ... } case 1: { ... } }
-switch_stmt: "switch" "(" selector_call ")" "{" case_arm+ "}"
-selector_call: IDENT "(" bit_args? ")"
+// decoder call, OpenQASM's extern-call syntax:
+//   bit b = majority(m0, m1, m2);   |   b = majority(m0, m1, m2);
+decode_stmt: "bit" IDENT "=" callback_call ";"    -> decode_decl
+           | bit_target "=" callback_call ";"     -> decode_assign
+
+// switch (selector(b1, b2, ...)) { case 0 { ... } case 1 { ... } }
+// the selector is declared `-> int`
+switch_stmt: "switch" "(" callback_call ")" "{" case_arm+ "}"
+case_arm: "case" NUMBER block
+
+// while (selector(b1, ...)) { ... }: the selector is declared `-> bool`; its
+// label is 1 to run the body again and 0 to stop.  The body measures every
+// bit the condition reads.
+while_stmt: "while" "(" callback_call ")" block
+
+// for int i in [a:b] / [a:c:b] (start, step, stop; inclusive) / {v, ...}:
+// compile-time bounds, unrolled.
+for_stmt: "for" loop_type IDENT "in" loop_values block
+loop_type: ("int" | "uint") ("[" NUMBER "]")?
+?loop_values: "[" NUMBER ":" NUMBER "]"                -> range2
+            | "[" NUMBER ":" NUMBER ":" NUMBER "]"     -> range3
+            | "{" NUMBER ("," NUMBER)* "}"             -> value_set
+
+callback_call: IDENT "(" bit_args? ")"
 bit_args: bit_target ("," bit_target)*
-case_arm: "case" NUMBER ":" block
 
-// argument shapes
+// argument shapes; an index is a constant or a for-loop variable
 ?qubit_arg: IDENT                          -> qubit_ref
-          | IDENT "[" NUMBER "]"           -> qubit_index
+          | IDENT "[" index "]"            -> qubit_index
 ?bit_target: IDENT                         -> bit_ref
-           | IDENT "[" NUMBER "]"          -> bit_index
-
-// top-level statements: identical shape to in-block statements
-?top_stmt: qreg_stmt
-         | creg_stmt
-         | apply_stmt
-         | measure_stmt
+           | IDENT "[" index "]"           -> bit_index
+index: NUMBER | IDENT
 
 IDENT: /[A-Za-z_][A-Za-z0-9_]*/
 NUMBER: /[0-9]+(\.[0-9]+)?/

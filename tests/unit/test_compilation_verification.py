@@ -111,7 +111,7 @@ def test_rule_backend_discovery_allows_no_external_install(monkeypatch):
 
 
 def test_compilation_result_has_only_latest_step(tmp_path):
-    source = compile_qasm('QSTACKQASM 0.1; include "qstack/cliffords.inc"; qreg q[1]; creg c[1]; h q[0]; measure q[0] -> c[0];')
+    source = compile_qasm('QSTACKQASM 0.1; include "qstack/cliffords.inc"; qubit[1] q; bit[1] c; h q[0]; measure q[0] -> c[0];')
     assert source.witness is None
     target, _ = _program([])
     first = CompilationResult.from_step(source, target, artifact_path=tmp_path / "first.json")
@@ -137,7 +137,7 @@ def test_matrix_verifies_cancellation_and_saved_artifact(tmp_path):
 
 
 def test_thesis_example_has_four_rules_and_seven_claims():
-    source = compile_qasm('QSTACKQASM 0.1; include "qstack/cliffords.inc"; qreg q[2]; creg c[2]; x q[0]; x q[1]; measure q[0] -> c[0]; measure q[1] -> c[1];')
+    source = compile_qasm('QSTACKQASM 0.1; include "qstack/cliffords.inc"; qubit[2] q; bit[2] c; x q[0]; x q[1]; measure q[0] -> c[0]; measure q[1] -> c[1];')
     result = CliffordsToAtomsLowering().run(source)
     witness = result.witness
     assert len(witness.rules) == 4
@@ -165,7 +165,7 @@ def test_repeated_sites_check_each_rule_once():
 
 
 def test_frontend_peephole_witness_round_trips_and_verifies(tmp_path):
-    source = compile_qasm('QSTACKQASM 0.1; include "qstack/cliffords.inc"; qreg q[1]; creg c[1]; h q[0]; h q[0]; s q[0]; s q[0]; measure q[0] -> c[0];')
+    source = compile_qasm('QSTACKQASM 0.1; include "qstack/cliffords.inc"; qubit[1] q; bit[1] c; h q[0]; h q[0]; s q[0]; s q[0]; measure q[0] -> c[0];')
     result = CliffordPeepholeOptimization().run(source).save(tmp_path / "peephole.json")
     assert len(result.witness.rules) == 5
     assert verify(CompilationResult.load(result.artifact_path), backends=(_matrix_backend(),)).status == "VERIFIED"

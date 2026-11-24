@@ -15,8 +15,8 @@ _TOY_BELL = """
 QSTACKQASM 0.1;
 include "qstack/toy.inc";
 
-qreg q[2];
-creg c[2];
+qubit[2] q;
+bit[2] c;
 mix q[0];
 entangle q[0], q[1];
 measure q[0] -> c[0];
@@ -27,8 +27,8 @@ _FLIP = """
 QSTACKQASM 0.1;
 include "qstack/cliffords.inc";
 
-qreg q[1];
-creg c[1];
+qubit[1] q;
+bit[1] c;
 x q[0];
 measure q[0] -> c[0];
 """

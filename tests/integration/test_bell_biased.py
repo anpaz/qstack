@@ -14,8 +14,8 @@ _PROGRAM = """
 QSTACKQASM 0.1;
 include "qstack/toy.inc";
 
-qreg q[2];
-creg c[2];
+qubit[2] q;
+bit[2] c;
 skew(0.8) q[0];
 entangle q[0], q[1];
 measure q[0] -> c[0];

@@ -19,20 +19,20 @@ include "qstack/cliffords.inc";
 extern selector repeat_until_one(bit) -> int;
 
 def prepare_one(qubit q) {
-  qreg ancilla[1];
+  qubit[1] ancilla;
   bit m;
   h q;
   cx q, ancilla[0];
   measure ancilla[0] -> m;
   switch (repeat_until_one(m)) {
-    case 0: { }
-    case 1: { prepare_one q; }
+    case 0 { }
+    case 1 { prepare_one(q); }
   }
 }
 
-qreg q[1];
-creg c[1];
-prepare_one q[0];
+qubit[1] q;
+bit[1] c;
+prepare_one(q[0]);
 measure q[0] -> c[0];
 """
 

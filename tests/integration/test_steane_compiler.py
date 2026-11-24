@@ -7,7 +7,7 @@ from qstack.verifier import verify_module
 
 _PROGRAM = '''QSTACKQASM 0.1;
 include "qstack/cliffords.inc";
-qreg q[1]; creg c[1]; x q[0]; measure q[0] -> c[0];
+qubit[1] q; bit[1] c; x q[0]; measure q[0] -> c[0];
 '''
 
 

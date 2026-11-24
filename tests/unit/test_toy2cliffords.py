@@ -17,8 +17,8 @@ _TOY_BELL = """
 QSTACKQASM 0.1;
 include "qstack/toy.inc";
 
-qreg q[2];
-creg c[2];
+qubit[2] q;
+bit[2] c;
 mix q[0];
 entangle q[0], q[1];
 measure q[0] -> c[0];
@@ -78,8 +78,8 @@ def test_skew_rejection_is_explicit() -> None:
 QSTACKQASM 0.1;
 include "qstack/toy.inc";
 
-qreg q[1];
-creg c[1];
+qubit[1] q;
+bit[1] c;
 skew(0.8) q[0];
 measure q[0] -> c[0];
 """
