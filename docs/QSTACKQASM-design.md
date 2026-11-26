@@ -70,9 +70,9 @@ b = majority(m0, m1, m2);
 
 ### 3.3 `extern selector`: choosing what runs next
 
-`extern selector fix(bit, bit) -> int;` declares a selector: a callback that takes bits and returns a case label. Every selector is declared `-> int`, whether a `switch` or a `while` uses it.
+`extern selector fix(bit, bit) -> int;` declares a selector: a callback that takes bits and returns a case label. Every selector is declared `-> int`, and a `switch` calls it.
 
-At runtime a selector returns its label as a string. `case 2` matches the label `"2"`. In a `while`, `"1"` runs the body again and `"0"` leaves the loop. A label that matches no case is a runtime error.
+At runtime a selector returns its label as a string. `case 2` matches the label `"2"`. A label that matches no case is a runtime error.
 
 ### 3.4 `def`
 
@@ -90,15 +90,11 @@ A `def` takes qubits and returns all of them, in order, whatever its body does. 
 
 `switch (fix(m0, m1)) { case 0 { } case 1 { x q; } }`. The expression is a selector call, and each label appears once.
 
-### 3.8 `while`
-
-`while (again(m)) { ... }`. The condition is a selector call. The body must measure every bit the condition reads, because each test uses its bits up.
-
-### 3.9 `for`
+### 3.8 `for`
 
 `for int i in [0:2] { ... }`, `for int i in [0:2:4] { ... }` (start, step, stop) and `for int i in {0, 2} { ... }`. Ranges include both ends. Bounds are constants, and the loop variable can only index a register.
 
-### 3.10 Top level
+### 3.9 Top level
 
 The top-level statements form `@main`. Any statement is allowed. The program returns the bits that are still unread when it ends.
 
@@ -112,11 +108,11 @@ Each is enforced at compile time.
 
 A block measures every qubit it declares, if it uses it. A qubit that is declared and never used is never allocated.
 
-A qubit that is live at a `switch` or `while` comes back live. An ancilla used only inside an arm or a loop body should therefore be declared there.
+A qubit that is live at a `switch` comes back live. An ancilla used only inside an arm should therefore be declared there.
 
 ### 4.2 Bits are read once, in the kernel that measures them
 
-A bit is read by a `switch`, a `while` or a decoder call, and each read uses it up. A bit that is never read is an error, except at the top level, where it is returned. `def`s do not take or return bits, and an arm or a loop body cannot read a bit measured outside it.
+A bit is read by a `switch` or a decoder call, and each read uses it up. A bit that is never read is an error, except at the top level, where it is returned. `def`s do not take or return bits, and an arm cannot read a bit measured outside it.
 
 Bits can be copied physically, but single use gives every value in the IR exactly one consumer, which is what lets passes be checked by comparing dataflow graphs. Two decisions on the same bit have to be combined into one `switch`.
 
@@ -139,10 +135,9 @@ In OpenQASM 3 the qubit instead keeps its measured state, so a program that meas
 | `measure` | `qstack.measure`, and a `qstack.alloc` if the name is replaced |
 | Decoder call | `qstack.decode` |
 | `switch` | `qstack.select`, and one case kernel per arm, `@__qstack_case_<label>_<n>` |
-| `while` | A loop kernel `@__qstack_while_<n>` and an exit kernel `@__qstack_while_<n>_exit` |
 | `for` | Unrolled before lowering, one block per iteration |
 
-Case, loop and exit kernels borrow every qubit live at the statement and return it. A `while` becomes a `select` with the loop kernel as case `"1"` and the exit kernel as case `"0"`. The loop kernel runs the body and ends in the same `select`, so each iteration is a recursive call. `<n>` counts arms or loops across the program, not iterations.
+Case kernels borrow every qubit live at the `switch` and return it. `<n>` counts arms across the program.
 
 The lowering is not verified. The structural verifier checks its output, and every later pass is verified.
 
@@ -155,7 +150,7 @@ The lowering is not verified. The structural verifier checks its output, and eve
 | Classical variables, types and expressions | Classical computation lives in callbacks. Only `bit` values exist, and gate parameters are literals. |
 | `if`, `else` | Every choice is a `switch` on a selector. |
 | `default` | A `select` lists its cases. An unlisted label is a runtime error. |
-| Runtime loop bounds, `break`, `continue`, `end` | A program's kernels are fixed when it is compiled. `break`, `continue` and `end` would also leave qubits or bits unconsumed. |
+| `while`, `break`, `continue`, `end` | A program's kernels are fixed when it is compiled, so a loop whose length depends on measurements is a recursive `def`, as `prepare_one` is in §2. `while` was supported until 2026-11-26, but its test consumes the bits it reads, so the body had to measure them again and the first attempt had to be written before the loop. `break`, `continue` and `end` would also leave qubits or bits unconsumed. |
 | `bit` parameters and returned bits in `def` | Not implemented. The IR supports both. |
 | `gate` declarations, gate modifiers | Not implemented. Gates come from include files. |
 | `reset` | Measuring a qubit that is used again already resets it. |
@@ -168,8 +163,8 @@ The lowering is not verified. The structural verifier checks its output, and eve
 
 ## 7. Open items
 
-1. Bits across kernel boundaries: `bit` parameters, returned bits, and outer bits inside arms and loop bodies.
+1. Bits across kernel boundaries: `bit` parameters, returned bits, and outer bits inside arms.
 2. Implicit copying of a bit that is read more than once.
 3. `default`, which needs support in `select`.
 4. `gate` declarations and gate modifiers.
-5. `break` and `continue`.
+5. A repeat-until-success construct: run a block, then let a selector decide whether to run it again. It is closer to do-while than to `while`, and would lower to a recursive kernel.

@@ -218,15 +218,11 @@ h q[0];
 
 
 # ----------------------------------------------------------------------
-# while, for, decoder calls, measurement plus reset, and qubits in any block
+# for, decoder calls, measurement plus reset, and qubits in any block
 
 
 def _registry() -> CallbackRegistry:
     registry = CallbackRegistry()
-
-    @registry.selector("repeat_until_one")
-    def _retry(bits: tuple[int, ...]) -> str:
-        return "0" if bits[0] == 1 else "1"  # 1 = run the body again, 0 = stop
 
     @registry.selector("flip_if")
     def _flip_if(bits: tuple[int, ...]) -> str:
@@ -241,70 +237,6 @@ def _registry() -> CallbackRegistry:
 
 def _run(module: ModuleOp, shots: int = 200) -> dict:
     return dict(Machine(num_qubits=8, registry=_registry()).eval(module, shots=shots).histogram())
-
-
-PREPARE_ONE_WHILE = """
-QSTACKQASM 0.1;
-include "qstack/cliffords.inc";
-
-extern selector repeat_until_one(bit) -> int;
-
-def prepare_one(qubit q) {
-  qubit[1] a;
-  bit m;
-  h q;
-  cx q, a[0];
-  measure a[0] -> m;
-  while (repeat_until_one(m)) {
-    qubit[1] b;
-    h q;
-    cx q, b[0];
-    measure b[0] -> m;
-  }
-}
-
-qubit[1] q;
-bit[1] c;
-prepare_one(q[0]);
-measure q[0] -> c[0];
-"""
-
-
-def test_while_lowers_to_a_recursive_loop_kernel_and_an_exit_kernel() -> None:
-    module = _module(PREPARE_ONE_WHILE)
-    verify_module(module)
-    loop = _kernel(module, "__qstack_while_1")
-    exit_kernel = _kernel(module, "__qstack_while_1_exit")
-    # The loop kernel borrows the qubit live at the loop and allocates the
-    # ancilla the body uses; its select names the loop kernel itself.
-    assert len(loop.input_types) == 1
-    assert _allocations(loop) == 1
-    assert _allocations(exit_kernel) == 0
-    selects = [op for op in loop.body.block.ops if op.name == "qstack.select"]
-    assert len(selects) == 1
-    cases = {label: ref.root_reference.data for label, ref in selects[0].cases.data.items()}
-    assert cases == {"1": "__qstack_while_1", "0": "__qstack_while_1_exit"}
-    assert _run(module) == {(1,): 200}
-
-
-def test_while_body_must_measure_the_condition_bits() -> None:
-    source = """
-QSTACKQASM 0.1;
-include "qstack/cliffords.inc";
-extern selector repeat_until_one(bit) -> int;
-def f(qubit q) {
-  qubit[1] a;
-  bit m;
-  measure a[0] -> m;
-  while (repeat_until_one(m)) { x q; }
-}
-qubit[1] q;
-bit[1] c;
-f(q[0]);
-measure q[0] -> c[0];
-"""
-    with pytest.raises(ValueError, match="must measure m"):
-        _module(source)
 
 
 REPETITION = """
@@ -441,30 +373,36 @@ measure q[1] -> c[1];
     assert _allocations(_kernel(module, "main")) == 2
 
 
-def test_an_ancilla_reused_inside_a_while_must_be_declared_there() -> None:
+def test_an_ancilla_used_only_inside_an_arm_must_be_declared_there() -> None:
+    # a[0] is replaced after its measurement and used in an arm, so it passes
+    # through the switch and comes back unmeasured.
     source = """
 QSTACKQASM 0.1;
 include "qstack/cliffords.inc";
-extern selector repeat_until_one(bit) -> int;
-def prepare_one(qubit q) {
+extern selector flip_if(bit) -> int;
+def f(qubit q) {
   qubit[1] a;
   bit m;
-  h q;
   cx q, a[0];
   measure a[0] -> m;
-  while (repeat_until_one(m)) {
-    h q;
-    cx q, a[0];
-    measure a[0] -> m;
+  switch (flip_if(m)) {
+    case 0 { }
+    case 1 { x a[0]; x q; }
   }
 }
 qubit[1] q;
 bit[1] c;
-prepare_one(q[0]);
+f(q[0]);
 measure q[0] -> c[0];
 """
-    with pytest.raises(ValueError, match="a\\[0\\].*measured.*declared there"):
+    with pytest.raises(ValueError, match="a\\[0\\].*measured.*came back from a switch.*declared there"):
         _module(source)
+
+
+def test_while_does_not_parse() -> None:
+    # A loop whose length depends on measurements is a recursive def.
+    with pytest.raises(UnexpectedInput):
+        parse("QSTACKQASM 0.1;\nextern selector s(bit) -> int;\nbit m;\nwhile (s(m)) { }\n")
 
 
 def test_a_qubit_declared_in_a_for_body_is_local_to_each_iteration() -> None:
@@ -532,7 +470,7 @@ def test_a_selector_returns_int() -> None:
 
 
 def test_a_selector_declared_bool_does_not_parse() -> None:
-    # switch and while share one kind of selector, declared -> int.
+    # A selector is declared -> int.
     with pytest.raises(UnexpectedInput):
         parse("QSTACKQASM 0.1;\nextern selector s(bit) -> bool;\n")
 

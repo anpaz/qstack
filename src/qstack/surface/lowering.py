@@ -1,7 +1,7 @@
 """Lower QSTACKQASM 0.1 directly to the kernel-only qstack IR.
 
-Definitions, generated switch-case and loop kernels, and the synthesized
-program entry are all named ``qstack.kernel`` symbols.
+Definitions, generated switch-case kernels, and the synthesized program
+entry are all named ``qstack.kernel`` symbols.
 
 Qubits
 ------
@@ -18,13 +18,10 @@ Kernels
   parameter order.
 * Each ``switch`` arm becomes a case kernel that borrows the qubits live at
   the switch and returns them, exactly like a ``def``.
-* ``while (s(bits)) { body }`` becomes a loop kernel and an exit kernel, both
-  borrowing the qubits live at the loop.  A select at the loop runs the loop
-  kernel on label ``"1"`` and the exit kernel on ``"0"``; the loop kernel
-  runs the body and ends in the same select.  The body must measure every
-  bit the condition reads.
 * ``for`` loops have compile-time bounds and are unrolled before lowering,
   one block per iteration, with the loop variable replaced by its value.
+  There is no ``while``: a loop whose number of iterations depends on
+  measurements is a recursive ``def`` whose ``switch`` calls it again.
 * The top-level statements form ``@main``, which returns the bits that are
   still unread when it ends.
 
@@ -56,11 +53,6 @@ from qstack.dialect.core import (
 )
 from qstack.surface.isa_includes import IncludeGateSet, resolve_includes
 
-# A while loop's selector returns this label to run the body again ...
-WHILE_CONTINUE = "1"
-# ... and this one to leave the loop.
-WHILE_EXIT = "0"
-
 _STATEMENTS = frozenset(
     {
         "qubit_stmt",
@@ -71,7 +63,6 @@ _STATEMENTS = frozenset(
         "decode_decl",
         "decode_assign",
         "switch_stmt",
-        "while_stmt",
         "scope",
     }
 )
@@ -214,7 +205,6 @@ class _Lower:
         self.selector_arity: dict[str, int] = {}
         self.decoder_arity: dict[str, int] = {}
         self.case_counter = 0
-        self.loop_counter = 0
         self._references: dict[int, frozenset[str]] = {}
 
     def lower(self, tree: Tree) -> ModuleOp:
@@ -414,8 +404,8 @@ class _Lower:
             returned = [name for name in live if name in frame.from_select]
             if returned:
                 message += (
-                    f"; {', '.join(returned)} came back from a switch or while loop, so a qubit used only "
-                    "inside its arms or body should be declared there"
+                    f"; {', '.join(returned)} came back from a switch, so a qubit used only "
+                    "inside its arms should be declared there"
                 )
             raise ValueError(message)
         for name in declared:
@@ -439,8 +429,6 @@ class _Lower:
             self._lower_decode(statement, frame)
         elif kind == "switch_stmt":
             self._lower_switch(statement, frame)
-        elif kind == "while_stmt":
-            self._lower_while(statement, frame)
         else:
             raise NotImplementedError(f"unsupported statement {kind!r}")
 
@@ -555,48 +543,6 @@ class _Lower:
             cases=cases,
             case_arguments=[frame.qubits[name] for name in live],
             result_types=[QubitType() for _ in live],
-        )
-        self._rebind_from_select(frame, live, select)
-
-    def _lower_while(self, statement: Tree, frame: _Frame) -> None:
-        call, body = statement.children
-        selector, bit_names, bits = self._callback_call(call, frame, selector=True)
-        live = list(frame.qubits)
-        self.loop_counter += 1
-        loop_name = f"__qstack_while_{self.loop_counter}"
-        exit_name = f"__qstack_while_{self.loop_counter}_exit"
-        cases = {WHILE_CONTINUE: SymbolRefAttr(loop_name), WHILE_EXIT: SymbolRefAttr(exit_name)}
-        types = [QubitType() for _ in live]
-
-        self._generated_kernel(exit_name, f"the exit of the while loop on @{selector}", [], live)
-
-        # The loop kernel: the body, then the same select as at the loop.
-        self.kernels[loop_name] = _KernelDecl(tuple(types), tuple(types))
-        loop = self._frame(f"the body of the while loop on @{selector}", live)
-        self._lower_block(_block_stmts(body), loop)
-        unmeasured = [bit for bit in bit_names if bit not in loop.bits]
-        if unmeasured:
-            raise ValueError(
-                f"{loop.where}: the body must measure {', '.join(unmeasured)}, which the loop condition reads"
-            )
-        tail_bits = [loop.read_bit(bit) for bit in bit_names]
-        tail = SelectOp(
-            callee=selector,
-            bit_operands=tail_bits,
-            cases=cases,
-            case_arguments=self._finish(loop),
-            result_types=types,
-        )
-        loop.block.add_op(tail)
-        loop.block.add_op(ReturnOp(operands=list(tail.results)))
-        self._add_kernel(loop_name, loop, list(types))
-
-        select = SelectOp(
-            callee=selector,
-            bit_operands=bits,
-            cases=cases,
-            case_arguments=[frame.qubits[name] for name in live],
-            result_types=types,
         )
         self._rebind_from_select(frame, live, select)
 

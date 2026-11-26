@@ -11,7 +11,7 @@
 //   - QSTACKQASM header, include
 //   - extern (decoder) and extern selector declarations
 //   - def with qubit / bit declarations, gate application, def call,
-//     measure, decoder call, switch, while, for
+//     measure, decoder call, switch, for
 //   - the same statements at the top level
 
 start: header include* decl* stmt*
@@ -46,7 +46,6 @@ block: "{" stmt* "}"
      | measure_stmt
      | decode_stmt
      | switch_stmt
-     | while_stmt
      | for_stmt
 
 // declarations:  qubit q;   qubit[3] a;   bit m;   bit[3] c;
@@ -77,11 +76,6 @@ decode_stmt: "bit" IDENT "=" callback_call ";"    -> decode_decl
 // the selector is declared `-> int`
 switch_stmt: "switch" "(" callback_call ")" "{" case_arm+ "}"
 case_arm: "case" NUMBER block
-
-// while (selector(b1, ...)) { ... }: the selector is declared `-> int`, as for
-// a switch; its label is 1 to run the body again and 0 to stop.  The body
-// measures every bit the condition reads.
-while_stmt: "while" "(" callback_call ")" block
 
 // for int i in [a:b] / [a:c:b] (start, step, stop; inclusive) / {v, ...}:
 // compile-time bounds, unrolled.

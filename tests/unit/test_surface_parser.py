@@ -75,8 +75,6 @@ def test_openqasm_header_is_rejected() -> None:
 @pytest.mark.parametrize(
     "snippet",
     [
-        "QSTACKQASM 0.1;\nextern selector s(bit) -> int;\nqreg q[1]; bit m; measure q[0] -> m;\n"
-        "while (s(m)) { measure q[0] -> m; }\n",
         "QSTACKQASM 0.1;\nqreg q[3]; for int i in [0:2] { x q[i]; }\n",
         "QSTACKQASM 0.1;\nqreg q[3]; for uint[8] i in [0:2:2] { x q[i]; }\n",
         "QSTACKQASM 0.1;\nqreg q[3]; for int i in {0, 2} { x q[i]; }\n",
