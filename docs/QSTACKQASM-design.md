@@ -108,7 +108,7 @@ Each is enforced at compile time.
 
 A block measures every qubit it declares, if it uses it. A qubit that is declared and never used is never allocated.
 
-A qubit that is live at a `switch` comes back live. An ancilla used only inside an arm should therefore be declared there.
+A live qubit that an arm uses passes through the `switch` and comes back live, so an ancilla used only inside an arm should be declared there. A live qubit that no arm uses does not pass through the `switch`.
 
 ### 4.2 Bits are read once, in the kernel that measures them
 
@@ -118,7 +118,7 @@ Bits can be copied physically, but single use gives every value in the IR exactl
 
 ### 4.3 Measurement resets
 
-`measure q -> c` consumes the value of `q`. If `q` is used again later in the same kernel, or the kernel must return it, the name is bound at once to a newly allocated `|0⟩`. Otherwise the name is retired.
+`measure q -> c` consumes the value of `q`, and the name is bound at once to a newly allocated `|0⟩`. If nothing uses that qubit, its allocation is removed when the block that declares the name ends, so it does not appear in the IR.
 
 In OpenQASM 3 the qubit instead keeps its measured state, so a program that measures a qubit and then uses it as a control means something different here.
 
@@ -132,12 +132,12 @@ In OpenQASM 3 the qubit instead keeps its measured state, so a program that meas
 | Top level | `@main`, which returns the unread bits |
 | Qubit declaration | A `qstack.alloc`, if the qubit is used |
 | Gate, call | The operation, with each name rebound to its result |
-| `measure` | `qstack.measure`, and a `qstack.alloc` if the name is replaced |
+| `measure` | `qstack.measure`, and a `qstack.alloc` for the name's new qubit if anything uses it |
 | Decoder call | `qstack.decode` |
 | `switch` | `qstack.select`, and one case kernel per arm, `@__qstack_case_<label>_<n>` |
 | `for` | Unrolled before lowering, one block per iteration |
 
-Case kernels borrow every qubit live at the `switch` and return it. `<n>` counts arms across the program.
+Case kernels borrow the live qubits the arms use, in the order they were declared, and return them. `<n>` counts arms across the program.
 
 The lowering is not verified. The structural verifier checks its output, and every later pass is verified.
 

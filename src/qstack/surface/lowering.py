@@ -5,19 +5,21 @@ entry are all named ``qstack.kernel`` symbols.
 
 Qubits
 ------
-A qubit is allocated, in ``|0>``, by a ``qstack.alloc`` where it is declared,
-if the program uses it; one that is never used never enters the IR.
-``measure q -> c`` consumes the value of ``q``.  If the name ``q`` is used
-again later in the kernel being built, or the kernel must return it, the
-name is bound at once to a newly allocated ``|0>``: a measurement followed by
-a reset.  Otherwise the name is retired.
+A qubit is allocated, in ``|0>``, by a ``qstack.alloc`` where it is declared.
+``measure q -> c`` consumes the value of ``q`` and binds the name at once to a
+newly allocated ``|0>``.  When the block that declares a name ends, an
+allocation that the name still holds unused is removed, so a qubit that is
+declared and never used, or measured and not used again, does not appear in
+the IR.  Any other value left in the name is an error.
 
 Kernels
 -------
 * A ``def`` borrows its qubit parameters and returns every one of them, in
   parameter order.
-* Each ``switch`` arm becomes a case kernel that borrows the qubits live at
-  the switch and returns them, exactly like a ``def``.
+* Each ``switch`` arm becomes a case kernel that borrows the live qubits
+  the arms use, in the order they were declared, and returns them, exactly
+  like a ``def``.  A live qubit that no arm uses does not pass through the
+  select.
 * ``for`` loops have compile-time bounds and are unrolled before lowering,
   one block per iteration, with the loop variable replaced by its value.
   There is no ``while``: a loop whose number of iterations depends on
@@ -166,9 +168,8 @@ class _Frame:
     # Bits measured or decoded here and not yet read.
     bits: dict[str, SSAValue] = field(default_factory=dict)
     # For each enclosing block of this kernel, innermost last: the qubit
-    # names it declares, and the statements that remain in it.
+    # names it declares.
     scopes: list[list[str]] = field(default_factory=list)
-    remaining: list[list[Tree]] = field(default_factory=list)
     # Names whose current value came back from a select.
     from_select: set[str] = field(default_factory=set)
 
@@ -345,15 +346,6 @@ class _Lower:
             self._references[key] = frozenset(names)
         return self._references[key]
 
-    def _used_later(self, name: str, frame: _Frame) -> bool:
-        """Whether ``name`` is used again before the block that declares it ends."""
-        depth = max(frame.declared[name], 0)
-        return any(
-            name in self._referenced(statement)
-            for statements in frame.remaining[depth:]
-            for statement in statements
-        )
-
     @staticmethod
     def _index(node: Tree, frame: _Frame) -> int:
         token = node.children[0]
@@ -392,13 +384,19 @@ class _Lower:
 
     def _lower_block(self, statements: list[Tree], frame: _Frame, *, end: str = "before its block ends") -> None:
         frame.scopes.append([])
-        frame.remaining.append([])
-        for position, statement in enumerate(statements):
-            frame.remaining[-1] = statements[position + 1 :]
+        for statement in statements:
             self._lower_statement(statement, frame)
-        frame.remaining.pop()
         declared = frame.scopes.pop()
-        live = [name for name in declared if name in frame.qubits]
+        # A declared name that still holds an allocation nothing used is
+        # dropped with its allocation; any other value left in it is an error.
+        live = []
+        for name in declared:
+            value = frame.qubits.pop(name)
+            if isinstance(value.owner, AllocOp) and not value.uses:
+                frame.block.erase_op(value.owner)
+            else:
+                frame.qubits[name] = value
+                live.append(name)
         if live:
             message = f"{frame.where}: local qubit(s) {', '.join(live)} must be measured {end}"
             returned = [name for name in live if name in frame.from_select]
@@ -444,9 +442,7 @@ class _Lower:
                 raise ValueError(f"{frame.where}: qubit {name} is already declared")
             frame.declared[name] = depth
             frame.scopes[-1].append(name)
-            # A qubit the program never uses never enters the IR.
-            if self._used_later(name, frame):
-                frame.bind(name, frame.allocs.fresh_qubit())
+            frame.bind(name, frame.allocs.fresh_qubit())
 
     def _lower_apply(self, statement: Tree, frame: _Frame) -> None:
         name = str(statement.children[0])
@@ -503,12 +499,9 @@ class _Lower:
         measure = MeasureOp(operand=frame.value(qubit_name))
         frame.block.add_op(measure)
         frame.bits[bit_name] = measure.result
-        if qubit_name in frame.borrowed or self._used_later(qubit_name, frame):
-            # Measurement plus reset: the name now holds a fresh |0>.
-            frame.bind(qubit_name, frame.allocs.fresh_qubit())
-        else:
-            del frame.qubits[qubit_name]
-            frame.from_select.discard(qubit_name)
+        # The name now holds a new qubit in |0>; if nothing uses it, the end
+        # of its block drops the allocation.
+        frame.bind(qubit_name, frame.allocs.fresh_qubit())
 
     def _lower_decode(self, statement: Tree, frame: _Frame) -> None:
         target, call = statement.children
@@ -526,9 +519,11 @@ class _Lower:
 
     def _lower_switch(self, statement: Tree, frame: _Frame) -> None:
         selector, _, bits = self._callback_call(statement.children[0], frame, selector=True)
-        live = list(frame.qubits)
+        arms = [child for child in statement.children[1:] if _is_tree(child, "case_arm")]
+        used = frozenset().union(*(self._referenced(arm.children[1]) for arm in arms))
+        live = [name for name in frame.qubits if name in used]
         cases: dict[str, SymbolRefAttr] = {}
-        for arm in [child for child in statement.children[1:] if _is_tree(child, "case_arm")]:
+        for arm in arms:
             label = str(_integer(arm.children[0], "a case label"))
             if label in cases:
                 raise ValueError(f"{frame.where}: duplicate case {label} in the switch on @{selector}")
