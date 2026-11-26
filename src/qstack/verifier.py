@@ -16,6 +16,7 @@ from xdsl.ir import Operation, SSAValue
 
 from qstack.callbacks import resolve_callback
 from qstack.dialect.core import (
+    AllocOp,
     BitType,
     CallOp,
     DecodeOp,
@@ -76,7 +77,7 @@ def _linear_values(kernel: KernelOp) -> Iterable[SSAValue]:
 
 def _check_kernel_body_ops(kernel: KernelOp) -> None:
     block = kernel.body.blocks[0]
-    allowed = (UnitaryGateOp, MeasureOp, DecodeOp, SelectOp, CallOp, ReturnOp)
+    allowed = (UnitaryGateOp, AllocOp, MeasureOp, DecodeOp, SelectOp, CallOp, ReturnOp)
     for op in block.ops:
         if not isinstance(op, allowed):
             raise LinearityError(f"kernel @{kernel.sym_name.data} contains forbidden operation {op.name}")
@@ -93,14 +94,11 @@ def _check_kernel_body_ops(kernel: KernelOp) -> None:
 def _check_kernel_shape(kernel: KernelOp) -> None:
     if len(kernel.body.blocks) != 1:
         raise LinearityError(f"kernel @{kernel.sym_name.data} must have exactly one block")
-    if kernel.allocation_count < 0:
-        raise LinearityError(f"kernel @{kernel.sym_name.data} has a negative allocation count")
     block = kernel.body.blocks[0]
-    expected_args = [*[QubitType() for _ in range(kernel.allocation_count)], *kernel.input_types]
     _check_same_types(
         _type_list(block.args),
-        expected_args,
-        f"kernel @{kernel.sym_name.data} entry arguments do not match its signature and allocations",
+        kernel.input_types,
+        f"kernel @{kernel.sym_name.data} entry arguments do not match its signature",
     )
     if not isinstance(block.last_op, ReturnOp):
         raise LinearityError(f"kernel @{kernel.sym_name.data} must end in qstack.return")

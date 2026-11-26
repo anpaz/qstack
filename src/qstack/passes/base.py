@@ -13,6 +13,7 @@ from xdsl.ir import Attribute, Block, Operation, Region, SSAValue
 from qstack.compilation import CompilationResult, module_text
 from qstack.dialect import QubitType
 from qstack.dialect.core import (
+    AllocOp,
     CallOp,
     DecodeOp,
     DecoderOp,
@@ -25,7 +26,6 @@ from qstack.dialect.core import (
 from qstack.verifier import (
     PASS_HISTORY_ATTR,
     PassStructureError,
-    check_replacement,
     check_replacements,
     check_value_pairs,
     verify_module,
@@ -116,8 +116,8 @@ class KernelSignature:
     The engine derives these types from the pass's :class:`Encoding` before it
     lowers any kernel bodies.  Keeping all target signatures up front lets a
     call be rebuilt correctly even when its callee appears later in the module
-    or is recursive.  ``inputs`` contains the borrowed kernel inputs; fresh
-    allocations are entry-block arguments but are not part of this tuple.
+    or is recursive.  ``inputs`` contains the borrowed kernel inputs, which are
+    also the kernel's entry-block arguments.
     """
 
     inputs: tuple[Attribute, ...]
@@ -140,9 +140,9 @@ class Replacement:
     is still an output, so single-operation replacements cover every result.
 
     Cancelling ``H;H`` has no target operations and pairs the second H result
-    with the target input.  Allocation preparation has no source operations:
-    its input and output pairs refer to the same fresh source argument, before
-    and after preparation.  The kernel driver handles it outside ``lower_body``.
+    with the target input.  A source ``qstack.alloc`` has no inputs: its
+    replacement holds the target allocations and any preparation of encoded
+    zero, and its one output is the prepared representation.
 
     These records describe construction only.  They retain the two regions
     and boundary correspondence needed for future claims, without asserting
@@ -302,7 +302,7 @@ class LoweringPass:
     ) -> tuple[Sequence[Operation], Sequence[SSAValue | QubitGroup]]:
         """Realize logical ``|0>`` in one freshly allocated target representation.
 
-        Kernel allocation supplies physical ``|0>`` qubits.  The default is
+        :meth:`lower_alloc` supplies physical ``|0>`` qubits.  The default is
         therefore sufficient for the identity encoding and encodings whose
         logical zero is the all-zero target state.  Other encodings override
         this hook and return operations and one output representation for the
@@ -338,7 +338,7 @@ class LoweringPass:
         source_operations = tuple(source.body.block.ops)
 
         # Entry values belong to the new kernel.  The encoding determines which
-        # of them jointly represent each source argument.
+        # of them jointly represent each borrowed source argument.
         entry_types = self.encoding.map_types(
             tuple(argument.type for argument in source.body.block.args)
         )
@@ -347,21 +347,6 @@ class LoweringPass:
             source.body.block.args, target_block.args, context
         )
         value_map = dict(self._pair_values(source.body.block.args, entry_values, context))
-
-        # Allocations are entry arguments, not body operations.  Prepare their
-        # logical zero before handing the entry correspondence to lower_body.
-        preparations: list[Replacement] = []
-        for source_value in source.body.block.args[: source.allocation_count]:
-            incoming = value_map[source_value]
-            operations, outputs = self.prepare_encoded_zero(incoming, context)
-            preparation = Replacement(
-                source_operations=(),
-                target_operations=tuple(operations),
-                inputs=((source_value, incoming),),
-                outputs=self._pair_values((source_value,), outputs, context),
-            )
-            self._check_and_apply(preparation, target_block, value_map, context)
-            preparations.append(preparation)
 
         replacements = self.lower_body(
             source_operations, tuple(value_map.items()), context
@@ -377,14 +362,13 @@ class LoweringPass:
         )
         for replacement in replacements:
             self._apply_replacement(replacement, target_block, value_map)
-        context.replacements[source.sym_name.data] = (*preparations, *replacements)
+        context.replacements[source.sym_name.data] = tuple(replacements)
 
-        # The body hook owns neither the signature nor the allocation boundary.
+        # The body hook does not own the signature.
         target = KernelOp(
             source.sym_name.data,
             input_types=signature.inputs,
             result_types=signature.results,
-            allocates=source.allocation_count * self.encoding.target_width,
             region=Region([target_block]),
         )
         target.attributes.update(source.attributes)
@@ -456,17 +440,6 @@ class LoweringPass:
         self._check(check_value_pairs, context, pairs, self.encoding)
         return pairs
 
-    def _check_and_apply(
-        self,
-        replacement: Replacement,
-        block: Block,
-        value_map: dict[SSAValue, SSAValue | QubitGroup],
-        context: LoweringContext,
-    ) -> None:
-        """Check a complete replacement before committing it to the target kernel."""
-        self._check(check_replacement, context, replacement, value_map, self.encoding)
-        self._apply_replacement(replacement, block, value_map)
-
     @staticmethod
     def _apply_replacement(
         replacement: Replacement,
@@ -532,6 +505,8 @@ class LoweringPass:
         handler = self.operation_handlers().get(type(source))
         if handler is not None:
             return handler(source, mapped_operands, context)
+        if isinstance(source, AllocOp):
+            return self.lower_alloc(source, mapped_operands, context)
         if isinstance(source, MeasureOp):
             return self.lower_measure(source, mapped_operands, context)
         if isinstance(source, DecodeOp):
@@ -565,6 +540,29 @@ class LoweringPass:
         }
         target = source.clone_without_regions(mapper)
         return [target], tuple(target.results)
+
+    def lower_alloc(
+        self,
+        source: Operation,
+        mapped_operands: tuple[SSAValue | QubitGroup, ...],
+        context: LoweringContext,
+    ) -> tuple[Sequence[Operation], Sequence[SSAValue | QubitGroup]]:
+        """Allocate the target representation of one fresh qubit and prepare ``|0>``.
+
+        One source allocation becomes ``target_width`` target allocations,
+        grouped for a non-identity encoding, followed by the operations of
+        :meth:`prepare_encoded_zero`.
+        """
+        allocations = [AllocOp() for _ in range(self.encoding.target_width)]
+        for allocation in allocations:
+            copy_operation_metadata(source, allocation)
+        fresh: SSAValue | QubitGroup = (
+            allocations[0].result
+            if self.encoding.is_identity
+            else QubitGroup(tuple(allocation.result for allocation in allocations))
+        )
+        operations, outputs = self.prepare_encoded_zero(fresh, context)
+        return [*allocations, *operations], tuple(outputs)
 
     def lower_measure(
         self,

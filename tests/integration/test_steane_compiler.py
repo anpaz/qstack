@@ -1,4 +1,4 @@
-from qstack.dialect.core import CallOp, DecoderOp, KernelOp, SelectOp, SelectorOp
+from qstack.dialect.core import AllocOp, CallOp, DecoderOp, KernelOp, SelectOp, SelectorOp
 from qstack.passes.steane import lower_steane, steane_decode_bits
 from qstack.runtime import CallbackRegistry, Machine
 from qstack.surface.lowering import lower
@@ -23,7 +23,7 @@ def test_steane_generates_named_syndrome_kernels_and_executes() -> None:
         for op in output.body.ops
         if isinstance(op, KernelOp) and "syndrome" in op.sym_name.data
     ]
-    assert {op.allocation_count for op in syndrome_kernels} == {3}
+    assert {sum(isinstance(inner, AllocOp) for inner in op.body.block.ops) for op in syndrome_kernels} == {3}
     assert Machine(num_qubits=10, registry=registry).single_shot(output) == [1]
 
 

@@ -9,6 +9,7 @@ from xdsl.ir import Block, SSAValue
 
 from qstack.dialect import BitType
 from qstack.dialect.core import (
+    AllocOp,
     CallOp,
     DecodeOp,
     KernelOp,
@@ -63,10 +64,7 @@ class ModuleEvaluator:
             )
         block = kernel.body.blocks[0]
         env: dict[SSAValue, Any] = {}
-        allocation_count = kernel.allocation_count
-        for value in block.args[:allocation_count]:
-            env[value] = self._qpu.allocate()
-        for value, argument in zip(block.args[allocation_count:], arguments, strict=True):
+        for value, argument in zip(block.args, arguments, strict=True):
             env[value] = argument
         return self._exec_block(block, env)
 
@@ -80,6 +78,9 @@ class ModuleEvaluator:
     def _dispatch(self, op, env: dict[SSAValue, Any]) -> None:
         if isinstance(op, UnitaryGateOp):
             self._apply_gate(op, env)
+            return
+        if isinstance(op, AllocOp):
+            env[op.result] = self._qpu.allocate()
             return
         if isinstance(op, MeasureOp):
             env[op.result] = self._qpu.measure(env.pop(op.qubit))

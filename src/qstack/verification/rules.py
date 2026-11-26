@@ -48,8 +48,8 @@ def check_structural_rule(rule: Rule, source: ModuleOp) -> RuleResult | CircuitR
         body = tuple(callee.body.block.ops)
         expected = extract_pattern(
             callee, tuple(range(len(body) - 1)),
-            callee.body.block.args[callee.allocation_count:], body[-1].operands,
-            tuple(range(callee.allocation_count)), _callback_sources(source),
+            callee.body.block.args, body[-1].operands,
+            _callback_sources(source),
         )
         if rule.target != expected:
             return verdict("REFUTED", "inline target is not an exact copy of the source callee")

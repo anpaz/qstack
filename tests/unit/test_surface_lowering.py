@@ -8,7 +8,7 @@ import pytest
 from lark.exceptions import UnexpectedInput
 from xdsl.dialects.builtin import ModuleOp
 
-from qstack.dialect.core import KernelOp
+from qstack.dialect.core import AllocOp, KernelOp
 from qstack.runtime import CallbackRegistry, Machine
 from qstack.surface.lowering import lower
 from qstack.surface.parser import parse
@@ -17,6 +17,11 @@ from qstack.verifier import verify_module
 
 def _module(src: str) -> ModuleOp:
     return lower(parse(src))
+
+
+def _allocations(kernel: KernelOp) -> int:
+    """The number of qubits a kernel allocates: its qstack.alloc operations."""
+    return sum(isinstance(op, AllocOp) for op in kernel.body.block.ops)
 
 
 def _kernel(module: ModuleOp, name: str) -> KernelOp:
@@ -103,7 +108,7 @@ def test_switch_case_measuring_a_live_qubit_gets_a_reset() -> None:
         op for op in module.body.ops if isinstance(op, KernelOp) and op.sym_name.data.startswith("__qstack_case_")
     ]
     assert case_kernels
-    assert any(kernel.allocation_count >= 1 for kernel in case_kernels)
+    assert any(_allocations(kernel) >= 1 for kernel in case_kernels)
 
 
 REPEATED_MEASUREMENT = """
@@ -133,7 +138,7 @@ def test_repeated_measurement_of_a_parameter_allocates_one_replacement_each_time
     module = _module(REPEATED_MEASUREMENT)
     verify_module(module)
     measure_twice = _kernel(module, "measure_twice")
-    assert measure_twice.allocation_count == 2
+    assert _allocations(measure_twice) == 2
 
 
 UNUSED_DECLARATION = """
@@ -157,7 +162,7 @@ def test_unreferenced_qubit_declaration_is_omitted_from_allocation() -> None:
 
     module = _module(UNUSED_DECLARATION)
     with_spare = _kernel(module, "with_spare")
-    assert with_spare.allocation_count == 0
+    assert _allocations(with_spare) == 0
     verify_module(module)
 
 
@@ -273,8 +278,8 @@ def test_while_lowers_to_a_recursive_loop_kernel_and_an_exit_kernel() -> None:
     # The loop kernel borrows the qubit live at the loop and allocates the
     # ancilla the body uses; its select names the loop kernel itself.
     assert len(loop.input_types) == 1
-    assert loop.allocation_count == 1
-    assert exit_kernel.allocation_count == 0
+    assert _allocations(loop) == 1
+    assert _allocations(exit_kernel) == 0
     selects = [op for op in loop.body.block.ops if op.name == "qstack.select"]
     assert len(selects) == 1
     cases = {label: ref.root_reference.data for label, ref in selects[0].cases.data.items()}
@@ -355,7 +360,7 @@ measure q[0] -> c[1];
 """
     module = _module(source)
     verify_module(module)
-    assert _kernel(module, "main").allocation_count == 2
+    assert _allocations(_kernel(module, "main")) == 2
     # The second measurement sees the fresh |0>, not the measured state.
     assert _run(module) == {(1, 0): 200}
 
@@ -394,7 +399,7 @@ measure q[0] -> c[0];
 def test_a_switch_arm_can_declare_its_own_qubits() -> None:
     module = _module(ARM_QREG)
     verify_module(module)
-    assert _kernel(module, "__qstack_case_1_2").allocation_count == 1
+    assert _allocations(_kernel(module, "__qstack_case_1_2")) == 1
     assert _run(module) == {(1,): 200}
 
 
@@ -433,7 +438,7 @@ measure q[1] -> c[1];
 """
     module = _module(source)
     verify_module(module)
-    assert _kernel(module, "main").allocation_count == 2
+    assert _allocations(_kernel(module, "main")) == 2
 
 
 def test_an_ancilla_reused_inside_a_while_must_be_declared_there() -> None:
@@ -478,7 +483,7 @@ measure q[0] -> c[2];
 """
     module = _module(source)
     verify_module(module)
-    assert _kernel(module, "main").allocation_count == 3
+    assert _allocations(_kernel(module, "main")) == 3
     assert _run(module) == {(1, 1, 0): 200}
 
 

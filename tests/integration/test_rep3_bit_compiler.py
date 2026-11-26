@@ -1,6 +1,6 @@
 from xdsl.dialects.builtin import ArrayAttr, StringAttr
 
-from qstack.dialect.core import DecodeOp, DecoderOp, KernelOp, MeasureOp
+from qstack.dialect.core import AllocOp, DecodeOp, DecoderOp, KernelOp, MeasureOp
 from qstack.passes import PASS_HISTORY_ATTR
 from qstack.passes.rep3_bit import lower_rep3_bit
 from qstack.runtime import CallbackRegistry, Machine
@@ -18,7 +18,7 @@ def test_rep3_decodes_inside_named_main_kernel() -> None:
     output = lower_rep3_bit(lower(parse(_PROGRAM)), CallbackRegistry())
     verify_module(output)
     main = next(op for op in output.body.ops if isinstance(op, KernelOp) and op.sym_name.data == "main")
-    assert main.allocation_count == 3
+    assert sum(isinstance(op, AllocOp) for op in main.body.block.ops) == 3
     assert len([op for op in main.body.block.ops if isinstance(op, MeasureOp)]) == 3
     assert len([op for op in main.body.block.ops if isinstance(op, DecodeOp)]) == 1
     assert len([op for op in output.body.ops if isinstance(op, DecoderOp)]) == 1

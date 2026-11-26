@@ -13,6 +13,7 @@ from xdsl.printer import Printer
 from qstack.dialect.atoms import Atoms, CzOp as AtomsCzOp, RzOp as AtomsRzOp, SxOp
 from qstack.dialect.cliffords import Cliffords, CxOp, CzOp, HOp, SOp, XOp, YOp, ZOp
 from qstack.dialect.core import (
+    AllocOp,
     BitType,
     CallOp,
     DecodeOp,
@@ -77,7 +78,6 @@ def test_every_isa_gate_uses_compact_syntax_and_roundtrips() -> None:
                     "main",
                     input_types=[QubitType(), QubitType()],
                     result_types=[],
-                    allocates=0,
                     region=Region([block]),
                 )
             ]
@@ -97,7 +97,6 @@ def test_core_symbols_and_control_ops_use_compact_syntax_and_roundtrip() -> None
         "worker",
         input_types=[QubitType()],
         result_types=[QubitType()],
-        allocates=0,
         region=Region([worker_block]),
     )
 
@@ -107,12 +106,13 @@ def test_core_symbols_and_control_ops_use_compact_syntax_and_roundtrip() -> None
         "case_one",
         input_types=[QubitType()],
         result_types=[QubitType()],
-        allocates=0,
         region=Region([case_block]),
     )
 
-    main_block = Block(arg_types=[QubitType(), QubitType()])
-    call = CallOp("worker", [main_block.args[0]], [QubitType()])
+    main_block = Block()
+    allocations = [AllocOp(), AllocOp()]
+    main_block.add_ops(allocations)
+    call = CallOp("worker", [allocations[0].result], [QubitType()])
     main_block.add_op(call)
     first_measurement = MeasureOp(operand=call.results[0])
     main_block.add_op(first_measurement)
@@ -122,7 +122,7 @@ def test_core_symbols_and_control_ops_use_compact_syntax_and_roundtrip() -> None
         callee="choose",
         bit_operands=[decoded.result],
         cases={"one": SymbolRefAttr("case_one")},
-        case_arguments=[main_block.args[1]],
+        case_arguments=[allocations[1].result],
         result_types=[QubitType()],
     )
     main_block.add_op(selected)
@@ -133,7 +133,6 @@ def test_core_symbols_and_control_ops_use_compact_syntax_and_roundtrip() -> None
         "main",
         input_types=[],
         result_types=[BitType()],
-        allocates=2,
         region=Region([main_block]),
     )
 
@@ -154,13 +153,14 @@ def test_core_symbols_and_control_ops_use_compact_syntax_and_roundtrip() -> None
         "qstack.call",
         "qstack.decode",
         "qstack.select",
+        "qstack.alloc",
         "qstack.measure",
         "qstack.return",
     ):
         assert f'"{name}"' not in text
-    assert "qstack.kernel @main" in text
-    assert "allocates 2" in text
-    assert "#builtin.int<2>" not in text
+    assert "qstack.kernel @main <[], [!qstack.bit]> {" in text
+    assert text.count("= qstack.alloc\n") == 2
+    assert "allocates" not in text
     assert "qstack.selector @choose arity 1" in text
     assert "qstack.decoder @decode arity 1" in text
 

@@ -2,14 +2,16 @@ from xdsl.dialects.builtin import ModuleOp
 from xdsl.ir import Block, Region
 
 from qstack.dialect import BitType, QubitType
-from qstack.dialect.core import DecodeOp, DecoderOp, KernelOp, MeasureOp, ReturnOp
+from qstack.dialect.core import AllocOp, DecodeOp, DecoderOp, KernelOp, MeasureOp, ReturnOp
 from qstack.runtime import CallbackRegistry, Machine
 
 
 def _two_decodes(first: DecoderOp, second: DecoderOp) -> ModuleOp:
-    block = Block(arg_types=[QubitType(), QubitType()])
-    first_measure = MeasureOp(operand=block.args[0])
-    second_measure = MeasureOp(operand=block.args[1])
+    block = Block()
+    qubits = [AllocOp(), AllocOp()]
+    block.add_ops(qubits)
+    first_measure = MeasureOp(operand=qubits[0].result)
+    second_measure = MeasureOp(operand=qubits[1].result)
     first_decode = DecodeOp(
         callee=first.sym_name.data, bit_operands=[first_measure.result]
     )
@@ -22,7 +24,6 @@ def _two_decodes(first: DecoderOp, second: DecoderOp) -> ModuleOp:
         "main",
         input_types=[],
         result_types=[BitType(), BitType()],
-        allocates=2,
         region=Region([block]),
     )
     return ModuleOp([first, second, main])

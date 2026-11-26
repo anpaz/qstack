@@ -5,8 +5,8 @@ program entry are all named ``qstack.kernel`` symbols.
 
 Qubits
 ------
-A qubit is allocated, in ``|0>``, where it is declared, if the program uses
-it; one that is never used never enters the IR.
+A qubit is allocated, in ``|0>``, by a ``qstack.alloc`` where it is declared,
+if the program uses it; one that is never used never enters the IR.
 ``measure q -> c`` consumes the value of ``q``.  If the name ``q`` is used
 again later in the kernel being built, or the kernel must return it, the
 name is bound at once to a newly allocated ``|0>``: a measurement followed by
@@ -44,6 +44,7 @@ from xdsl.ir import Block, Operation, Region, SSAValue
 
 from qstack.dialect import BitType, QubitType
 from qstack.dialect.core import (
+    AllocOp,
     CallOp,
     DecodeOp,
     DecoderOp,
@@ -145,20 +146,15 @@ def _unroll(node: object) -> object:
 
 
 class _AllocCursor:
-    """Grows a kernel's ``allocates`` count on demand.
+    """Emits a ``qstack.alloc`` at the current end of a kernel's block."""
 
-    Fresh qubits are block arguments placed ahead of the borrowed ones, so
-    each allocation is inserted at the current count.
-    """
-
-    def __init__(self, block: Block, count: int) -> None:
+    def __init__(self, block: Block) -> None:
         self._block = block
-        self.count = count
 
     def fresh_qubit(self) -> SSAValue:
-        argument = self._block.insert_arg(QubitType(), self.count)
-        self.count += 1
-        return argument
+        allocation = AllocOp()
+        self._block.add_op(allocation)
+        return allocation.result
 
 
 @dataclass
@@ -287,7 +283,7 @@ class _Lower:
         return _Frame(
             where=where,
             block=block,
-            allocs=_AllocCursor(block, 0),
+            allocs=_AllocCursor(block),
             qubits=dict(zip(borrowed, block.args, strict=True)),
             borrowed=list(borrowed),
             declared={name: _BORROWED for name in borrowed},
@@ -307,7 +303,6 @@ class _Lower:
                 name,
                 input_types=inputs,
                 result_types=results,
-                allocates=frame.allocs.count,
                 region=Region([frame.block]),
             )
         )

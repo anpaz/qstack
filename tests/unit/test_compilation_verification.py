@@ -14,7 +14,7 @@ from xdsl.ir import Block, Region
 from qstack.compilation import CompilationResult
 from qstack.dialect import BitType, QubitType
 from qstack.dialect.cliffords import HOp, XOp
-from qstack.dialect.core import DecodeOp, DecoderOp, KernelOp, MeasureOp, ReturnOp
+from qstack.dialect.core import AllocOp, DecodeOp, DecoderOp, KernelOp, MeasureOp, ReturnOp
 from qstack.dialect.h2 import U1Op
 from qstack.passes.base import Encoding, Replacement
 from qstack.passes.clifford_peephole import CliffordPeepholeOptimization
@@ -38,8 +38,10 @@ def _matrix_backend():
 
 
 def _program(gates):
-    block = Block(arg_types=[QubitType()])
-    wire = block.args[0]
+    block = Block()
+    allocation = AllocOp()
+    block.add_op(allocation)
+    wire = allocation.result
     instances = []
     for constructor in gates:
         gate = constructor(wire)
@@ -48,7 +50,7 @@ def _program(gates):
         wire = gate.results[0]
     measure = MeasureOp(operand=wire)
     block.add_ops([measure, ReturnOp(operands=[measure.result])])
-    return ModuleOp([KernelOp("main", input_types=[], result_types=[BitType()], allocates=1, region=Region([block]))]), instances
+    return ModuleOp([KernelOp("main", input_types=[], result_types=[BitType()], region=Region([block]))]), instances
 
 
 def _bind(source, target, claims, edges, kinds):
@@ -71,17 +73,18 @@ def _bind(source, target, claims, edges, kinds):
 
 
 def _witness(source, target, old_gates, new_gates):
+    # Operation 0 is the allocation; the gates follow it.
     sm, tm = len(old_gates), len(new_gates)
     edges = (
-        Edge("input", "main", (ValueRef("arg", 0),), (ValueRef("arg", 0),)),
-        Edge("output", "main", (ValueRef("result", sm - 1),), (ValueRef("result", tm - 1) if tm else ValueRef("arg", 0),)),
-        Edge("bit", "main", (ValueRef("result", sm),), (ValueRef("result", tm),)),
+        Edge("input", "main", (ValueRef("result", 0),), (ValueRef("result", 0),)),
+        Edge("output", "main", (ValueRef("result", sm),), (ValueRef("result", tm),)),
+        Edge("bit", "main", (ValueRef("result", sm + 1),), (ValueRef("result", tm + 1),)),
     )
     claims = (
-        Claim("allocation", "main", "alloc", (), (), (), ("input",), (0,), (0,)),
-        Claim("site", "main", "rewrite", tuple(range(sm)), tuple(range(tm)), ("input",), ("output",)),
-        Claim("measure", "main", "measure", (sm,), (tm,), ("output",), ("bit",)),
-        Claim("return", "main", "return", (sm + 1,), (tm + 1,), ("bit",), ()),
+        Claim("allocation", "main", "alloc", (0,), (0,), (), ("input",)),
+        Claim("site", "main", "rewrite", tuple(range(1, sm + 1)), tuple(range(1, tm + 1)), ("input",), ("output",)),
+        Claim("measure", "main", "measure", (sm + 1,), (tm + 1,), ("output",), ("bit",)),
+        Claim("return", "main", "return", (sm + 2,), (tm + 2,), ("bit",), ()),
     )
     return _bind(source, target, claims, edges, {"alloc": "identity", "rewrite": "gate", "measure": "identity", "return": "identity"})
 
@@ -118,7 +121,7 @@ def test_compilation_result_has_only_latest_step(tmp_path):
     assert verify(first).status == "UNSUPPORTED"
     second = CompilationResult.from_step(first, source.module.clone(), artifact_path=tmp_path / "second.json")
     data = json.loads(second.artifact_path.read_text())
-    assert data["version"] == 2
+    assert data["version"] == 3
     assert data["source"] != data["target"]
     assert data["witness"] is None
     assert CompilationResult.load(second.artifact_path).artifact_path == second.artifact_path
@@ -221,7 +224,7 @@ def test_false_or_unsupported_witnesses(tmp_path, mutation):
     elif mutation == "pattern":
         witness = replace(witness, rules=tuple(replace(rule, target=rule.source) if rule.id == "rewrite" else rule for rule in witness.rules))
     elif mutation == "duplicate_allocation":
-        witness = replace(witness, claims=tuple(replace(claim, source_allocations=(0, 0)) if claim.id == "allocation" else claim for claim in witness.claims))
+        witness = replace(witness, claims=tuple(replace(claim, source_ops=(0, 0)) if claim.id == "allocation" else claim for claim in witness.claims))
     else:
         witness = replace(witness, rules=tuple(replace(rule, kind="future") if rule.id == "rewrite" else rule for rule in witness.rules))
     assert verify(_result(source, target, witness, tmp_path), backends=()).status == ("UNSUPPORTED" if mutation == "unknown_kind" else "REFUTED")
@@ -249,14 +252,16 @@ def test_mutated_returned_module_does_not_match_its_artifact(tmp_path):
 def test_callback_host_wire_order_is_checked(tmp_path, separate_sources):
     names = ("a.1:decode", "b.2:decode") if separate_sources else ("a", "b")
     def module(reverse):
-        block = Block(arg_types=[QubitType(), QubitType()])
-        m = [MeasureOp(operand=q) for q in block.args]
+        block = Block()
+        a = [AllocOp(), AllocOp()]
+        m = [MeasureOp(operand=op.result) for op in a]
         d = [DecodeOp(callee=name, bit_operands=[op.result]) for name, op in zip(names, m)]
-        block.add_ops([*m, *(reversed(d) if reverse else d), ReturnOp(operands=[op.result for op in d])])
-        return ModuleOp([*(DecoderOp(name, 1) for name in names), KernelOp("main", input_types=[], result_types=[BitType(), BitType()], allocates=2, region=Region([block]))])
+        block.add_ops([*a, *m, *(reversed(d) if reverse else d), ReturnOp(operands=[op.result for op in d])])
+        return ModuleOp([*(DecoderOp(name, 1) for name in names), KernelOp("main", input_types=[], result_types=[BitType(), BitType()], region=Region([block]))])
     source, target = module(False), module(True)
-    edges = tuple(Edge(f"q{i}", "main", (ValueRef("arg", i),), (ValueRef("arg", i),)) for i in range(2)) + tuple(Edge(f"m{i}", "main", (ValueRef("result", i),), (ValueRef("result", i),)) for i in range(2)) + tuple(Edge(f"d{i}", "main", (ValueRef("result", i + 2),), (ValueRef("result", 3 - i),)) for i in range(2))
-    claims = tuple(Claim(f"alloc{i}", "main", "alloc", (), (), (), (f"q{i}",), (i,), (i,)) for i in range(2)) + tuple(Claim(f"m{i}", "main", "measure", (i,), (i,), (f"q{i}",), (f"m{i}",)) for i in range(2)) + tuple(Claim(f"d{i}", "main", f"decode{i}", (i + 2,), (3 - i,), (f"m{i}",), (f"d{i}",)) for i in range(2)) + (Claim("return", "main", "return", (4,), (4,), ("d0", "d1"), ()),)
+    # Operations: two allocations, two measurements, two decodes (reversed in the target), return.
+    edges = tuple(Edge(f"q{i}", "main", (ValueRef("result", i),), (ValueRef("result", i),)) for i in range(2)) + tuple(Edge(f"m{i}", "main", (ValueRef("result", i + 2),), (ValueRef("result", i + 2),)) for i in range(2)) + tuple(Edge(f"d{i}", "main", (ValueRef("result", i + 4),), (ValueRef("result", 5 - i),)) for i in range(2))
+    claims = tuple(Claim(f"alloc{i}", "main", "alloc", (i,), (i,), (), (f"q{i}",)) for i in range(2)) + tuple(Claim(f"m{i}", "main", "measure", (i + 2,), (i + 2,), (f"q{i}",), (f"m{i}",)) for i in range(2)) + tuple(Claim(f"d{i}", "main", f"decode{i}", (i + 4,), (5 - i,), (f"m{i}",), (f"d{i}",)) for i in range(2)) + (Claim("return", "main", "return", (6,), (6,), ("d0", "d1"), ()),)
     witness = _bind(source, target, claims, edges, {name: "identity" for name in ("alloc", "measure", "decode0", "decode1", "return")})
     report = verify(_result(source, target, witness, tmp_path), backends=())
     assert report.status == ("VERIFIED" if separate_sources else "REFUTED")
@@ -265,23 +270,25 @@ def test_callback_host_wire_order_is_checked(tmp_path, separate_sources):
 
 
 def test_locally_convex_claims_can_still_form_a_global_cycle(tmp_path):
-    block = Block(arg_types=[QubitType(), QubitType()])
-    a0, b0 = HOp(block.args[0]), XOp(block.args[1])
+    block = Block()
+    q0, q1 = AllocOp(), AllocOp()
+    a0, b0 = HOp(q0.result), XOp(q1.result)
     a1, b1 = HOp(a0.result), XOp(b0.result)
     ma, mb = MeasureOp(operand=a1.result), MeasureOp(operand=b1.result)
-    block.add_ops([a0, b0, a1, b1, ma, mb, ReturnOp(operands=[ma.result, mb.result])])
-    source = ModuleOp([KernelOp("main", input_types=[], result_types=[BitType(), BitType()], allocates=2, region=Region([block]))])
+    block.add_ops([q0, q1, a0, b0, a1, b1, ma, mb, ReturnOp(operands=[ma.result, mb.result])])
+    source = ModuleOp([KernelOp("main", input_types=[], result_types=[BitType(), BitType()], region=Region([block]))])
     target = source.clone()
-    refs = {"q0": ValueRef("arg", 0), "q1": ValueRef("arg", 1), **{f"r{i}": ValueRef("result", i) for i in range(6)}}
+    # r0..r5 are the results of the gates and measurements, operations 2..7.
+    refs = {"q0": ValueRef("result", 0), "q1": ValueRef("result", 1), **{f"r{i}": ValueRef("result", i + 2) for i in range(6)}}
     edges = tuple(Edge(name, "main", (ref,), (ref,)) for name, ref in refs.items())
     claims = (
-        Claim("alloc0", "main", "alloc", (), (), (), ("q0",), (0,), (0,)),
-        Claim("alloc1", "main", "alloc", (), (), (), ("q1",), (1,), (1,)),
-        Claim("A", "main", "A", (0, 3), (0, 3), ("q0", "r1"), ("r0", "r3")),
-        Claim("B", "main", "B", (1, 2), (1, 2), ("q1", "r0"), ("r1", "r2")),
-        Claim("ma", "main", "measure", (4,), (4,), ("r2",), ("r4",)),
-        Claim("mb", "main", "measure", (5,), (5,), ("r3",), ("r5",)),
-        Claim("return", "main", "return", (6,), (6,), ("r4", "r5"), ()),
+        Claim("alloc0", "main", "alloc", (0,), (0,), (), ("q0",)),
+        Claim("alloc1", "main", "alloc", (1,), (1,), (), ("q1",)),
+        Claim("A", "main", "A", (2, 5), (2, 5), ("q0", "r1"), ("r0", "r3")),
+        Claim("B", "main", "B", (3, 4), (3, 4), ("q1", "r0"), ("r1", "r2")),
+        Claim("ma", "main", "measure", (6,), (6,), ("r2",), ("r4",)),
+        Claim("mb", "main", "measure", (7,), (7,), ("r3",), ("r5",)),
+        Claim("return", "main", "return", (8,), (8,), ("r4", "r5"), ()),
     )
     witness = _bind(source, target, claims, edges, {"alloc": "identity", "A": "gate", "B": "gate", "measure": "identity", "return": "identity"})
     report = verify(_result(source, target, witness, tmp_path), backends=())
@@ -291,17 +298,19 @@ def test_locally_convex_claims_can_still_form_a_global_cycle(tmp_path):
 
 def test_graph_patterns_ignore_independent_gate_order():
     def module(reverse):
-        block = Block(arg_types=[QubitType(), QubitType()])
-        h, x = HOp(block.args[0]), XOp(block.args[1])
+        block = Block()
+        q0, q1 = AllocOp(), AllocOp()
+        h, x = HOp(q0.result), XOp(q1.result)
         ma, mb = MeasureOp(operand=h.result), MeasureOp(operand=x.result)
-        block.add_ops([*([x, h] if reverse else [h, x]), ma, mb, ReturnOp(operands=[ma.result, mb.result])])
-        return ModuleOp([KernelOp("main", input_types=[], result_types=[BitType(), BitType()], allocates=2, region=Region([block]))])
+        block.add_ops([q0, q1, *([x, h] if reverse else [h, x]), ma, mb, ReturnOp(operands=[ma.result, mb.result])])
+        return ModuleOp([KernelOp("main", input_types=[], result_types=[BitType(), BitType()], region=Region([block]))])
     source, target = module(False), module(True)
     old, new = next(iter(source.body.ops)), next(iter(target.body.ops))
     so, to = tuple(old.body.block.ops), tuple(new.body.block.ops)
-    records = [Replacement((), (), ((a, b),), ((a, b),)) for a, b in zip(old.body.block.args, new.body.block.args)]
-    records.append(Replacement(so[:2], to[:2], tuple(zip(old.body.block.args, new.body.block.args)), ((so[0].result, to[1].result), (so[1].result, to[0].result))))
-    for a, b in zip(so[2:], to[2:]):
+    records = [Replacement((a,), (b,), (), ((a.result, b.result),)) for a, b in zip(so[:2], to[:2])]
+    fresh = tuple((a.result, b.result) for a, b in zip(so[:2], to[:2]))
+    records.append(Replacement(so[2:4], to[2:4], fresh, ((so[2].result, to[3].result), (so[3].result, to[2].result))))
+    for a, b in zip(so[4:], to[4:]):
         records.append(Replacement((a,), (b,), tuple(zip(a.operands, b.operands)), tuple(zip(a.results, b.results))))
     witness = witness_from_replacements(source, target, {"main": records}, encoding=Encoding.identity())
     rule = next(rule for rule in witness.rules if rule.kind == "gate")
@@ -310,24 +319,27 @@ def test_graph_patterns_ignore_independent_gate_order():
 
 def test_gate_rule_checks_output_permutations(tmp_path):
     from qstack.dialect.cliffords import CxOp
-    old_block = Block(arg_types=[QubitType(), QubitType()])
-    c0 = CxOp(*old_block.args)
+    old_allocs = [AllocOp(), AllocOp()]
+    c0 = CxOp(*(op.result for op in old_allocs))
     c1 = CxOp(c0.results[1], c0.results[0])
     c2 = CxOp(c1.results[1], c1.results[0])
     old_measures = [MeasureOp(operand=q) for q in c2.results]
-    old_block.add_ops([c0, c1, c2, *old_measures, ReturnOp(operands=[m.result for m in old_measures])])
-    new_block = Block(arg_types=[QubitType(), QubitType()])
-    new_measures = [MeasureOp(operand=q) for q in reversed(new_block.args)]
-    new_block.add_ops([*new_measures, ReturnOp(operands=[m.result for m in new_measures])])
+    old_block = Block()
+    old_block.add_ops([*old_allocs, c0, c1, c2, *old_measures, ReturnOp(operands=[m.result for m in old_measures])])
+    new_allocs = [AllocOp(), AllocOp()]
+    new_measures = [MeasureOp(operand=op.result) for op in reversed(new_allocs)]
+    new_block = Block()
+    new_block.add_ops([*new_allocs, *new_measures, ReturnOp(operands=[m.result for m in new_measures])])
     def module(block):
-        return ModuleOp([KernelOp("main", input_types=[], result_types=[BitType(), BitType()], allocates=2, region=Region([block]))])
+        return ModuleOp([KernelOp("main", input_types=[], result_types=[BitType(), BitType()], region=Region([block]))])
     source, target = module(old_block), module(new_block)
-    edges = tuple(Edge(f"i{i}", "main", (ValueRef("arg", i),), (ValueRef("arg", i),)) for i in range(2)) + tuple(Edge(f"o{i}", "main", (ValueRef("result", 2, i),), (ValueRef("arg", 1 - i),)) for i in range(2)) + tuple(Edge(f"b{i}", "main", (ValueRef("result", 3 + i),), (ValueRef("result", i),)) for i in range(2))
-    claims = tuple(Claim(f"alloc{i}", "main", "alloc", (), (), (), (f"i{i}",), (i,), (i,)) for i in range(2)) + (
-        Claim("swap", "main", "swap", (0, 1, 2), (), ("i0", "i1"), ("o0", "o1")),
-        Claim("m0", "main", "measure", (3,), (0,), ("o0",), ("b0",)),
-        Claim("m1", "main", "measure", (4,), (1,), ("o1",), ("b1",)),
-        Claim("return", "main", "return", (5,), (2,), ("b0", "b1"), ()),
+    # Source: allocations 0-1, CX 2-4, measurements 5-6, return 7. Target: allocations 0-1, measurements 2-3, return 4.
+    edges = tuple(Edge(f"i{i}", "main", (ValueRef("result", i),), (ValueRef("result", i),)) for i in range(2)) + tuple(Edge(f"o{i}", "main", (ValueRef("result", 4, i),), (ValueRef("result", 1 - i),)) for i in range(2)) + tuple(Edge(f"b{i}", "main", (ValueRef("result", 5 + i),), (ValueRef("result", 2 + i),)) for i in range(2))
+    claims = tuple(Claim(f"alloc{i}", "main", "alloc", (i,), (i,), (), (f"i{i}",)) for i in range(2)) + (
+        Claim("swap", "main", "swap", (2, 3, 4), (), ("i0", "i1"), ("o0", "o1")),
+        Claim("m0", "main", "measure", (5,), (2,), ("o0",), ("b0",)),
+        Claim("m1", "main", "measure", (6,), (3,), ("o1",), ("b1",)),
+        Claim("return", "main", "return", (7,), (4,), ("b0", "b1"), ()),
     )
     witness = _bind(source, target, claims, edges, {"alloc": "identity", "swap": "gate", "measure": "identity", "return": "identity"})
     assert verify(_result(source, target, witness, tmp_path), backends=(_matrix_backend(),)).status == "VERIFIED"
@@ -354,8 +366,8 @@ def test_previous_artifact_schema_is_explicitly_rejected(tmp_path):
     target, new = _program([])
     result = _result(source, target, _witness(source, target, old, new), tmp_path)
     payload = json.loads(result.artifact_path.read_text())
-    payload["version"] = 1
+    payload["version"] = 2
     result.artifact_path.write_text(json.dumps(payload))
     report = verify(result)
     assert report.status == "REFUTED"
-    assert "artifact version 1" in report.detail
+    assert "artifact version 2" in report.detail

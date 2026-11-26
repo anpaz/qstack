@@ -41,7 +41,7 @@ Here `ρ` is the state of the kernel's input qubits and `ρ_b` is the subnormali
 
 Fresh qubits allocated by the kernel begin in `|0⟩`. Only measurement results returned by the kernel appear in `b`; measurements consumed inside the kernel still affect the probabilities and output states but are not themselves observable results.
 
-The instrument of a kernel is determined by its fresh-qubit allocation and by the operations in its body, including unitaries, measurements, decodes, calls, and selects. A `qstack.call` incorporates the instrument of its callee, while a `qstack.select` incorporates the instrument of the selected case kernel. The instrument denoted by `@main` is the meaning of the program. Because `@main` returns no qubits, its output quantum state belongs to the one-dimensional Hilbert space of zero qubits. For each returned bitstring `b`, the corresponding subnormalized state is the `1 × 1` matrix `[p_b]`, whose trace is the probability `p_b`. Thus the instrument of `@main` is a probability distribution over its returned bitstrings.
+The instrument of a kernel is determined by the operations in its body, including allocations, unitaries, measurements, decodes, calls, and selects. A `qstack.call` incorporates the instrument of its callee, while a `qstack.select` incorporates the instrument of the selected case kernel. The instrument denoted by `@main` is the meaning of the program. Because `@main` returns no qubits, its output quantum state belongs to the one-dimensional Hilbert space of zero qubits. For each returned bitstring `b`, the corresponding subnormalized state is the `1 × 1` matrix `[p_b]`, whose trace is the probability `p_b`. Thus the instrument of `@main` is a probability distribution over its returned bitstrings.
 
 ### 2.2 A kernel is a dataflow graph
 
@@ -49,7 +49,7 @@ Each kernel body forms a separate dataflow graph. The program is therefore a col
 
 This graph view is not a new representation: linearity gives every qubit and bit value exactly one producer and one consumer, so the graph is already present in the kernel body, written down in sequence form.
 
-The operations are the nodes; the SSA values are the wires. The sources are the borrowed inputs and the fresh `|0⟩` qubits; the sink is `qstack.return`. A `qstack.measure` is an interior node where a qubit wire ends and a bit wire begins. A `qstack.call` is a single opaque node; the callee's internals are not part of the caller's graph. A `qstack.select` references its case kernels, each a graph of its own.
+The operations are the nodes; the SSA values are the wires. The sources are the borrowed inputs, and each `qstack.alloc`, which has no inputs, starts the wire of a fresh `|0⟩` qubit; the sink is `qstack.return`. A `qstack.measure` is an interior node where a qubit wire ends and a bit wire begins. A `qstack.call` is a single opaque node; the callee's internals are not part of the caller's graph. A `qstack.select` references its case kernels, each a graph of its own.
 
 Two kernel bodies are the same kernel when their graphs match: same nodes, symbols, attributes, and wiring. In particular, the order of two operations connected by no wire is not part of the kernel graph. This is safe in the noiseless model, where operations on disjoint qubits commute: emitting them in either order produces the same graph. Order matters only where a wire carries it, and one more wire is needed for the order that matters to callbacks.
 
@@ -75,28 +75,30 @@ A pass preserves each existing callback's source, qualified name, interface, bit
 ```mlir
 builtin.module {
   qstack.selector @teleport_fix arity 2
-  qstack.kernel @fix_i <[!qstack.qubit], [!qstack.qubit]> allocates 0 {
+  qstack.kernel @fix_i <[!qstack.qubit], [!qstack.qubit]> {
   ^bb0(%0: !qstack.qubit):
     qstack.return %0 : !qstack.qubit
   }
-  qstack.kernel @fix_x <[!qstack.qubit], [!qstack.qubit]> allocates 0 {
+  qstack.kernel @fix_x <[!qstack.qubit], [!qstack.qubit]> {
   ^bb0(%0: !qstack.qubit):
     %1 = cliffords.x %0
     qstack.return %1 : !qstack.qubit
   }
-  qstack.kernel @fix_z <[!qstack.qubit], [!qstack.qubit]> allocates 0 {
+  qstack.kernel @fix_z <[!qstack.qubit], [!qstack.qubit]> {
   ^bb0(%0: !qstack.qubit):
     %1 = cliffords.z %0
     qstack.return %1 : !qstack.qubit
   }
-  qstack.kernel @fix_xz <[!qstack.qubit], [!qstack.qubit]> allocates 0 {
+  qstack.kernel @fix_xz <[!qstack.qubit], [!qstack.qubit]> {
   ^bb0(%0: !qstack.qubit):
     %1 = cliffords.x %0
     %2 = cliffords.z %1
     qstack.return %2 : !qstack.qubit
   }
-  qstack.kernel @teleport <[!qstack.qubit], [!qstack.qubit]> allocates 2 {
-  ^bb0(%shared: !qstack.qubit, %source: !qstack.qubit, %target: !qstack.qubit):
+  qstack.kernel @teleport <[!qstack.qubit], [!qstack.qubit]> {
+  ^bb0(%target: !qstack.qubit):
+    %shared = qstack.alloc
+    %source = qstack.alloc
     %0 = cliffords.x %source
     %1 = cliffords.h %shared
     %2, %3 = cliffords.cx %1, %target
@@ -107,8 +109,8 @@ builtin.module {
     %7 = qstack.select @teleport_fix(%m0, %m1) [%3] {"0" = @fix_i, "1" = @fix_x, "2" = @fix_z, "3" = @fix_xz} : (!qstack.qubit) -> !qstack.qubit
     qstack.return %7 : !qstack.qubit
   }
-  qstack.kernel @main <[], [!qstack.bit]> allocates 1 {
-  ^bb0(%0: !qstack.qubit):
+  qstack.kernel @main <[], [!qstack.bit]> {
+    %0 = qstack.alloc
     %1 = qstack.call @teleport(%0) : (!qstack.qubit) -> !qstack.qubit
     %2 = qstack.measure %1
     qstack.return %2 : !qstack.bit
@@ -121,8 +123,8 @@ The graph reading of `@teleport`, with qubit wires solid, bit wires dotted, the 
 ```mermaid
 flowchart TB
     target(["%target (borrowed)"]) --> cx1
-    shared(["%shared (fresh)"]) --> h1["h"]
-    source(["%source (fresh)"]) --> x1["x"]
+    shared["alloc"] -- "%shared" --> h1["h"]
+    source["alloc"] -- "%source" --> x1["x"]
     hostIn(["host"]) ==> sel
 
     h1 -- "%1" --> cx1["cx"]
@@ -144,7 +146,7 @@ And the graph of `@main`, where the host node is the call, because its callee re
 
 ```mermaid
 flowchart TB
-    q0(["%0 (fresh)"]) --> tele
+    q0["alloc"] -- "%0" --> tele
     hostIn(["host"]) ==> tele
     tele[["call @teleport"]] -- "%1" --> m["measure"]
     tele == "host'" ==> ret
@@ -153,7 +155,7 @@ flowchart TB
 
 The graphs make the model concrete:
 
-- The sources of `@teleport` are the borrowed `%target`, the two fresh qubits, and the incoming host state; the sink is the return, which the host wire also leaves through.
+- The sources of `@teleport` are the borrowed `%target` and the incoming host state, and its two fresh qubits start at `alloc` nodes, which have no inputs; the sink is the return, which the host wire also leaves through.
 - `x` and `h` share no wire, and neither do the two measures: their relative order is not part of the program, and a pass may emit either first.
 - Each measure ends a qubit wire and starts a bit wire. Both bit wires flow into the select, so no measurement outcome leaves the kernel.
 - The select is the kernel's only host node. Its case kernels are separate graphs referenced by label: `@fix_x` is a single `x` node between its borrowed input and its return.
@@ -289,7 +291,7 @@ G E^⊗k = E^⊗k g
 
 With `E = I`, this is ordinary unitary equality, and gate rules cover optimizations and dialect lowering: `S;S → Z`, `x → sx;sx`, or `H;H → ε`, whose empty target pattern connects its one input directly to its one output. Under the three-qubit repetition encoding, the rule that implements one source `x` by an `x` on each qubit of a bundle is also a gate rule.
 
-**Allocation.** Under a non-identity encoding, a fresh source qubit starts in `|0⟩`, so its bundle must start in `E|0⟩`. An allocation rule pairs one fresh qubit with `n` fresh qubits followed by a circuit that prepares `E|0⟩` from `|0…0⟩`. For the repetition code this circuit is empty. Fresh qubits are kernel entry values rather than operations, so the claim graph gives each one a node to claim.
+**Allocation.** Under a non-identity encoding, a fresh source qubit starts in `|0⟩`, so its bundle must start in `E|0⟩`. An allocation rule pairs one fresh qubit with `n` fresh qubits followed by a circuit that prepares `E|0⟩` from `|0…0⟩`. For the repetition code this circuit is empty. Each fresh qubit comes from a `qstack.alloc` operation, which the rule's source pattern claims like any other node.
 
 **Measurement.** Under a non-identity encoding, measuring a source qubit becomes measuring its whole bundle and passing the `n` raw bits to one fresh `decode`, which returns one bit:
 
@@ -307,7 +309,8 @@ T-injection is a fixup rule. Its source pattern is a single `t`; its target patt
 ```text
 source:  %r = t(%q)
 
-target:  %a = h(%0)                       // %0 is a fresh ancilla
+target:  %0 = alloc
+         %a = h(%0)
          %b = t(%a)
          %c, %d = cx(%q, %b)
          %m = measure(%d)

@@ -120,23 +120,12 @@ def _pattern_at(
     projection: str, sources: dict[str, set[str]],
 ) -> Pattern:
     indices = getattr(claim, projection + "_ops")
-    allocations = getattr(claim, projection + "_allocations")
     inputs = _values(claim, edges, side, projection, output=False)
     outputs = _values(claim, edges, side, projection, output=True)
     _require(len(set(inputs)) == len(inputs), f"{claim.id}: duplicate input value")
     _require(len(set(outputs)) == len(outputs), f"{claim.id}: duplicate output value")
-    _require(len(set(allocations)) == len(allocations), f"{claim.id}: duplicate allocation")
-    _require(all(0 <= index < side.kernel.allocation_count for index in allocations), f"{claim.id}: allocation is not a fresh qubit")
-    allocated = {side.args[index] for index in allocations}
     actual_inputs, actual_outputs = side.region_boundary(indices)
-    actual_inputs -= allocated
-    # A fresh entry value can escape a region without passing through a gate.
-    actual_outputs |= {
-        value for value in allocated
-        if any(side.op_index[use.operation] not in indices for use in value.uses)
-    }
     declared_inputs, declared_outputs = set(inputs), set(outputs)
-    _require(not (allocated & declared_inputs), f"{claim.id}: allocation is also an input")
     _require(actual_inputs <= declared_inputs, f"{claim.id}: uncovered {projection} input")
     _require(actual_outputs <= declared_outputs, f"{claim.id}: uncovered {projection} output")
     forwarded = declared_inputs - actual_inputs
@@ -144,7 +133,7 @@ def _pattern_at(
     _require(not (actual_inputs & declared_outputs), f"{claim.id}: consumed {projection} input was forwarded")
     _require(not (actual_outputs & declared_inputs), f"{claim.id}: internal {projection} output is also an input")
     try:
-        return extract_pattern(side.kernel, indices, inputs, outputs, allocations, sources)
+        return extract_pattern(side.kernel, indices, inputs, outputs, sources)
     except (TypeError, ValueError) as exc:
         raise WitnessError(f"{claim.id}: {projection} pattern: {exc}") from exc
 
@@ -249,13 +238,12 @@ def check_witness_structure(source_module: ModuleOp, target_module: ModuleOp, wi
         producers: Counter[str] = Counter(boundaries[name].inputs)
         consumers: Counter[str] = Counter()
         coverage: dict[str, dict[int, Claim]] = {"source": {}, "target": {}}
-        allocations: dict[str, Counter[int]] = {"source": Counter(), "target": Counter()}
         _require(len(boundaries[name].inputs) == len(old_kernel.input_types), f"@{name}: wrong input boundary arity")
         for index, edge_id in enumerate(boundaries[name].inputs):
             _require(edge_id in local_edges, f"@{name}: unknown input edge {edge_id}")
             edge = local_edges[edge_id]
-            _require(edge.source == (ValueRef("arg", old_kernel.allocation_count + index),), f"@{name}: source input edge differs")
-            _require(edge.target == (ValueRef("arg", new_kernel.allocation_count + index),), f"@{name}: target input edge differs")
+            _require(edge.source == (ValueRef("arg", index),), f"@{name}: source input edge differs")
+            _require(edge.target == (ValueRef("arg", index),), f"@{name}: target input edge differs")
         for edge in local_edges.values():
             _require(len(edge.source) == len(edge.target) == 1, f"{edge.id}: identity edge must pair one value")
             _require(old_side.value(edge.source[0]).type == new_side.value(edge.target[0]).type, f"{edge.id}: edge types differ")
@@ -267,12 +255,10 @@ def check_witness_structure(source_module: ModuleOp, target_module: ModuleOp, wi
                 for index in getattr(claim, projection + "_ops"):
                     _require(index not in coverage[projection], f"@{name}: {projection} operation {index} covered twice")
                     coverage[projection][index] = claim
-                allocations[projection].update(getattr(claim, projection + "_allocations"))
                 actual = _pattern_at(claim, side, local_edges, projection, host_uses)
                 _require(actual == getattr(rules[claim.rule], projection), f"{claim.id}: {projection} site does not instantiate rule {claim.rule}")
         for projection, side in (("source", old_side), ("target", new_side)):
             _require(set(coverage[projection]) == set(range(len(side.ops))), f"@{name}: {projection} operation coverage is incomplete")
-            _require(allocations[projection] == Counter(range(side.kernel.allocation_count)), f"@{name}: {projection} allocation coverage is incomplete or duplicated")
         _require(all(count == 1 for count in producers.values()) and set(producers) == set(local_edges), f"@{name}: each edge needs one producer")
         _require(all(count == 1 for count in consumers.values()) and set(consumers) == set(local_edges), f"@{name}: each edge needs one consumer")
         old_hosts = _host_sequence(old_kernel, coverage["source"], rules, source_hosts, source_side=True)

@@ -5,7 +5,7 @@ from xdsl.dialects.builtin import ArrayAttr, ModuleOp, StringAttr
 from xdsl.ir import Block, Region
 
 from qstack.dialect import BitType, QubitType
-from qstack.dialect.core import CallOp, DecoderOp, KernelOp, MeasureOp, ReturnOp
+from qstack.dialect.core import AllocOp, CallOp, DecoderOp, KernelOp, MeasureOp, ReturnOp
 from qstack.dialect.toy import MixOp, SkewOp
 from qstack.passes import (
     Encoding,
@@ -192,12 +192,12 @@ def test_lowering_precomputes_recursive_call_signatures() -> None:
         "recursive",
         input_types=[QubitType()],
         result_types=[QubitType()],
-        allocates=0,
         region=Region([recursive_block]),
     )
-    main_block = Block(arg_types=[QubitType()])
-    call = CallOp("recursive", [main_block.args[0]], [QubitType()])
-    main_block.add_op(call)
+    main_block = Block()
+    allocation = AllocOp()
+    call = CallOp("recursive", [allocation.result], [QubitType()])
+    main_block.add_ops([allocation, call])
     measure = MeasureOp(operand=call.results[0])
     main_block.add_op(measure)
     main_block.add_op(ReturnOp(operands=[measure.result]))
@@ -205,7 +205,6 @@ def test_lowering_precomputes_recursive_call_signatures() -> None:
         "main",
         input_types=[],
         result_types=[BitType()],
-        allocates=1,
         region=Region([main_block]),
     )
 
@@ -224,15 +223,16 @@ def test_lowering_preserves_mixed_signature_order_while_widening_qubits() -> Non
         "worker",
         input_types=[BitType(), QubitType()],
         result_types=[QubitType(), BitType()],
-        allocates=0,
         region=Region([worker_block]),
     )
-    main_block = Block(arg_types=[QubitType(), QubitType()])
-    first_measure = MeasureOp(operand=main_block.args[0])
+    main_block = Block()
+    allocations = [AllocOp(), AllocOp()]
+    main_block.add_ops(allocations)
+    first_measure = MeasureOp(operand=allocations[0].result)
     main_block.add_op(first_measure)
     call = CallOp(
         "worker",
-        [first_measure.result, main_block.args[1]],
+        [first_measure.result, allocations[1].result],
         [QubitType(), BitType()],
     )
     main_block.add_op(call)
@@ -243,7 +243,6 @@ def test_lowering_preserves_mixed_signature_order_while_widening_qubits() -> Non
         "main",
         input_types=[],
         result_types=[BitType(), BitType()],
-        allocates=2,
         region=Region([main_block]),
     )
 
@@ -279,20 +278,27 @@ def test_body_records_encoded_qubits_and_scalar_bits_after_preparation() -> None
     lowering = RecordingPhaseLowering()
     target = lowering.run(source)
     target_main = next(op for op in target.body.ops if isinstance(op, KernelOp))
-    gate, measure, returned = lowering.replacements
+    allocation, gate, measure, returned = lowering.replacements
 
     assert tuple(r.source_operations for r in lowering.replacements) == tuple(
         (op,) for op in source_ops
     )
-    source_entry, prepared = lowering.entry[0]
-    assert source_entry is main.body.block.args[0]
+    # @main borrows nothing; its qubit comes from a qstack.alloc, which the
+    # encoding turns into three allocations prepared as encoded zero.
+    assert lowering.entry == ()
+    assert allocation.inputs == ()
+    ((fresh, prepared),) = allocation.outputs
+    assert fresh is source_ops[0].results[0]
     assert isinstance(prepared, QubitGroup)
-    preparation = tuple(target_main.body.block.ops)[:3]
+    target_ops = tuple(target_main.body.block.ops)
+    assert all(isinstance(op, AllocOp) for op in target_ops[:3])
+    preparation = target_ops[3:6]
+    assert allocation.target_operations == target_ops[:6]
     assert prepared.qubits == tuple(op.results[0] for op in preparation)
-    assert gate.inputs == lowering.entry
+    assert gate.inputs == allocation.outputs
     assert isinstance(gate.outputs[0][1], QubitGroup)
     assert measure.inputs == gate.outputs
-    assert measure.outputs == ((source_ops[1].results[0], measure.target_operations[-1].results[0]),)
+    assert measure.outputs == ((source_ops[2].results[0], measure.target_operations[-1].results[0]),)
     assert returned.inputs == measure.outputs
     assert returned.outputs == ()
     assert all(op.parent is target_main.body.block for r in lowering.replacements for op in r.target_operations)
@@ -352,7 +358,8 @@ def test_body_rejects_malformed_replacement_boundaries(change, message) -> None:
 
         def lower_body(self, operations, inputs, context):
             replacements = super().lower_body(operations, inputs, context)
-            replacements[0] = change(replacements[0])
+            # Replacement 0 is the allocation; 1 is the gate.
+            replacements[1] = change(replacements[1])
             return replacements
 
     with pytest.raises(PassError, match=message):
@@ -365,7 +372,7 @@ def test_body_rejects_target_wiring_outside_reported_inputs() -> None:
 
         def lower_body(self, operations, inputs, context):
             replacements = super().lower_body(operations, inputs, context)
-            target = replacements[0].target_operations[0]
+            target = replacements[1].target_operations[0]
             unrelated = Block(arg_types=[QubitType()])
             target.operands = (unrelated.args[0],)
             return replacements

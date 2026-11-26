@@ -5,7 +5,7 @@ from xdsl.ir import Block, Region
 
 from qstack.dialect import BitType, QubitType
 from qstack.dialect.cliffords import HOp, SOp, XOp, YOp, ZOp
-from qstack.dialect.core import KernelOp, MeasureOp, ReturnOp
+from qstack.dialect.core import AllocOp, KernelOp, MeasureOp, ReturnOp
 from qstack.passes.clifford_peephole import (
     CliffordPeepholeOptimization,
     optimize_cliffords,
@@ -14,8 +14,10 @@ from qstack.verifier import verify_module
 
 
 def _module(gates):
-    block = Block(arg_types=[QubitType()])
-    value = block.args[0]
+    block = Block()
+    allocation = AllocOp()
+    block.add_op(allocation)
+    value = allocation.result
     for gate_type in gates:
         gate = gate_type(value)
         block.add_op(gate)
@@ -29,7 +31,6 @@ def _module(gates):
                 "main",
                 input_types=[],
                 result_types=[BitType()],
-                allocates=1,
                 region=Region([block]),
             )
         ]
@@ -70,10 +71,11 @@ def test_clifford_peephole_does_not_cross_an_intervening_operation() -> None:
 
 
 def test_same_gates_on_different_wires_do_not_match() -> None:
-    block = Block(arg_types=[QubitType(), QubitType()])
-    first = HOp(block.args[0])
-    second = HOp(block.args[1])
-    block.add_ops([first, second])
+    block = Block()
+    allocations = [AllocOp(), AllocOp()]
+    first = HOp(allocations[0].result)
+    second = HOp(allocations[1].result)
+    block.add_ops([*allocations, first, second])
     first_measure = MeasureOp(operand=first.result)
     second_measure = MeasureOp(operand=second.result)
     block.add_ops([first_measure, second_measure])
@@ -84,7 +86,6 @@ def test_same_gates_on_different_wires_do_not_match() -> None:
                 "main",
                 input_types=[],
                 result_types=[BitType(), BitType()],
-                allocates=2,
                 region=Region([block]),
             )
         ]
@@ -122,19 +123,22 @@ def test_optimization_records_source_pair_and_escaping_boundary(gate_type) -> No
     source = _module([gate_type, gate_type, XOp])
     source_main = next(op for op in source.body.ops if isinstance(op, KernelOp))
     source_ops = tuple(source_main.body.block.ops)
-    source_values = (*source_main.body.block.args, *(v for op in source_ops for v in op.results))
+    source_values = tuple(v for op in source_ops for v in op.results)
     uses_before = {v: tuple(v.uses) for v in source_values}
     optimization = RecordingOptimization()
     target = optimization.run(source)
     target_main = next(op for op in target.body.ops if isinstance(op, KernelOp))
-    pair, following, measure, returned = optimization.replacements
+    allocation, pair, following, measure, returned = optimization.replacements
+    target_allocation = next(iter(target_main.body.block.ops))
 
-    assert pair.source_operations == source_ops[:2]
-    assert pair.inputs == ((source_main.body.block.args[0], target_main.body.block.args[0]),)
-    assert pair.outputs[0][0] is source_ops[1].results[0]
+    assert allocation.source_operations == source_ops[:1]
+    assert allocation.outputs == ((source_ops[0].result, target_allocation.result),)
+    assert pair.source_operations == source_ops[1:3]
+    assert pair.inputs == allocation.outputs
+    assert pair.outputs[0][0] is source_ops[2].results[0]
     if gate_type is HOp:
         assert pair.target_operations == ()
-        assert pair.outputs[0][1] is target_main.body.block.args[0]
+        assert pair.outputs[0][1] is target_allocation.result
     else:
         assert len(pair.target_operations) == 1
         assert isinstance(pair.target_operations[0], ZOp)

@@ -24,6 +24,7 @@ from xdsl.ir import Block, Operation, Region, SSAValue
 from qstack.dialect import BitType, QubitType
 from qstack.dialect.cliffords import CxOp, HOp, XOp, ZOp
 from qstack.dialect.core import (
+    AllocOp,
     CallOp,
     DecodeOp,
     DecoderOp,
@@ -117,7 +118,7 @@ def _register_callbacks(registry: CallbackRegistry) -> None:
 class SteaneLowering(LoweringPass):
     """Realize each source qubit as a seven-qubit Steane group.
 
-    The pass prepares encoded zero at kernel allocation boundaries, applies the
+    The pass prepares encoded zero at each allocation, applies the
     supported logical Cliffords transversally, and inserts error correction
     after each logical gate.  Logical measurement is implemented by measuring
     every qubit in the group and invoking the generated decoder.
@@ -357,16 +358,11 @@ def _syndrome_kernel(name: str, *, phase: bool) -> KernelOp:
     before the updated data group so ``_error_correct`` can feed both directly
     to ``qstack.select``.
     """
-    block = Block(
-        arg_types=[
-            QubitType(),
-            QubitType(),
-            QubitType(),
-            *[QubitType() for _ in range(_WIDTH)],
-        ]
-    )
-    ancillas = list(block.args[:3])
-    data = list(block.args[3:])
+    block = Block(arg_types=[QubitType() for _ in range(_WIDTH)])
+    allocations = [AllocOp() for _ in range(3)]
+    block.add_ops(allocations)
+    ancillas = [allocation.result for allocation in allocations]
+    data = list(block.args)
 
     if phase:
         for index, ancilla in enumerate(ancillas):
@@ -411,7 +407,6 @@ def _syndrome_kernel(name: str, *, phase: bool) -> KernelOp:
             BitType(),
             *[QubitType() for _ in range(_WIDTH)],
         ],
-        allocates=3,
         region=Region([block]),
     )
 
@@ -434,7 +429,6 @@ def _correction_kernel(name: str, gate_type=None, index: int | None = None) -> K
         name,
         input_types=[QubitType() for _ in range(_WIDTH)],
         result_types=[QubitType() for _ in range(_WIDTH)],
-        allocates=0,
         region=Region([block]),
     )
 

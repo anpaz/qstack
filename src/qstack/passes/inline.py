@@ -6,7 +6,7 @@ from xdsl.dialects.builtin import ArrayAttr, ModuleOp, StringAttr
 from xdsl.ir import Block, Region
 
 from qstack.compilation import CompilationResult
-from qstack.dialect.core import CallOp, KernelOp, QubitType
+from qstack.dialect.core import CallOp, KernelOp
 from qstack.passes.base import Encoding, Replacement
 from qstack.verifier import PASS_HISTORY_ATTR, verify_module
 
@@ -42,22 +42,16 @@ class InlineCalls:
                 for op in kernel.body.block.ops
                 if isinstance(op, CallOp) and (self.callees is None or op.callee.root_reference.data in self.callees)
             }
-            allocation_count = kernel.allocation_count + sum(callee.allocation_count for callee in calls.values())
-            block = Block(arg_types=[*[QubitType() for _ in range(allocation_count)], *kernel.input_types])
-            old_args = kernel.body.block.args
-            values = dict(zip(old_args[:kernel.allocation_count], block.args[:kernel.allocation_count], strict=True))
-            values.update(zip(old_args[kernel.allocation_count:], block.args[allocation_count:], strict=True))
-            records = [Replacement((), (), ((arg, values[arg]),), ((arg, values[arg]),)) for arg in old_args[:kernel.allocation_count]]
-            next_allocation = kernel.allocation_count
+            block = Block(arg_types=kernel.input_types)
+            values = dict(zip(kernel.body.block.args, block.args, strict=True))
+            records = []
             for op in kernel.body.block.ops:
                 inputs = tuple((value, values[value]) for value in op.operands)
                 if op in calls:
                     callee = calls[op]
-                    borrowed = callee.body.block.args[callee.allocation_count:]
-                    local = dict(zip(borrowed, (values[value] for value in op.operands), strict=True))
-                    fresh = block.args[next_allocation:next_allocation + callee.allocation_count]
-                    local.update(zip(callee.body.block.args[:callee.allocation_count], fresh, strict=True))
-                    next_allocation += callee.allocation_count
+                    # The callee's allocations are operations, so they are copied
+                    # with the rest of its body.
+                    local = dict(zip(callee.body.block.args, (values[value] for value in op.operands), strict=True))
                     body = tuple(callee.body.block.ops)
                     emitted = []
                     for instruction in body[:-1]:
@@ -73,7 +67,7 @@ class InlineCalls:
                 records.append(Replacement((op,), tuple(emitted), inputs, pairs))
                 block.add_ops(emitted)
                 values.update(pairs)
-            target = KernelOp(kernel.sym_name.data, input_types=kernel.input_types, result_types=kernel.declared_result_types, allocates=allocation_count, region=Region([block]))
+            target = KernelOp(kernel.sym_name.data, input_types=kernel.input_types, result_types=kernel.declared_result_types, region=Region([block]))
             target.attributes.update(kernel.attributes)
             target.location = kernel.location
             target_ops.append(target)

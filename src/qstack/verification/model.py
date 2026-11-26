@@ -137,7 +137,7 @@ class Pattern:
     """A small graph with ordered boundary ports, independent of an IR site.
 
     Argument references name input ports; result references name operation
-    outputs. Allocations are explicit zero-input ``qstack.alloc`` nodes.
+    outputs. Allocations are zero-input ``qstack.alloc`` operations.
     Outputs may forward inputs, including an entirely empty target pattern.
     """
 
@@ -193,8 +193,6 @@ class Claim:
     target_ops: tuple[int, ...]
     inputs: tuple[str, ...]
     outputs: tuple[str, ...]
-    source_allocations: tuple[int, ...] = ()
-    target_allocations: tuple[int, ...] = ()
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Claim:
@@ -204,8 +202,6 @@ class Claim:
             tuple(int(index) for index in data["target_ops"]),
             tuple(str(edge) for edge in data["inputs"]),
             tuple(str(edge) for edge in data["outputs"]),
-            tuple(int(index) for index in data["source_allocations"]),
-            tuple(int(index) for index in data["target_allocations"]),
         )
 
 

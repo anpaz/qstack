@@ -82,13 +82,16 @@ class KernelSignatureAttr(ParametrizedAttribute):
 
 @irdl_op_definition
 class KernelOp(IRDLOperation):
-    """Named executable allocation scope with no SSA operation results."""
+    """Named executable kernel with no SSA operation results.
+
+    Its entry block holds the borrowed inputs only. Fresh qubits come from
+    ``qstack.alloc`` operations in the body.
+    """
 
     name = "qstack.kernel"
 
     sym_name = prop_def(SymbolNameConstraint())
     signature = prop_def(KernelSignatureAttr)
-    allocates = prop_def(IntAttr)
     body = region_def()
 
     traits = traits_def(IsolatedFromAbove(), SymbolOpInterface())
@@ -99,34 +102,27 @@ class KernelOp(IRDLOperation):
         *,
         input_types: Sequence[object],
         result_types: Sequence[object],
-        allocates: int,
         region: Region,
     ) -> None:
-        if allocates < 0:
-            raise ValueError("qstack.kernel allocates must be non-negative")
         super().__init__(
             properties={
                 "sym_name": StringAttr(name),
                 "signature": KernelSignatureAttr.from_lists(input_types, result_types),
-                "allocates": IntAttr(allocates),
             },
             regions=[region],
         )
 
     @classmethod
     def parse(cls, parser: Parser) -> "KernelOp":
-        """Parse ``@name <inputs, results> allocates N { ... }``."""
+        """Parse ``@name <inputs, results> { ... }``."""
         name = parser.parse_symbol_name()
         signature = KernelSignatureAttr.new(KernelSignatureAttr.parse_parameters(parser))
-        parser.parse_keyword("allocates")
-        allocates = parser.parse_integer(allow_boolean=False, allow_negative=False)
         body = parser.parse_region()
         attributes = parser.parse_optional_attr_dict()
         kernel = cls(
             name.data,
             input_types=signature.inputs.data,
             result_types=signature.results.data,
-            allocates=allocates,
             region=body,
         )
         kernel.attributes.update(attributes)
@@ -137,7 +133,7 @@ class KernelOp(IRDLOperation):
         printer.print_symbol_name(self.sym_name.data)
         printer.print_string(" ")
         self.signature.print_parameters(printer)
-        printer.print_string(f" allocates {self.allocation_count} ")
+        printer.print_string(" ")
         printer.print_region(self.body)
         printer.print_op_attributes(self.attributes)
 
@@ -154,10 +150,6 @@ class KernelOp(IRDLOperation):
         has no SSA results, even when its signature declares returned values.
         """
         return self.signature.results.data
-
-    @property
-    def allocation_count(self) -> int:
-        return self.allocates.data
 
 
 class _CallbackDeclarationOp(IRDLOperation):
@@ -225,6 +217,24 @@ class DecoderOp(_CallbackDeclarationOp):
     traits = traits_def(SymbolOpInterface())
 
     MINIMUM_ARITY: ClassVar[int] = 1
+
+
+@irdl_op_definition
+class AllocOp(IRDLOperation):
+    """Allocate one fresh qubit in ``|0>``.
+
+    Its result is linear like any other qubit: it must be consumed exactly
+    once. An allocation does not read or change the classical host state.
+    """
+
+    name = "qstack.alloc"
+
+    result = result_def(QubitType)
+
+    assembly_format = "attr-dict"
+
+    def __init__(self) -> None:
+        super().__init__(result_types=[QubitType()])
 
 
 @irdl_op_definition
@@ -363,6 +373,7 @@ QStack = Dialect(
         KernelOp,
         SelectorOp,
         DecoderOp,
+        AllocOp,
         MeasureOp,
         ReturnOp,
         CallOp,

@@ -263,15 +263,11 @@ def _flatten_dataflow(
             names[value] = name
             return names[value]
 
-        allocation_count = kernel.allocation_count
-        for index, argument in enumerate(block.args[:allocation_count]):
-            node_id = f"arg{index}" if is_root else f"{context}_arg{index}"
-            add_node(region, node_id, f"{value_name(argument)} (fresh)", "source")
-            wires[argument] = _Wire(node_id, value_name(argument), "qubit")
-        for index, argument in enumerate(block.args[allocation_count:]):
-            entry_index = allocation_count + index
+        # Fresh qubits come from qstack.alloc operations, drawn as alloc nodes
+        # below; entry arguments are the borrowed inputs.
+        for index, argument in enumerate(block.args):
             if is_root:
-                node_id = f"arg{entry_index}"
+                node_id = f"arg{index}"
                 add_node(region, node_id, f"{value_name(argument)} (input)", "source")
                 wires[argument] = _Wire(node_id, value_name(argument), _value_kind(argument))
             else:
@@ -356,8 +352,7 @@ def _kernel_dataflow(
 
     for index, argument in enumerate(block.args):
         source_id = f"{node_prefix}arg{index}"
-        origin = "fresh" if index < kernel.allocation_count else "input"
-        nodes.append((source_id, f"{value_name(argument)} ({origin})", "source"))
+        nodes.append((source_id, f"{value_name(argument)} (input)", "source"))
         producers[argument] = source_id
 
     host_nodes: list[str] = []

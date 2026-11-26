@@ -97,16 +97,11 @@ def extract_pattern(
     indices: Sequence[int],
     inputs: Sequence[SSAValue],
     outputs: Sequence[SSAValue],
-    allocations: Sequence[int],
     sources: Mapping[str, set[str]],
 ) -> Pattern:
     """Read an actual IR fragment as a graph with numbered boundary ports."""
     refs = {value: ValueRef("arg", index) for index, value in enumerate(inputs)}
     operations: list[PatternOp] = []
-    for index in allocations:
-        argument = kernel.body.block.args[index]
-        refs[argument] = ValueRef("result", len(operations))
-        operations.append(PatternOp("qstack.alloc", (), (QUBIT,)))
     body = tuple(kernel.body.block.ops)
     for index in indices:
         op = body[index]

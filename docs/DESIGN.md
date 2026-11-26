@@ -13,7 +13,7 @@ Textual syntax in this document is the syntax the implementation actually parses
 1. **A program is rooted at a kernel.** A module has exactly one entry kernel, `qstack.kernel @main`; executing it executes the statically reachable collection of kernels that makes up the program.
 2. **The core is quantum plus explicit callback boundaries.** A kernel contains only target-dialect unitaries, measurement, decoding, selection, and calls to other kernels.
 3. **Qubits and bits are linear.** Each is used once. Gates thread a qubit to a new SSA name; measurement is the only core qubit destructor.
-4. **A kernel means its instrument, not its realization.** A kernel denotes the quantum instrument it implements (§3.2). Its gates, decompositions, and allocation count are details of how that instrument is realized, so a pass may change them as long as the instrument is preserved.
+4. **A kernel means its instrument, not its realization.** A kernel denotes the quantum instrument it implements (§3.2). Its gates, decompositions, and allocations are details of how that instrument is realized, so a pass may change them as long as the instrument is preserved.
 5. **Existing callbacks are fixed interfaces.** A callback is registered once under its family-qualified implementation name and may be stateful: its output and next state are determined by its source-local state and received values. Callbacks from the same source may share state, so a pass preserves their order on that source's host wire as well as every existing callback invocation's interface and multiplicity. Different sources have disjoint host state. A callback introduced by a pass uses a fresh source and carries a finite classical obligation derived by semantic verification.
 
 ### 1.2 Noiseless scope
@@ -28,11 +28,11 @@ A module contains only named `qstack.kernel` definitions and `qstack.selector`/`
 
 ### 2.1 Named kernel definitions
 
-A kernel declares its borrowed input types, its allocation count, and its result types:
+A kernel declares its borrowed input types and its result types:
 
 ```text
-qstack.kernel @name <[input-types], [result-types]> allocates N {
-^bb0(%fresh..., %borrowed...):
+qstack.kernel @name <[input-types], [result-types]> {
+^bb0(%borrowed...):
     // kernel body
     qstack.return %results... : result-types
 }
@@ -42,7 +42,7 @@ The signature is an attribute on the kernel (`!qstack.kernel_signature`, a pair 
 
 A kernel definition produces no values of its own, even when its signature declares results. Results appear at the call site, one set per invocation, because a kernel may be called any number of times. Code that needs a kernel's declared results reads `KernelOp.declared_result_types`. The inherited xDSL accessor `Operation.result_types` answers a different question, namely which values this operation itself defines, and correctly reports none.
 
-The first `N` entry arguments are fresh `|0⟩` qubits supplied by the kernel invocation, not caller operands. The declared inputs and the remaining entry-block arguments correspond positionally.
+The declared inputs and the entry-block arguments correspond positionally. A kernel gets fresh `|0⟩` qubits from `qstack.alloc` operations in its body (§2.3), not from its entry block.
 
 Arguments and results may contain `!qstack.qubit` and `!qstack.bit`. A qubit result may come from a borrowed input or a fresh allocation. A measurement bit may be returned or consumed by `decode` or `select`.
 
@@ -61,12 +61,13 @@ It names a `qstack.kernel`, supplies exactly its declared arguments, and yields 
 Other than its `qstack.return` terminator, a kernel body may contain only:
 
 1. a unitary operation from the external dialect active at that layer;
-2. `qstack.measure`;
-3. `qstack.decode`;
-4. `qstack.select`; and
-5. `qstack.call`.
+2. `qstack.alloc`, which takes no operands and gives one fresh qubit in `|0⟩`;
+3. `qstack.measure`;
+4. `qstack.decode`;
+5. `qstack.select`; and
+6. `qstack.call`.
 
-No generic control flow, arithmetic, memory, arbitrary MLIR operation, or standalone allocation operation is permitted. Classical computation is either an opaque callback boundary or belongs to a future, separately specified dialect.
+No generic control flow, arithmetic, memory, or arbitrary MLIR operation is permitted. An allocated qubit is linear like any other (§3.1), so it must be consumed: a kernel cannot allocate a qubit and leave it unused. `qstack.alloc` does not touch host state. Classical computation is either an opaque callback boundary or belongs to a future, separately specified dialect.
 
 "A unitary operation from the external dialect" is a structural test, not a fixed list: an operation is a unitary if it satisfies the `UnitaryGateOp` protocol, meaning it exposes a `unitary()` method returning its matrix in standard operand order. The target dialects shipped today are `toy`, `cliffords`, `h2`, and `atoms`, registered in `qstack.dialect.registry`; `register_isa_dialect` admits more without changing the core. A unitary threads its qubit operands to successor results positionally, which is what lets the verifier follow a qubit along its chain.
 
@@ -77,8 +78,8 @@ The executable-IR verifier is intentionally structural: it establishes the IR in
 - The module's top level contains only `qstack.kernel`, `qstack.selector`, and `qstack.decoder`, and symbol names are unique across all three.
 - A kernel body has exactly one block, and no operation in it carries a nested region.
 - `@main` has no borrowed inputs and cannot return a qubit. Its declared results are bits, which are the program's observable output.
-- The entry block's argument types equal exactly `allocates N` qubits followed by the declared inputs, and `qstack.return`'s operand types equal the declared result types.
-- `allocates` is non-negative, and a kernel body contains exactly one `qstack.return`, its final operation.
+- The entry block's argument types equal exactly the declared inputs, and `qstack.return`'s operand types equal the declared result types.
+- A kernel body contains exactly one `qstack.return`, its final operation.
 - `qstack.measure` consumes a qubit, and the bit operands of `qstack.decode` and `qstack.select` are bits.
 
 ## 3. Types, linearity, and kernel semantics
@@ -98,7 +99,7 @@ Linearity forbids aliasing and implicit copying. It lets the verifier establish 
 
 ### 3.2 Kernel graphs and instruments
 
-A kernel body denotes a dataflow graph: operations are nodes, linear SSA values are wires, borrowed and fresh values are sources, and `qstack.return` is the sink. The graph also contains one implicit host wire for each callback source used by the kernel. A `decode` or `select` lies on the host wire of its declaration's callback source, and a call lies on every host wire used transitively by its callee. These wires carry source-local host state and order callbacks that may share it. A call is an opaque node in its caller's graph; its callee is a separate graph. A select similarly refers to separate case-kernel graphs.
+A kernel body denotes a dataflow graph: operations are nodes, linear SSA values are wires, borrowed inputs are sources, as is each `qstack.alloc` (a node with no inputs), and `qstack.return` is the sink. The graph also contains one implicit host wire for each callback source used by the kernel. A `decode` or `select` lies on the host wire of its declaration's callback source, and a call lies on every host wire used transitively by its callee. These wires carry source-local host state and order callbacks that may share it. A call is an opaque node in its caller's graph; its callee is a separate graph. A select similarly refers to separate case-kernel graphs.
 
 Two bodies have the same graph when their nodes, symbols, attributes, and wiring match.
 
@@ -138,8 +139,10 @@ The declaration names no bit parameters, because there are none to bind. Both ki
 ```mlir
 builtin.module {
   qstack.decoder @majority_vote arity 3
-  qstack.kernel @main <[], [!qstack.bit]> allocates 3 {
-  ^bb0(%0: !qstack.qubit, %1: !qstack.qubit, %2: !qstack.qubit):
+  qstack.kernel @main <[], [!qstack.bit]> {
+    %0 = qstack.alloc
+    %1 = qstack.alloc
+    %2 = qstack.alloc
     %3 = cliffords.h %0
     %4, %5 = cliffords.cx %3, %1
     %6, %7 = cliffords.cx %4, %2
@@ -196,20 +199,21 @@ A witness records the pass's encoding isometry, the rules the pass applied, and 
 ```mlir
 builtin.module {
   qstack.selector @repeat_until_one arity 1
-  qstack.kernel @id <[!qstack.qubit], [!qstack.qubit]> allocates 0 {
+  qstack.kernel @id <[!qstack.qubit], [!qstack.qubit]> {
   ^bb0(%0: !qstack.qubit):
     qstack.return %0 : !qstack.qubit
   }
-  qstack.kernel @prepare_one <[!qstack.qubit], [!qstack.qubit]> allocates 1 {
-  ^bb0(%0: !qstack.qubit, %1: !qstack.qubit):
-    %2 = cliffords.h %1
-    %3, %4 = cliffords.cx %2, %0
+  qstack.kernel @prepare_one <[!qstack.qubit], [!qstack.qubit]> {
+  ^bb0(%0: !qstack.qubit):
+    %1 = qstack.alloc
+    %2 = cliffords.h %0
+    %3, %4 = cliffords.cx %2, %1
     %5 = qstack.measure %4
     %6 = qstack.select @repeat_until_one(%5) [%3] {done = @id, retry = @prepare_one} : (!qstack.qubit) -> !qstack.qubit
     qstack.return %6 : !qstack.qubit
   }
-  qstack.kernel @main <[], [!qstack.bit]> allocates 1 {
-  ^bb0(%0: !qstack.qubit):
+  qstack.kernel @main <[], [!qstack.bit]> {
+    %0 = qstack.alloc
     %1 = qstack.call @prepare_one(%0) : (!qstack.qubit) -> !qstack.qubit
     %2 = qstack.measure %1
     qstack.return %2 : !qstack.bit
@@ -217,7 +221,7 @@ builtin.module {
 }
 ```
 
-`@main` allocates `%0`; `@prepare_one` allocates its own `%0` and measures it, returning the qubit it borrowed (`%1`). The selector executes inside the kernel where `%5` is measured. Every possible continuation is a named kernel, so the module is closed for ahead-of-time compilation.
+`@main` allocates `%0` and passes it to `@prepare_one`, which allocates its own ancilla, `%1`, measures it, and returns the qubit it borrowed. The selector executes inside the kernel where `%5` is measured. Every possible continuation is a named kernel, so the module is closed for ahead-of-time compilation.
 
 After a repetition-code transformation, physical measurement bits are decoded inside the transformed kernel before the unchanged source selector consumes the logical bit. No function-scope plumbing and no callback wrapper are required.
 

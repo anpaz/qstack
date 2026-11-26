@@ -134,9 +134,9 @@ In OpenQASM 3 the qubit instead keeps its measured state, so a program that meas
 | --- | --- |
 | `def` | A kernel that borrows its qubit parameters and returns them |
 | Top level | `@main`, which returns the unread bits |
-| Qubit declaration | One more allocation in the kernel, if the qubit is used |
+| Qubit declaration | A `qstack.alloc`, if the qubit is used |
 | Gate, call | The operation, with each name rebound to its result |
-| `measure` | `qstack.measure`, and one more allocation if the name is replaced |
+| `measure` | `qstack.measure`, and a `qstack.alloc` if the name is replaced |
 | Decoder call | `qstack.decode` |
 | `switch` | `qstack.select`, and one case kernel per arm, `@__qstack_case_<label>_<n>` |
 | `while` | A loop kernel `@__qstack_while_<n>` and an exit kernel `@__qstack_while_<n>_exit` |
