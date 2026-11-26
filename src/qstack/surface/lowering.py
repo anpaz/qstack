@@ -216,7 +216,6 @@ class _Lower:
         self.include_gates = IncludeGateSet(includes=(), gates={})
         self.kernels: dict[str, _KernelDecl] = {}
         self.selector_arity: dict[str, int] = {}
-        self.selector_result: dict[str, str] = {}
         self.decoder_arity: dict[str, int] = {}
         self.case_counter = 0
         self.loop_counter = 0
@@ -263,10 +262,9 @@ class _Lower:
         arity = len(types)
         result = node.children[2]
         if selector:
-            if result.data not in {"int_type", "bool_type"}:
-                raise NotImplementedError(f"selector @{name}: result must be int or bool")
+            if result.data != "int_type":
+                raise NotImplementedError(f"selector @{name}: result must be int")
             self.selector_arity[name] = arity
-            self.selector_result[name] = str(result.data).removesuffix("_type")
             self.module.body.block.add_op(SelectorOp(name, arity))
             return
         if result.data != "bit_type":
@@ -403,17 +401,6 @@ class _Lower:
         if len(bit_names) != table[name]:
             raise ValueError(f"{kind} @{name} expects {table[name]} bits, got {len(bit_names)}")
         return name, bit_names, [frame.read_bit(bit) for bit in bit_names]
-
-    def _selector_call(
-        self, node: Tree, frame: _Frame, *, statement: str, result: str
-    ) -> tuple[str, list[str], list[SSAValue]]:
-        selector, bit_names, bits = self._callback_call(node, frame, selector=True)
-        if self.selector_result[selector] != result:
-            raise ValueError(
-                f"{frame.where}: a {statement} needs a selector declared -> {result}, "
-                f"but @{selector} is declared -> {self.selector_result[selector]}"
-            )
-        return selector, bit_names, bits
 
     # ------------------------------------------------------------------
     # statements
@@ -555,7 +542,7 @@ class _Lower:
             frame.from_select.add(name)
 
     def _lower_switch(self, statement: Tree, frame: _Frame) -> None:
-        selector, _, bits = self._selector_call(statement.children[0], frame, statement="switch", result="int")
+        selector, _, bits = self._callback_call(statement.children[0], frame, selector=True)
         live = list(frame.qubits)
         cases: dict[str, SymbolRefAttr] = {}
         for arm in [child for child in statement.children[1:] if _is_tree(child, "case_arm")]:
@@ -578,7 +565,7 @@ class _Lower:
 
     def _lower_while(self, statement: Tree, frame: _Frame) -> None:
         call, body = statement.children
-        selector, bit_names, bits = self._selector_call(call, frame, statement="while", result="bool")
+        selector, bit_names, bits = self._callback_call(call, frame, selector=True)
         live = list(frame.qubits)
         self.loop_counter += 1
         loop_name = f"__qstack_while_{self.loop_counter}"

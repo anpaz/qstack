@@ -70,7 +70,7 @@ b = majority(m0, m1, m2);
 
 ### 3.3 `extern selector`: choosing what runs next
 
-`extern selector fix(bit, bit) -> int;` declares a selector: a callback that takes bits and returns a case label. A selector used by a `switch` is declared `-> int`, and one used by a `while` is declared `-> bool`.
+`extern selector fix(bit, bit) -> int;` declares a selector: a callback that takes bits and returns a case label. Every selector is declared `-> int`, whether a `switch` or a `while` uses it.
 
 At runtime a selector returns its label as a string. `case 2` matches the label `"2"`. In a `while`, `"1"` runs the body again and `"0"` leaves the loop. A label that matches no case is a runtime error.
 

@@ -35,7 +35,6 @@ param: type IDENT
 type: "qubit"    -> qubit_type
     | "bit"     -> bit_type
     | "int"     -> int_type
-    | "bool"    -> bool_type
 type_list: (type ("," type)*)?
 
 block: "{" stmt* "}"
@@ -79,9 +78,9 @@ decode_stmt: "bit" IDENT "=" callback_call ";"    -> decode_decl
 switch_stmt: "switch" "(" callback_call ")" "{" case_arm+ "}"
 case_arm: "case" NUMBER block
 
-// while (selector(b1, ...)) { ... }: the selector is declared `-> bool`; its
-// label is 1 to run the body again and 0 to stop.  The body measures every
-// bit the condition reads.
+// while (selector(b1, ...)) { ... }: the selector is declared `-> int`, as for
+// a switch; its label is 1 to run the body again and 0 to stop.  The body
+// measures every bit the condition reads.
 while_stmt: "while" "(" callback_call ")" block
 
 // for int i in [a:b] / [a:c:b] (start, step, stop; inclusive) / {v, ...}:

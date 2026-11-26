@@ -5,6 +5,7 @@ ends.
 """
 
 import pytest
+from lark.exceptions import UnexpectedInput
 from xdsl.dialects.builtin import ModuleOp
 
 from qstack.dialect.core import KernelOp
@@ -241,7 +242,7 @@ PREPARE_ONE_WHILE = """
 QSTACKQASM 0.1;
 include "qstack/cliffords.inc";
 
-extern selector repeat_until_one(bit) -> bool;
+extern selector repeat_until_one(bit) -> int;
 
 def prepare_one(qubit q) {
   qubit[1] a;
@@ -285,7 +286,7 @@ def test_while_body_must_measure_the_condition_bits() -> None:
     source = """
 QSTACKQASM 0.1;
 include "qstack/cliffords.inc";
-extern selector repeat_until_one(bit) -> bool;
+extern selector repeat_until_one(bit) -> int;
 def f(qubit q) {
   qubit[1] a;
   bit m;
@@ -439,7 +440,7 @@ def test_an_ancilla_reused_inside_a_while_must_be_declared_there() -> None:
     source = """
 QSTACKQASM 0.1;
 include "qstack/cliffords.inc";
-extern selector repeat_until_one(bit) -> bool;
+extern selector repeat_until_one(bit) -> int;
 def prepare_one(qubit q) {
   qubit[1] a;
   bit m;
@@ -500,7 +501,6 @@ _HEADER = """
 QSTACKQASM 0.1;
 include "qstack/cliffords.inc";
 extern selector to_int(bit) -> int;
-extern selector to_bool(bit) -> bool;
 def flip(qubit q) { x q; }
 qubit q;
 bit m;
@@ -514,8 +514,6 @@ bit m;
         ("x(q); measure q -> m;", "x, a gate, is applied without parentheses"),
         ("nope(q); measure q -> m;", "nope is not a def"),
         ("flip(q, q); measure q -> m;", "expects 1 qubits, got 2"),
-        ("measure q -> m; switch (to_bool(m)) { case 0 { } case 1 { } }", "switch needs a selector declared -> int"),
-        ("measure q -> m; while (to_int(m)) { measure q -> m; }", "while needs a selector declared -> bool"),
     ],
 )
 def test_misused_defs_gates_and_selectors_are_compile_errors(statements: str, message: str) -> None:
@@ -523,9 +521,15 @@ def test_misused_defs_gates_and_selectors_are_compile_errors(statements: str, me
         _module(_HEADER + statements)
 
 
-def test_a_selector_returns_int_or_bool() -> None:
-    with pytest.raises(NotImplementedError, match="result must be int or bool"):
+def test_a_selector_returns_int() -> None:
+    with pytest.raises(NotImplementedError, match="result must be int"):
         _module("QSTACKQASM 0.1;\nextern selector s(bit) -> bit;\n")
+
+
+def test_a_selector_declared_bool_does_not_parse() -> None:
+    # switch and while share one kind of selector, declared -> int.
+    with pytest.raises(UnexpectedInput):
+        parse("QSTACKQASM 0.1;\nextern selector s(bit) -> bool;\n")
 
 
 @pytest.mark.parametrize("declaration", ["qreg q[1];", "creg c[1];"])
