@@ -5,13 +5,14 @@ from __future__ import annotations
 from xdsl.dialects.builtin import ModuleOp, SymbolRefAttr
 
 from qstack.dialect.core import KernelOp
+from qstack.encoding import Encoding
 from qstack.verification.model import CircuitRule, Rule, ValueRef
-from qstack.verification.patterns import extract_pattern, pattern_circuit
+from qstack.verification.patterns import extract_pattern, has_qubits, pattern_circuit
 from qstack.verification.plugins import RuleResult
 from qstack.verification.witness_check import _callback_sources
 
 
-def check_structural_rule(rule: Rule, source: ModuleOp) -> RuleResult | CircuitRule:
+def check_structural_rule(rule: Rule, source: ModuleOp, encoding: Encoding) -> RuleResult | CircuitRule:
     """Syntactic rules are built in; only gate rules go to circuit backends."""
     def verdict(status, detail):
         return RuleResult(rule.id, "structural", status, detail)
@@ -19,18 +20,24 @@ def check_structural_rule(rule: Rule, source: ModuleOp) -> RuleResult | CircuitR
     if rule.kind == "identity":
         if rule.callee is not None or rule.source != rule.target or len(rule.source.operations) != 1:
             return verdict("REFUTED", "identity rule must pair the same single operation")
+        if not encoding.is_identity and has_qubits(rule.source):
+            return verdict("REFUTED", "a qubit operation under a nonidentity encoding requires a semantic rule or widening")
         return verdict("VERIFIED", "identical operation graphs")
     if rule.kind == "gate":
         if rule.callee is not None or not rule.source.operations:
             return verdict("REFUTED", "gate rule requires a nonempty source and no callee")
         try:
             old, new = pattern_circuit(rule.source), pattern_circuit(rule.target)
-            if old.width != new.width:
-                raise ValueError("gate rule changes its boundary width")
-            return CircuitRule(rule.id, old, new)
+            if new.width != old.width * encoding.physical_qubits:
+                raise ValueError("gate boundary disagrees with the declared encoding width")
+            return CircuitRule(rule.id, old, new, encoding)
         except ValueError as exc:
             return verdict("REFUTED", str(exc))
+    if rule.kind in ("allocation", "measurement", "widening"):
+        return verdict("UNSUPPORTED", f"{rule.kind} rule check is not implemented")
     if rule.kind == "inline":
+        if not encoding.is_identity:
+            return verdict("REFUTED", "an inline rule requires the identity encoding")
         kernels = {op.sym_name.data: op for op in source.body.ops if isinstance(op, KernelOp)}
         callee = kernels.get(rule.callee)
         if callee is None or len(rule.source.operations) != 1:

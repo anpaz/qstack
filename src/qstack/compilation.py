@@ -48,10 +48,9 @@ def parse_module(text: str) -> ModuleOp:
     for dialect in registered_isa_dialects():
         context.load_dialect(dialect)
     module = Parser(context, text).parse_module()
-    from qstack.verifier import verify_module
+    from qstack.validation import validate_module
 
-    module.verify()
-    verify_module(module)
+    validate_module(module)
     return module
 
 
@@ -135,10 +134,9 @@ class CompilationResult:
     @classmethod
     def from_module(cls, module: ModuleOp) -> CompilationResult:
         """Enter the compiler pipeline with directly constructed IR."""
-        from qstack.verifier import verify_module
+        from qstack.validation import validate_module
 
-        module.verify()
-        verify_module(module)
+        validate_module(module)
         return cls(module)
 
     @classmethod
@@ -152,12 +150,10 @@ class CompilationResult:
         source_snapshot: str | None = None,
     ) -> CompilationResult:
         """Persist the exact module pair and return the new single-step result."""
-        from qstack.verifier import verify_module
+        from qstack.validation import validate_module
 
-        source.module.verify()
-        target_module.verify()
-        verify_module(source.module)
-        verify_module(target_module)
+        validate_module(source.module)
+        validate_module(target_module)
         source_ir = module_text(source.module)
         if source_snapshot is not None and source_ir != source_snapshot:
             raise ArtifactError("compiler mutated its source module")

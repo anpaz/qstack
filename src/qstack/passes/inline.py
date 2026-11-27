@@ -7,8 +7,10 @@ from xdsl.ir import Block, Region
 
 from qstack.compilation import CompilationResult
 from qstack.dialect.core import CallOp, KernelOp
-from qstack.passes.base import Encoding, Replacement
-from qstack.verifier import PASS_HISTORY_ATTR, verify_module
+from qstack.encoding import Encoding
+from qstack.passes.contracts import Replacement
+from qstack.validation import PASS_HISTORY_ATTR, validate_module
+from qstack.verification.builder import witness_from_replacements
 
 
 class InlineCalls:
@@ -24,12 +26,11 @@ class InlineCalls:
     def __init__(self, callees: set[str] | None = None):
         self.callees = None if callees is None else frozenset(callees)
 
-    def run(self, result: CompilationResult) -> CompilationResult:
-        from qstack.verification.builder import witness_from_replacements
-
+    def run(self, result: ModuleOp | CompilationResult) -> CompilationResult:
+        if isinstance(result, ModuleOp):
+            result = CompilationResult.from_module(result)
         source = result.module
-        source.verify()
-        verify_module(source)
+        validate_module(source)
         kernels = {op.sym_name.data: op for op in source.body.ops if isinstance(op, KernelOp)}
         replacements = {}
         target_ops = []
@@ -77,7 +78,6 @@ class InlineCalls:
         attributes[PASS_HISTORY_ATTR] = ArrayAttr([*history, StringAttr(self.pass_id)])
         target = ModuleOp(target_ops, attributes=attributes, sym_name=source.properties.get("sym_name"))
         target.location = source.location
-        target.verify()
-        verify_module(target)
+        validate_module(target)
         witness = witness_from_replacements(source, target, replacements, encoding=Encoding.identity())
         return CompilationResult.from_step(result, target, witness)

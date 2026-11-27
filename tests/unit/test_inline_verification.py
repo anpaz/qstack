@@ -37,7 +37,7 @@ def _program():
 
 
 def test_inline_copies_callback_body_and_fresh_allocations(tmp_path):
-    source = CompilationResult.from_module(_program())
+    source = _program()
     result = InlineCalls().run(source).save(tmp_path / "inline.json")
     main = next(op for op in result.module.body.ops if isinstance(op, KernelOp) and op.sym_name.data == "main")
     assert sum(isinstance(op, AllocOp) for op in main.body.block.ops) == 2

@@ -1,12 +1,13 @@
 import pytest
 from xdsl.dialects.builtin import ModuleOp, StringAttr
 from xdsl.ir import Block, Region
+from xdsl.utils.exceptions import VerifyException
 
 from qstack.callbacks import resolve_callback
 from qstack.dialect import BitType, QubitType
 from qstack.dialect.cliffords import CxOp, HOp
 from qstack.dialect.core import AllocOp, CallOp, DecoderOp, KernelOp, MeasureOp, ReturnOp
-from qstack.verifier import LinearityError, verify_module
+from qstack.validation import LinearityError, validate_module
 
 
 def _kernel(name, inputs, results, body):
@@ -19,32 +20,46 @@ def _allocate(block, count):
     return [allocation.result for allocation in allocations]
 
 
-def test_verifier_rejects_modules_without_main() -> None:
+def test_validation_rejects_modules_without_main() -> None:
     block = Block(arg_types=[]); block.add_op(ReturnOp(operands=[]))
     with pytest.raises(LinearityError, match="@main"):
-        verify_module(ModuleOp([KernelOp("other", input_types=[], result_types=[], region=Region([block]))]))
+        validate_module(ModuleOp([KernelOp("other", input_types=[], result_types=[], region=Region([block]))]))
 
 
-def test_verifier_rejects_main_returning_a_qubit() -> None:
+def test_validation_rejects_main_returning_a_qubit() -> None:
     block = Block(); (qubit,) = _allocate(block, 1); block.add_op(ReturnOp(operands=[qubit]))
     with pytest.raises(LinearityError, match="cannot return a qubit"):
-        verify_module(ModuleOp([KernelOp("main", input_types=[], result_types=[QubitType()], region=Region([block]))]))
+        validate_module(ModuleOp([KernelOp("main", input_types=[], result_types=[QubitType()], region=Region([block]))]))
 
 
-def test_verifier_rejects_wrong_entry_signature() -> None:
+def test_validation_rejects_wrong_entry_signature() -> None:
     block = Block(arg_types=[QubitType()]); block.add_op(ReturnOp(operands=[]))
     with pytest.raises(LinearityError, match="entry arguments"):
-        verify_module(ModuleOp([KernelOp("main", input_types=[], result_types=[], region=Region([block]))]))
+        validate_module(ModuleOp([KernelOp("main", input_types=[], result_types=[], region=Region([block]))]))
 
 
-def test_verifier_rejects_an_unused_allocation() -> None:
+def test_validation_rejects_an_unused_allocation() -> None:
     """An allocated qubit is linear like any other value, so it must be consumed."""
     block = Block(); _allocate(block, 1); block.add_op(ReturnOp(operands=[]))
     with pytest.raises(LinearityError, match="unused"):
-        verify_module(ModuleOp([_kernel("main", [], [], block)]))
+        validate_module(ModuleOp([_kernel("main", [], [], block)]))
 
 
-def test_verifier_accepts_a_fresh_qubit_escaping_by_teleportation() -> None:
+def test_validation_includes_xdsl_gate_type_checks() -> None:
+    """Linearity alone cannot detect a gate that consumes a bit as a qubit."""
+    block = Block()
+    allocation = AllocOp()
+    measured = MeasureOp(operand=allocation.result)
+    gate = HOp(measured.result)
+    output = MeasureOp(operand=gate.result)
+    block.add_ops([allocation, measured, gate, output, ReturnOp(operands=[output.result])])
+    module = ModuleOp([_kernel("main", [], [BitType()], block)])
+
+    with pytest.raises(VerifyException, match=r"!qstack\.bit should be of base attribute qstack\.qubit"):
+        validate_module(module)
+
+
+def test_validation_accepts_a_fresh_qubit_escaping_by_teleportation() -> None:
     """A borrowed qubit may die inside the kernel while a fresh one is returned."""
 
     body = Block(arg_types=[QubitType()])
@@ -67,10 +82,10 @@ def test_verifier_accepts_a_fresh_qubit_escaping_by_teleportation() -> None:
     main_block.add_op(ReturnOp(operands=[final.result, call.results[1], call.results[2]]))
     main = _kernel("main", [], [BitType(), BitType(), BitType()], main_block)
 
-    verify_module(ModuleOp([teleport, main]))
+    validate_module(ModuleOp([teleport, main]))
 
 
-def test_verifier_accepts_a_kernel_returning_more_qubits_than_it_borrows() -> None:
+def test_validation_accepts_a_kernel_returning_more_qubits_than_it_borrows() -> None:
     """A state preparation borrows nothing and hands its fresh qubit to the caller."""
 
     prep_block = Block()
@@ -85,22 +100,22 @@ def test_verifier_accepts_a_kernel_returning_more_qubits_than_it_borrows() -> No
     main_block.add_op(ReturnOp(operands=[measure.result]))
     main = _kernel("main", [], [BitType()], main_block)
 
-    verify_module(ModuleOp([prepare, main]))
+    validate_module(ModuleOp([prepare, main]))
 
 
-def test_verifier_checks_qualified_callback_symbol_shape() -> None:
+def test_validation_checks_qualified_callback_symbol_shape() -> None:
     block = Block(arg_types=[])
     block.add_op(ReturnOp(operands=[]))
     main = _kernel("main", [], [], block)
 
     malformed = DecoderOp("rep3_bit.0:decode", 1)
     with pytest.raises(LinearityError, match="family.layer"):
-        verify_module(ModuleOp([malformed, main.clone()]))
+        validate_module(ModuleOp([malformed, main.clone()]))
 
     legacy_attribute = DecoderOp("rep3_bit.1:decode", 1)
     legacy_attribute.attributes["source"] = StringAttr("rep3_bit.1")
     with pytest.raises(LinearityError, match="encode its source in its symbol"):
-        verify_module(ModuleOp([legacy_attribute, main.clone()]))
+        validate_module(ModuleOp([legacy_attribute, main.clone()]))
 
 
 def test_callback_identity_is_derived_from_its_symbol() -> None:

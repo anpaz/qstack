@@ -3,7 +3,7 @@ from qstack.passes.steane import lower_steane, steane_decode_bits
 from qstack.runtime import CallbackRegistry, Machine
 from qstack.surface.lowering import lower
 from qstack.surface.parser import parse
-from qstack.verifier import verify_module
+from qstack.validation import validate_module
 
 _PROGRAM = '''QSTACKQASM 0.1;
 include "qstack/cliffords.inc";
@@ -14,7 +14,7 @@ qubit[1] q; bit[1] c; x q[0]; measure q[0] -> c[0];
 def test_steane_generates_named_syndrome_kernels_and_executes() -> None:
     registry = CallbackRegistry()
     output = lower_steane(lower(parse(_PROGRAM)), registry)
-    verify_module(output)
+    validate_module(output)
     assert any(isinstance(op, KernelOp) and "syndrome" in op.sym_name.data for op in output.body.ops)
     assert any(isinstance(op, CallOp) for op in output.walk())
     assert any(isinstance(op, SelectOp) for op in output.walk())
@@ -36,7 +36,7 @@ def test_repeated_steane_uses_fresh_callback_sources() -> None:
     output = lower_steane(
         lower_steane(lower(parse(_PROGRAM)), registry), registry
     )
-    verify_module(output)
+    validate_module(output)
     assert [op.sym_name.data for op in output.body.ops if isinstance(op, DecoderOp)] == [
         "steane.1:decode",
         "steane.2:decode",

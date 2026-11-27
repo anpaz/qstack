@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from hashlib import sha256
 from typing import Any, Literal
 
@@ -11,6 +11,7 @@ from xdsl.dialects.builtin import FloatAttr, IntegerAttr
 from xdsl.ir import Operation
 
 from qstack.dialect.core import UnitaryGateOp
+from qstack.encoding import Encoding
 
 
 @dataclass(frozen=True)
@@ -156,12 +157,12 @@ class Pattern:
 
 @dataclass(frozen=True)
 class Rule:
-    """A reusable rewrite, including syntactic identity and inline rules."""
+    """A reusable rewrite with the source and target patterns it relates."""
 
     id: str
     source: Pattern
     target: Pattern
-    kind: Literal["identity", "gate", "inline"]
+    kind: Literal["identity", "gate", "inline", "allocation", "measurement", "widening"]
     callee: str | None = None
 
     @classmethod
@@ -175,11 +176,12 @@ class Rule:
 
 @dataclass(frozen=True)
 class CircuitRule:
-    """The portable circuit-only payload sent to existing verifier plugins."""
+    """A gate rule under a stabilizer encoding."""
 
     id: str
     source: Circuit
     target: Circuit
+    encoding: Encoding = field(default_factory=Encoding.identity)
 
 
 @dataclass(frozen=True)
@@ -221,12 +223,11 @@ class Witness:
 
     source_sha256: str
     target_sha256: str
-    source_width: int
-    target_width: int
     rules: tuple[Rule, ...]
     claims: tuple[Claim, ...]
     edges: tuple[Edge, ...]
     kernels: tuple[KernelBoundary, ...]
+    encoding: Encoding = field(default_factory=Encoding.identity)
 
     @classmethod
     def bind(
@@ -238,8 +239,7 @@ class Witness:
         claims: tuple[Claim, ...],
         edges: tuple[Edge, ...],
         kernels: tuple[KernelBoundary, ...],
-        source_width: int = 1,
-        target_width: int = 1,
+        encoding: Encoding = Encoding.identity(),
     ) -> Witness:
         """Bind a witness to the exact IR snapshots a compiler will persist."""
         from qstack.compilation import module_text
@@ -247,24 +247,32 @@ class Witness:
         source_hash = sha256(module_text(source_module).encode("utf-8")).hexdigest()
         target_hash = sha256(module_text(target_module).encode("utf-8")).hexdigest()
         return cls(
-            source_hash, target_hash, source_width, target_width,
-            rules, claims, edges, kernels,
+            source_hash, target_hash, rules, claims, edges, kernels, encoding,
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        # Keep the v3 artifact format readable by older versions of qstack.
+        data["source_width"] = 1
+        data["target_width"] = self.encoding.physical_qubits
+        if self.encoding.is_identity:
+            data["encoding"] = None
+        return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Witness:
         if not isinstance(data, dict):
             raise TypeError("witness must be a JSON object")
+        raw_encoding = data.get("encoding")
+        encoding = Encoding.identity() if raw_encoding is None else Encoding.from_dict(raw_encoding)
+        if int(data["source_width"]) != 1 or int(data["target_width"]) != encoding.physical_qubits:
+            raise ValueError("witness widths disagree with its encoding")
         return cls(
             str(data["source_sha256"]),
             str(data["target_sha256"]),
-            int(data["source_width"]),
-            int(data["target_width"]),
             tuple(Rule.from_dict(item) for item in data["rules"]),
             tuple(Claim.from_dict(item) for item in data["claims"]),
             tuple(Edge.from_dict(item) for item in data["edges"]),
             tuple(KernelBoundary.from_dict(item) for item in data["kernels"]),
+            encoding,
         )

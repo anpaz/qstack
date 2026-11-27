@@ -22,7 +22,7 @@ from qstack.runtime.cpu import CPU
 from qstack.runtime.noise import NoiseChannel
 from qstack.runtime.qpu import GateApplication, QPU, QPUProtocol
 from qstack.runtime.registry import CallbackRegistry
-from qstack.verifier import verify_module
+from qstack.validation import validate_module
 
 
 class ModuleEvaluator:
@@ -39,7 +39,7 @@ class ModuleEvaluator:
         qpu: QPUProtocol | None = None,
         cpu: CPU | None = None,
     ) -> None:
-        verify_module(module)
+        validate_module(module)
         self._module = module
         self._qpu = qpu if qpu is not None else QPU(num_qubits, seed=seed, noise=noise)
         self._cpu = cpu if cpu is not None else CPU(registry)

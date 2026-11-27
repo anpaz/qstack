@@ -9,7 +9,7 @@ from qstack.dialect import QStack
 from qstack.dialect.cliffords import Cliffords
 from qstack.surface.lowering import lower
 from qstack.surface.parser import parse
-from qstack.verifier import verify_module
+from qstack.validation import validate_module
 
 
 def test_kernel_only_module_roundtrips() -> None:
@@ -17,4 +17,4 @@ def test_kernel_only_module_roundtrips() -> None:
     stream = StringIO(); Printer(stream=stream).print_op(module)
     context = Context(); context.load_dialect(Builtin); context.load_dialect(QStack); context.load_dialect(Cliffords)
     reparsed = Parser(context, stream.getvalue()).parse_module()
-    verify_module(reparsed)
+    validate_module(reparsed)

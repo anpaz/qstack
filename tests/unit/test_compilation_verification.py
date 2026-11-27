@@ -16,7 +16,8 @@ from qstack.dialect import BitType, QubitType
 from qstack.dialect.cliffords import HOp, XOp
 from qstack.dialect.core import AllocOp, DecodeOp, DecoderOp, KernelOp, MeasureOp, ReturnOp
 from qstack.dialect.h2 import U1Op
-from qstack.passes.base import Encoding, Replacement
+from qstack.encoding import Encoding
+from qstack.passes.contracts import Replacement
 from qstack.passes.clifford_peephole import CliffordPeepholeOptimization
 from qstack.passes.cliffords2atoms import CliffordsToAtomsLowering
 from qstack.passes.cliffords2h2 import CliffordsToH2Lowering
@@ -114,7 +115,7 @@ def test_rule_backend_discovery_allows_no_external_install(monkeypatch):
 
 
 def test_compilation_result_has_only_latest_step(tmp_path):
-    source = compile_qasm('QSTACKQASM 0.1; include "qstack/cliffords.inc"; qubit[1] q; bit[1] c; h q[0]; measure q[0] -> c[0];')
+    source = CompilationResult.from_module(compile_qasm('QSTACKQASM 0.1; include "qstack/cliffords.inc"; qubit[1] q; bit[1] c; h q[0]; measure q[0] -> c[0];'))
     assert source.witness is None
     target, _ = _program([])
     first = CompilationResult.from_step(source, target, artifact_path=tmp_path / "first.json")

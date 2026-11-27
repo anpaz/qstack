@@ -11,7 +11,7 @@ measured in the computational basis.
 from qstack.runtime import CallbackRegistry, Machine
 from qstack.surface.lowering import lower
 from qstack.surface.parser import parse
-from qstack.verifier import verify_module
+from qstack.validation import validate_module
 
 
 def _teleport_program(prep_gate: str) -> str:
@@ -66,7 +66,7 @@ def _registry() -> CallbackRegistry:
 
 def test_teleport_module_verifies() -> None:
     module = lower(parse(_teleport_program("x")))
-    verify_module(module)
+    validate_module(module)
 
 
 def test_teleport_returns_both_qubit_parameters() -> None:
@@ -113,7 +113,7 @@ measure q[0] -> c[1];
     )
     assert len(teleport.input_types) == 2
     assert len(teleport.declared_result_types) == 2
-    verify_module(module)
+    validate_module(module)
 
     hist = dict(
         Machine(num_qubits=8, registry=_registry())

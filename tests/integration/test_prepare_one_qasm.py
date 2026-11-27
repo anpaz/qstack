@@ -6,7 +6,7 @@ from qstack.dialect import BitType, QubitType
 from qstack.dialect.core import KernelOp, SelectorOp
 from qstack.surface.lowering import lower
 from qstack.surface.parser import parse
-from qstack.verifier import verify_module
+from qstack.validation import validate_module
 
 PREPARE_ONE = """
 QSTACKQASM 0.1;
@@ -64,7 +64,7 @@ def test_prepare_one_lowers_to_expected_symbols() -> None:
 
 def test_prepare_one_passes_verifier() -> None:
     m = _module(PREPARE_ONE)
-    verify_module(m)
+    validate_module(m)
 
 
 def test_prepare_one_runs_1000_shots_all_one() -> None:

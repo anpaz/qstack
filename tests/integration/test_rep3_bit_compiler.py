@@ -6,7 +6,7 @@ from qstack.passes.rep3_bit import lower_rep3_bit
 from qstack.runtime import CallbackRegistry, Machine
 from qstack.surface.lowering import lower
 from qstack.surface.parser import parse
-from qstack.verifier import verify_module
+from qstack.validation import validate_module
 
 _PROGRAM = '''QSTACKQASM 0.1;
 include "qstack/cliffords.inc";
@@ -16,7 +16,7 @@ qubit[1] q; bit[1] c; x q[0]; measure q[0] -> c[0];
 
 def test_rep3_decodes_inside_named_main_kernel() -> None:
     output = lower_rep3_bit(lower(parse(_PROGRAM)), CallbackRegistry())
-    verify_module(output)
+    validate_module(output)
     main = next(op for op in output.body.ops if isinstance(op, KernelOp) and op.sym_name.data == "main")
     assert sum(isinstance(op, AllocOp) for op in main.body.block.ops) == 3
     assert len([op for op in main.body.block.ops if isinstance(op, MeasureOp)]) == 3

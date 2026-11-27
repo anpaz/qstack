@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Sequence
 
 from qstack.compilation import ArtifactError, CompilationResult, load_artifact, module_text, parse_module
-from qstack.verification.plugins import RuleBackend, RuleResult, Status, installed_rule_backends
+from qstack.verification.plugins import RuleBackend, RuleResult, Status, installed_rule_backends, supports_encoding
 from qstack.verification.builder import witness_from_replacements
 from qstack.verification.witness_check import WitnessError, UnsupportedWitnessError, check_witness_structure
 from qstack.verification.model import (
@@ -40,7 +40,11 @@ def verify(
     *,
     backends: Sequence[RuleBackend] | None = None,
 ) -> VerificationReport:
-    """Verify the one step represented by ``result``, never a previous step."""
+    """Check the compiler step represented by ``result`` against its witness.
+
+    Returns a report for this step only. To validate a module's structure,
+    types, and linearity, use :func:`qstack.validation.validate_module`.
+    """
     if result.artifact_path is None:
         return VerificationReport("UNSUPPORTED", "result has no compilation step artifact", None)
     artifact_path = str(result.artifact_path)
@@ -68,19 +72,26 @@ def verify(
         logger.debug("artifact %s has a malformed witness: %s", artifact_path, exc)
         return VerificationReport("REFUTED", f"malformed witness: {exc}", artifact_path)
 
+    encoding = artifact.witness.encoding
+    encoding_kind = "identity" if encoding.is_identity else "stabilizer"
     configured = tuple(backends) if backends is not None else installed_rule_backends()
     results: list[RuleResult] = []
     for rule in artifact.witness.rules:
         sites = tuple(claim.id for claim in artifact.witness.claims if claim.rule == rule.id)
-        checked_rule = check_structural_rule(rule, source)
+        checked_rule = check_structural_rule(rule, source, encoding)
         if isinstance(checked_rule, RuleResult):
             outcome = RuleResult(
                 checked_rule.rule, checked_rule.backend, checked_rule.status, checked_rule.detail,
                 sites=sites,
             )
         else:
-            outcome = RuleResult(rule.id, "none", "UNSUPPORTED", "no rule backend configured", sites=sites)
+            outcome = RuleResult(
+                rule.id, "none", "UNSUPPORTED",
+                f"no configured rule backend supports {encoding_kind} encodings", sites=sites,
+            )
             for backend in configured:
+                if not supports_encoding(backend, encoding_kind):
+                    continue
                 checked = backend.check(checked_rule)
                 outcome = RuleResult(
                     checked.rule, checked.backend, checked.status, checked.detail,
@@ -96,6 +107,9 @@ def verify(
     elif any(item.status == "UNSUPPORTED" for item in results):
         status = "UNSUPPORTED"
         detail = "one or more rules could not be checked"
+    elif not encoding.is_identity:
+        status = "UNSUPPORTED"
+        detail = "only individual encoded gate rules are currently verified"
     else:
         status = "VERIFIED"
         detail = "claim graphs and rules verified"

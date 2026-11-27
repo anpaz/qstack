@@ -34,14 +34,14 @@ from qstack.dialect.core import (
     SelectOp,
     SelectorOp,
 )
+from qstack.encoding import Encoding
 from qstack.passes.base import (
-    Encoding,
     LoweringContext,
     LoweringPass,
     PassError,
-    QubitGroup,
     require_qubit_group,
 )
+from qstack.passes.contracts import QubitGroup
 from qstack.runtime.registry import CallbackRegistry
 
 logger = logging.getLogger("qstack")
@@ -53,6 +53,16 @@ _SELECTOR_IMPLEMENTATION = f"{_FAMILY}:syndrome"
 # Each tuple is the support of one parity check.  Their order determines both
 # the three returned syndrome bits and the keys in _SYNDROME_TABLE.
 _STABILIZER_SUPPORTS = ((0, 1, 3, 4), (0, 2, 3, 5), (1, 2, 3, 6))
+_STEANE_ENCODING = Encoding(
+    _WIDTH,
+    tuple(
+        "+" + "".join(pauli if index in support else "I" for index in range(_WIDTH))
+        for pauli in ("X", "Z")
+        for support in _STABILIZER_SUPPORTS
+    ),
+    "+" + "X" * _WIDTH,
+    "+" + "Z" * _WIDTH,
+)
 _SYNDROME_BITS = len(_STABILIZER_SUPPORTS)
 
 # Map each syndrome to the one physical position consistent with that syndrome.
@@ -126,7 +136,7 @@ class SteaneLowering(LoweringPass):
 
     pass_id = "qstack.steane"
     preserve_unhandled_operations = False
-    encoding = Encoding(1, _WIDTH)
+    encoding = _STEANE_ENCODING
 
     def error(self, context: LoweringContext, message: str) -> PassError:
         return SteaneLoweringError(str(super().error(context, message)))
@@ -433,7 +443,7 @@ def _correction_kernel(name: str, gate_type=None, index: int | None = None) -> K
     )
 
 
-def lower_steane(result: CompilationResult, registry: CallbackRegistry) -> CompilationResult:
+def lower_steane(result: ModuleOp | CompilationResult, registry: CallbackRegistry) -> CompilationResult:
     """Return a Steane-lowered module and install its callback implementations."""
     output = SteaneLowering().run(result)
     _register_callbacks(registry)

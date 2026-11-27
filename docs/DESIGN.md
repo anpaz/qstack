@@ -6,7 +6,7 @@ This document specifies qstack's executable IR and its noiseless semantics.
 
 qstack is a quantum IR with opaque host-language callbacks. Its unit of quantum code is the **kernel**: a named, function-like definition that borrows qubits and bits from its caller, may allocate fresh qubits, applies gates and measurements, may hand measurement bits to a callback or call other kernels, and returns qubits and bits to its caller. Unlike a host function, a kernel is not a value: it is reached only by naming it, and its body is a linear dataflow graph rather than a sequence of statements with control flow. A program is a closed collection of named kernels rooted at `@main`; quantum work is expressed only in those kernels, and the host is reached only through explicit `qstack.select` and `qstack.decode` operations. Compiler passes transform one closed module into another and do not inspect registered host callback implementations.
 
-Textual syntax in this document is the syntax the implementation actually parses and prints. Blocks fenced as `mlir` are complete modules that parse and pass `qstack.verifier.verify_module`; blocks fenced as `text` are syntax templates with placeholders.
+Textual syntax in this document is the syntax the implementation actually parses and prints. Blocks fenced as `mlir` are complete modules that parse and pass `qstack.validation.validate_module`; blocks fenced as `text` are syntax templates with placeholders.
 
 ### 1.1 Principles
 
@@ -234,7 +234,7 @@ MLIR remains the substrate for SSA, rewriting, symbol tables, and dialect compos
 The following parts of this design are implemented:
 
 - **Parser and printer syntax.** Every core operation has custom textual syntax and round-trips. `qstack.kernel` uses hand-written `parse`/`print`; the rest use declarative assembly formats.
-- **Executable-IR verifier.** `qstack.verifier.verify_module` enforces the current structural, linearity, declaration, and signature-compatibility rules.
+- **Executable-IR validation.** `qstack.validation.validate_module` checks xDSL well-formedness and enforces the current structural, linearity, declaration, and signature-compatibility rules.
 - **Runtime.** A `Machine(num_qubits=..., registry=..., seed=..., noise=..., qpu=...)` evaluates modules through `single_shot(module)` and `eval(module, shots=...)`. One machine can run multiple programs against its callback registry and physical-qubit budget. When `qpu` is omitted, it selects and caches a statevector or Stim backend per evaluated program; an explicit backend fixes that choice for the machine.
 - **Surface language.** QSTACKQASM is a parsed surface syntax with `extern selector`/`extern` declarations, `switch`/`case` continuations, and per-ISA `.inc` includes; it lowers to the IR above.
 - **Fresh-construction passes.** Lowering and optimization passes construct new kernels from explicit source-to-target SSA mappings. Lowering handlers replace one source operation at a time, and the initial Clifford peephole optimizer handles small multi-operation regions.

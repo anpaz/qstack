@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from functools import cached_property
 from importlib.metadata import EntryPoint, entry_points
 from typing import Literal, Mapping, Protocol
 
 from qstack.verification.model import CircuitRule
 
 Status = Literal["VERIFIED", "REFUTED", "UNSUPPORTED"]
+EncodingKind = Literal["identity", "stabilizer"]
+_IDENTITY_ONLY = ("identity",)
 
 
 @dataclass(frozen=True)
@@ -26,9 +28,16 @@ class RuleResult:
 
 
 class RuleBackend(Protocol):
+    """A circuit checker with an optional `supported_encodings` tuple."""
+
     name: str
 
     def check(self, rule: CircuitRule) -> RuleResult: ...
+
+
+def supports_encoding(backend: RuleBackend, encoding: EncodingKind) -> bool:
+    supported = getattr(backend, "supported_encodings", _IDENTITY_ONLY)
+    return isinstance(supported, tuple) and encoding in supported
 
 
 @dataclass(frozen=True)
@@ -41,10 +50,30 @@ class ExternalRuleBackend:
     def name(self) -> str:
         return self.entry_point.name
 
+    @cached_property
+    def _checker(self):
+        return self.entry_point.load()
+
+    @cached_property
+    def supported_encodings(self) -> tuple[EncodingKind, ...]:
+        try:
+            supported = getattr(self._checker, "supported_encodings", _IDENTITY_ONLY)
+        except Exception:
+            # Let ordinary requests surface the load error through check().
+            return _IDENTITY_ONLY
+        return supported if isinstance(supported, tuple) else ()
+
     def check(self, rule: CircuitRule) -> RuleResult:
         try:
-            payload = json.loads(json.dumps(asdict(rule), allow_nan=False))
-            verdict = self.entry_point.load()(payload)
+            encoding_kind = "identity" if rule.encoding.is_identity else "stabilizer"
+            if not supports_encoding(self, encoding_kind):
+                return RuleResult(rule.id, self.name, "UNSUPPORTED", f"backend does not support {encoding_kind} encodings")
+            data = asdict(rule)
+            if rule.encoding.is_identity:
+                # Preserve the existing plugin payload for ordinary rules.
+                del data["encoding"]
+            payload = json.loads(json.dumps(data, allow_nan=False))
+            verdict = self._checker(payload)
             if not isinstance(verdict, Mapping):
                 raise ValueError("verifier did not return a verdict mapping")
             if verdict.get("rule") != rule.id:
@@ -71,7 +100,7 @@ class ExternalRuleBackend:
 
 
 def installed_rule_backends() -> tuple[ExternalRuleBackend, ...]:
-    """Discover third-party rule checkers without importing them into qstack."""
+    """Discover all installed rule checkers without loading the entry points."""
     return tuple(
         ExternalRuleBackend(point)
         for point in sorted(entry_points(group="qstack.rule_verifiers"), key=lambda point: point.name)

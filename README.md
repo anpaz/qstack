@@ -27,8 +27,9 @@ can be evaluated with the included state-vector and Stim-backed runtimes.
 
 To learn more about using qstack, take a look at the [examples folder](examples/).
 
-The compiler entry point returns a `CompilationResult` rather than a bare
-module:
+The frontend returns a structurally verified `ModuleOp`. Compiler passes accept
+a module or a previous `CompilationResult` and return a `CompilationResult`
+containing the transformed module and any verification witness:
 
 ```python
 from qstack.surface import compile_qasm
@@ -41,13 +42,25 @@ target = target.save("step.qstack.json")
 report = verify(target)
 ```
 
-`verify` independently checks a compiler pass using its source, target, and
-transformation witness. It reports `VERIFIED`, `REFUTED`, or `UNSUPPORTED`;
-encoded/QEC verification is not yet supported.
+`qstack.validation.validate_module(module)` checks xDSL well-formedness and
+qstack's structure, types, and linearity, raising on invalid IR. The frontend
+and compiler passes call it automatically.
+
+`verify(result)` independently checks a compiler pass using its source, target, and
+transformation witness. It reports `VERIFIED`, `REFUTED`, or `UNSUPPORTED`.
+Passes declare an `Encoding`, which determines the qubit bundle width
+and defaults to the one-qubit identity encoding. With the optional
+[Pauliverse checker](verifiers/pauliverse/) installed, `verify` reports whether
+each supported gate implements its logical action. Encoded preparation and
+measurement remain unsupported, so inspect `report.rules` for individual
+verdicts. See the [Rep3 notebook](examples/rep3_demo.ipynb) for a working example.
 
 For circuit checks, install a verifier such as
 [Quivalence](verifiers/quivalence/) (`pip install ./verifiers/quivalence`) or
 [MQT QCEC](verifiers/qcec/). Installed verifiers are discovered automatically.
+Use `qstack.verification.installed_rule_backends()` to list them. Each backend's
+`supported_encodings` indicates whether it can receive gate rules under
+`identity`, nonidentity stabilizer encodings (`stabilizer`), or both.
 See the [verification design](docs/verification-design.md) for details.
 
 ## Installation
@@ -77,10 +90,10 @@ python -m pip install -e '.[jupyter]'
 ## Project structure
 
 - `src/qstack/dialect/` defines the core IR and instruction-set dialects.
-- `src/qstack/passes/` contains decomposition and QEC transformations.
+- `src/qstack/passes/` contains decomposition and QEC transformations, with shared contracts in `contracts.py` and construction checks in `checks.py`.
 - `src/qstack/surface/` parses and lowers the supported OpenQASM 3 subset.
 - `src/qstack/runtime/` provides execution, noise, and callback infrastructure.
-- `src/qstack/verifier.py` enforces qstack-specific IR invariants.
+- `src/qstack/validation.py` enforces qstack-specific IR invariants.
 - `verifiers/` contains independently installable circuit-rule verifiers.
 - `tests/` contains unit and end-to-end compiler tests.
 

@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qstack-pauliverse-verifier"
+version = "0.1.0"
+description = "Pauliverse checker for single-logical-qubit Clifford rules"
+requires-python = ">=3.12"
+dependencies = ["paulimer>=0.2.10,<0.3"]
+
+[project.entry-points."qstack.rule_verifiers"]
+pauliverse = "pauliverse_verifier:verify_rule"
+
+[tool.setuptools.packages.find]
+where = ["src"]

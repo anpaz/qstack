@@ -7,7 +7,7 @@ from qstack.passes.toy2cliffords import lower_toy_to_cliffords
 from qstack.runtime import Machine
 from qstack.surface.lowering import lower
 from qstack.surface.parser import parse
-from qstack.verifier import verify_module
+from qstack.validation import validate_module
 
 _TOY_BELL = """
 QSTACKQASM 0.1;
@@ -30,7 +30,7 @@ def test_toy_to_cliffords_to_atoms_executes_bell_program() -> None:
     module = lower(parse(_TOY_BELL))
     module = lower_toy_to_cliffords(module)
     module = lower_cliffords_to_atoms(module)
-    verify_module(module)
+    validate_module(module)
 
     assert not _has_cliffords(module)
     assert any(isinstance(op, (RzOp, SxOp, CzOp)) for op in module.walk())

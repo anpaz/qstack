@@ -10,13 +10,15 @@ from xdsl.dialects.builtin import ModuleOp
 
 from qstack.dialect.core import AllocOp, KernelOp
 from qstack.runtime import CallbackRegistry, Machine
-from qstack.surface.lowering import lower
+from qstack.surface import compile_qasm
 from qstack.surface.parser import parse
-from qstack.verifier import verify_module
+from qstack.validation import validate_module
 
 
 def _module(src: str) -> ModuleOp:
-    return lower(parse(src))
+    module = compile_qasm(src)
+    assert isinstance(module, ModuleOp)
+    return module
 
 
 def _allocations(kernel: KernelOp) -> int:
@@ -58,7 +60,7 @@ def test_wrapper_def_threads_a_call_result_back_out() -> None:
     wrapper = _kernel(module, "wrapper")
     assert len(wrapper.input_types) == 1
     assert len(wrapper.declared_result_types) == 1
-    verify_module(module)
+    validate_module(module)
 
     hist = dict(Machine(num_qubits=4, registry=CallbackRegistry()).eval(module, shots=200).histogram())
     assert hist == {(1,): 200}
@@ -103,7 +105,7 @@ def test_switch_case_measuring_a_live_qubit_gets_a_reset() -> None:
     """
 
     module = _module(SWITCH_MEASURE)
-    verify_module(module)
+    validate_module(module)
     case_kernels = [
         op for op in module.body.ops if isinstance(op, KernelOp) and op.sym_name.data.startswith("__qstack_case_")
     ]
@@ -136,7 +138,7 @@ measure q[0] -> c[0];
 
 def test_repeated_measurement_of_a_parameter_allocates_one_replacement_each_time() -> None:
     module = _module(REPEATED_MEASUREMENT)
-    verify_module(module)
+    validate_module(module)
     measure_twice = _kernel(module, "measure_twice")
     assert _allocations(measure_twice) == 2
 
@@ -163,7 +165,7 @@ def test_unreferenced_qubit_declaration_is_omitted_from_allocation() -> None:
     module = _module(UNUSED_DECLARATION)
     with_spare = _kernel(module, "with_spare")
     assert _allocations(with_spare) == 0
-    verify_module(module)
+    validate_module(module)
 
 
 def test_unmeasured_local_ancilla_is_a_compile_error() -> None:
@@ -256,7 +258,7 @@ bit b = majority(c[0], c[1], c[2]);
 
 def test_for_is_unrolled_and_a_decoder_call_lowers_to_decode() -> None:
     module = _module(REPETITION)
-    verify_module(module)
+    validate_module(module)
     main = _kernel(module, "main")
     names = [op.name for op in main.body.block.ops]
     assert names.count("cliffords.cx") == 2
@@ -276,7 +278,7 @@ for int i in [0:2:4] { x q[i]; }
 for int i in [0:4] { measure q[i] -> c[i]; }
 """
     module = _module(source)
-    verify_module(module)
+    validate_module(module)
     assert _run(module) == {(1, 0, 1, 0, 1): 200}
 
 
@@ -291,7 +293,7 @@ measure q[0] -> c[0];
 measure q[0] -> c[1];
 """
     module = _module(source)
-    verify_module(module)
+    validate_module(module)
     assert _allocations(_kernel(module, "main")) == 2
     # The second measurement sees the fresh |0>, not the measured state.
     assert _run(module) == {(1, 0): 200}
@@ -330,7 +332,7 @@ measure q[0] -> c[0];
 
 def test_a_switch_arm_can_declare_its_own_qubits() -> None:
     module = _module(ARM_QREG)
-    verify_module(module)
+    validate_module(module)
     assert _allocations(_kernel(module, "__qstack_case_1_2")) == 1
     assert _run(module) == {(1,): 200}
 
@@ -354,7 +356,7 @@ f(q[0]);
 measure q[0] -> c[0];
 """
     module = _module(source)
-    verify_module(module)
+    validate_module(module)
     assert _run(module) == {(1,): 200}
 
 
@@ -369,7 +371,7 @@ measure q[0] -> c[0];
 measure q[1] -> c[1];
 """
     module = _module(source)
-    verify_module(module)
+    validate_module(module)
     assert _allocations(_kernel(module, "main")) == 2
 
 
@@ -420,7 +422,7 @@ for int i in [0:1] {
 measure q[0] -> c[2];
 """
     module = _module(source)
-    verify_module(module)
+    validate_module(module)
     assert _allocations(_kernel(module, "main")) == 3
     assert _run(module) == {(1, 1, 0): 200}
 
@@ -436,7 +438,7 @@ flip(q);
 measure q -> m;
 """
     module = _module(source)
-    verify_module(module)
+    validate_module(module)
     assert _run(module) == {(1,): 200}
 
 

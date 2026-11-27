@@ -1,19 +1,24 @@
-"""Build an identity-encoding witness from checked pass replacements."""
+"""Build a single-step witness from checked pass replacements."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 from dataclasses import asdict
-from typing import Mapping, Sequence
+from typing import TYPE_CHECKING, Mapping, Sequence
 
 from xdsl.dialects.builtin import ModuleOp
 from xdsl.ir import BlockArgument, OpResult, SSAValue
 
-from qstack.dialect.core import CallOp, KernelOp, UnitaryGateOp
-from qstack.passes.base import Encoding, QubitGroup, Replacement
+from qstack.dialect.core import AllocOp, CallOp, KernelOp, MeasureOp, ReturnOp, SelectOp, UnitaryGateOp
+from qstack.encoding import Encoding
 from qstack.verification.witness_check import _KernelSide, _pattern_at, _callback_sources
 from qstack.verification.model import Claim, Edge, KernelBoundary, Rule, ValueRef, Witness
+from qstack.verification.patterns import has_qubits
+
+
+if TYPE_CHECKING:
+    from qstack.passes.contracts import Replacement
 
 
 def _kernels(module: ModuleOp) -> dict[str, KernelOp]:
@@ -22,26 +27,19 @@ def _kernels(module: ModuleOp) -> dict[str, KernelOp]:
     }
 
 
-def _ref(value: SSAValue, kernel: KernelOp) -> ValueRef:
-    block = kernel.body.block
+def _ref(value: SSAValue, side: _KernelSide) -> ValueRef:
+    block = side.kernel.body.block
     if isinstance(value, BlockArgument):
         if value.owner is not block:
             raise ValueError("replacement references an argument from another kernel")
         return ValueRef("arg", value.index)
     if isinstance(value, OpResult):
-        ops = tuple(block.ops)
         try:
-            index = ops.index(value.owner)
-        except ValueError as exc:
+            index = side.op_index[value.owner]
+        except KeyError as exc:
             raise ValueError("replacement references a result from another kernel") from exc
         return ValueRef("result", index, value.index)
     raise TypeError("replacement references an unsupported SSA value")
-
-
-def _scalar(value: SSAValue | QubitGroup) -> SSAValue:
-    if isinstance(value, QubitGroup):
-        raise NotImplementedError("witness builder currently supports identity encoding only")
-    return value
 
 
 def witness_from_replacements(
@@ -52,9 +50,9 @@ def witness_from_replacements(
     encoding: Encoding,
 ) -> Witness:
     """Normalize checked replacement records into reusable rules and a claim graph."""
-    if not encoding.is_identity:
-        raise NotImplementedError("witness builder currently supports identity encoding only")
     source_kernels, target_kernels = _kernels(source), _kernels(target)
+    if source_kernels.keys() < target_kernels.keys():
+        raise NotImplementedError("witnesses for introduced kernels are unsupported")
     if set(source_kernels) != set(target_kernels) or set(replacements) != set(source_kernels):
         raise ValueError("replacement records must cover the same kernel symbols on both sides")
 
@@ -66,47 +64,72 @@ def witness_from_replacements(
     for kernel_name in source_kernels:
         old_kernel, new_kernel = source_kernels[kernel_name], target_kernels[kernel_name]
         old_side, new_side = _KernelSide(old_kernel), _KernelSide(new_kernel)
-        edges_by_pair: dict[tuple[ValueRef, ValueRef], str] = {}
+        edges_by_pair: dict[tuple[ValueRef, tuple[ValueRef, ...]], str] = {}
         local_edges: dict[str, Edge] = {}
 
-        def edge(source_value: SSAValue, target_value: SSAValue | QubitGroup) -> str:
-            key = (_ref(source_value, old_kernel), _ref(_scalar(target_value), new_kernel))
+        def edge(source_value: SSAValue, bundle: tuple[SSAValue, ...]) -> str:
+            key = (_ref(source_value, old_side), tuple(_ref(value, new_side) for value in bundle))
             if key not in edges_by_pair:
                 edge_id = f"{kernel_name}:e{len(edges_by_pair)}"
                 edges_by_pair[key] = edge_id
-                local_edges[edge_id] = Edge(edge_id, kernel_name, (key[0],), (key[1],))
+                local_edges[edge_id] = Edge(edge_id, kernel_name, (key[0],), key[1])
             return edges_by_pair[key]
 
         old_args = tuple(old_kernel.body.block.args)
-        new_args = tuple(new_kernel.body.block.args)
-        if len(old_kernel.input_types) != len(new_kernel.input_types):
-            raise NotImplementedError("widened kernel boundaries require an encoding witness")
-        borrowed = tuple(edge(old, new) for old, new in zip(old_args, new_args, strict=True))
-        all_boundaries.append(KernelBoundary(kernel_name, borrowed))
+        target_args = tuple(new_kernel.body.block.args)
+        if tuple(arg.type for arg in target_args) != encoding.map_types(tuple(arg.type for arg in old_args)):
+            raise ValueError(f"@{kernel_name}: target arguments disagree with the encoding")
+        borrowed = []
+        offset = 0
+        for old in old_args:
+            width = len(encoding.map_types((old.type,)))
+            borrowed.append(edge(old, target_args[offset:offset + width]))
+            offset += width
+        all_boundaries.append(KernelBoundary(kernel_name, tuple(borrowed)))
 
         for ordinal, replacement in enumerate(replacements[kernel_name]):
             node_id = f"{kernel_name}:n{ordinal}"
             source_ops = tuple(old_side.op_index[op] for op in replacement.source_operations)
             target_ops = tuple(new_side.op_index[op] for op in replacement.target_operations)
-            inputs = tuple(edge(old, new) for old, new in replacement.inputs)
-            outputs = tuple(edge(old, new) for old, new in replacement.outputs)
+            inputs = tuple(edge(old, (new,) if isinstance(new, SSAValue) else new.qubits) for old, new in replacement.inputs)
+            outputs = tuple(edge(old, (new,) if isinstance(new, SSAValue) else new.qubits) for old, new in replacement.outputs)
             provisional = Claim(node_id, kernel_name, "", source_ops, target_ops, inputs, outputs)
             old_pattern = _pattern_at(provisional, old_side, local_edges, "source", source_hosts)
             new_pattern = _pattern_at(provisional, new_side, local_edges, "target", target_hosts)
+            source_op = replacement.source_operations[0] if len(source_ops) == 1 else None
             callee = None
-            if old_pattern == new_pattern and len(old_pattern.operations) == 1:
+            if (
+                old_pattern == new_pattern
+                and len(old_pattern.operations) == 1
+                and (encoding.is_identity or not has_qubits(old_pattern))
+            ):
                 kind = "identity"
-            elif len(source_ops) == 1 and isinstance(replacement.source_operations[0], CallOp):
+            elif encoding.is_identity and isinstance(source_op, CallOp):
                 kind = "inline"
-                callee = replacement.source_operations[0].callee.root_reference.data
+                callee = source_op.callee.root_reference.data
             elif all(isinstance(op, UnitaryGateOp) for op in (
                 *replacement.source_operations, *replacement.target_operations,
             )):
                 kind = "gate"
+            elif not encoding.is_identity and isinstance(source_op, AllocOp):
+                kind = "allocation"
+            elif not encoding.is_identity and isinstance(source_op, MeasureOp):
+                kind = "measurement"
+            elif (
+                not encoding.is_identity
+                and isinstance(source_op, (CallOp, ReturnOp, SelectOp))
+                and len(target_ops) == 1
+                and source_op.name == new_pattern.operations[0].name
+                and old_pattern.operations[0].properties == new_pattern.operations[0].properties
+            ):
+                kind = "widening"
             else:
                 raise NotImplementedError(f"{node_id}: nonunitary rewrite needs another rule kind")
+            definition = {"kind": kind, "callee": callee, "source": asdict(old_pattern), "target": asdict(new_pattern)}
+            if not encoding.is_identity:
+                definition["encoding"] = asdict(encoding)
             payload = json.dumps(
-                {"kind": kind, "callee": callee, "source": asdict(old_pattern), "target": asdict(new_pattern)},
+                definition,
                 sort_keys=True, separators=(",", ":"), allow_nan=False,
             )
             rule_id = "rule-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -116,6 +139,7 @@ def witness_from_replacements(
 
     return Witness.bind(
         source, target,
+        encoding=encoding,
         rules=tuple(all_rules.values()), claims=tuple(all_claims),
         edges=tuple(all_edges), kernels=tuple(all_boundaries),
     )

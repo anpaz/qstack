@@ -21,17 +21,16 @@ from xdsl.ir import Operation
 from qstack.dialect import QubitType
 from qstack.dialect.cliffords import CxOp, CzOp, HOp, SOp, XOp, ZOp
 from qstack.dialect.core import DecodeOp, DecoderOp, MeasureOp
+from qstack.encoding import Encoding
 from qstack.passes.base import (
-    Encoding,
     LoweringContext,
     LoweringPass,
     PassError,
-    QubitGroup,
     require_qubit_group,
 )
+from qstack.passes.contracts import QubitGroup
 from qstack.runtime.registry import CallbackRegistry
 
-_WIDTH = 3
 _FAMILY = "rep3_bit"
 _IMPLEMENTATION = f"{_FAMILY}:decode"
 
@@ -68,7 +67,7 @@ class Rep3BitLowering(LoweringPass):
 
     pass_id = "qstack.rep3-bit"
     preserve_unhandled_operations = False
-    encoding = Encoding(1, _WIDTH)
+    encoding = Encoding(3, ("+ZZI", "+IZZ"), "+XXX", "+ZII")
 
     def error(self, context: LoweringContext, message: str) -> PassError:
         return Rep3BitLoweringError(str(super().error(context, message)))
@@ -77,7 +76,7 @@ class Rep3BitLowering(LoweringPass):
         """Updates the context with the decoder callback declaration"""
         context = super().prepare_run(module)
         decoder = f"{_FAMILY}.{context.pass_index}:decode"
-        context.compiler_callbacks["decoder"] = DecoderOp(decoder, _WIDTH)
+        context.compiler_callbacks["decoder"] = DecoderOp(decoder, self.encoding.physical_qubits)
         return context
 
     def operation_handlers(self):
@@ -158,7 +157,7 @@ class Rep3BitLowering(LoweringPass):
         return operations, (decode.result,)
 
 
-def lower_rep3_bit(result: CompilationResult, registry: CallbackRegistry) -> CompilationResult:
+def lower_rep3_bit(result: ModuleOp | CompilationResult, registry: CallbackRegistry) -> CompilationResult:
     """Return a bit-repetition-lowered module and install its decoder."""
     output = Rep3BitLowering().run(result)
     _register_callbacks(registry)

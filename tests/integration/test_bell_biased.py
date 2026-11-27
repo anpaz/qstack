@@ -8,7 +8,7 @@ Mirrors ``mlir/examples/2.bell-biased.ipynb`` and the legacy
 from qstack.runtime import Machine
 from qstack.surface.lowering import lower
 from qstack.surface.parser import parse
-from qstack.verifier import verify_module
+from qstack.validation import validate_module
 
 _PROGRAM = """
 QSTACKQASM 0.1;
@@ -25,7 +25,7 @@ measure q[1] -> c[1];
 
 def test_bell_biased_module_verifies() -> None:
     module = lower(parse(_PROGRAM))
-    verify_module(module)
+    validate_module(module)
 
 
 def test_bell_biased_concentrates_on_one_one() -> None:

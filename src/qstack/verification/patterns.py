@@ -14,6 +14,10 @@ from qstack.verification.model import Circuit, Gate, Pattern, PatternOp, ValueRe
 QUBIT = "!qstack.qubit"
 
 
+def has_qubits(pattern: Pattern) -> bool:
+    return QUBIT in pattern.inputs or any(QUBIT in op.result_types for op in pattern.operations)
+
+
 def operation_sources(op: Operation, sources: Mapping[str, set[str]]) -> tuple[str, ...]:
     used: set[str] = set()
     if isinstance(op, (DecodeOp, SelectOp)):

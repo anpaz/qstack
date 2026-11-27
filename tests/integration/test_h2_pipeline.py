@@ -9,7 +9,7 @@ from qstack.passes.toy2cliffords import lower_toy_to_cliffords
 from qstack.runtime import CallbackRegistry, Machine
 from qstack.surface.lowering import lower
 from qstack.surface.parser import parse
-from qstack.verifier import verify_module
+from qstack.validation import validate_module
 
 _TOY_BELL = """
 QSTACKQASM 0.1;
@@ -42,7 +42,7 @@ def test_toy_to_cliffords_to_h2_executes_bell_program() -> None:
     module = lower(parse(_TOY_BELL))
     module = lower_toy_to_cliffords(module)
     module = lower_cliffords_to_h2(module)
-    verify_module(module)
+    validate_module(module)
 
     assert not _has_cliffords(module)
     assert any(isinstance(op, (U1Op, RzOp, ZzOp)) for op in module.walk())
@@ -57,7 +57,7 @@ def test_rep3_to_h2_executes() -> None:
     registry = CallbackRegistry()
     module = lower_rep3_bit(lower(parse(_FLIP)), registry)
     module = lower_cliffords_to_h2(module)
-    verify_module(module)
+    validate_module(module)
 
     results = Machine(num_qubits=3, registry=registry).eval(module, shots=100)
     assert all(result == [1] for result in results)
@@ -70,7 +70,7 @@ def test_repeated_rep3_to_h2_executes() -> None:
         lower_rep3_bit(lower(parse(_FLIP)), registry), registry
     )
     module = lower_cliffords_to_h2(module)
-    verify_module(module)
+    validate_module(module)
 
     results = Machine(num_qubits=9, registry=registry).eval(module, shots=20)
     assert all(result == [1] for result in results)
@@ -83,7 +83,7 @@ def test_rep3_bit_plus_phase_to_h2_executes() -> None:
         lower_rep3_bit(lower(parse(_FLIP)), registry), registry
     )
     module = lower_cliffords_to_h2(module)
-    verify_module(module)
+    validate_module(module)
 
     results = Machine(num_qubits=9, registry=registry).eval(module, shots=20)
     assert all(result == [1] for result in results)

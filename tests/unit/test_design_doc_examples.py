@@ -21,7 +21,7 @@ from qstack.dialect.cliffords import Cliffords
 from qstack.dialect.core import QStack
 from qstack.dialect.h2 import H2
 from qstack.dialect.toy import Toy
-from qstack.verifier import verify_module
+from qstack.validation import validate_module
 
 _DOCS = [
     Path(__file__).resolve().parents[2] / "docs" / "DESIGN.md",
@@ -49,4 +49,4 @@ def test_design_doc_has_mlir_examples() -> None:
 def test_design_doc_example_parses_and_verifies(source: str) -> None:
     module = Parser(_context(), source).parse_module()
     assert isinstance(module, ModuleOp)
-    verify_module(module)
+    validate_module(module)

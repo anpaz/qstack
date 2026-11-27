@@ -10,7 +10,7 @@ from qstack.passes.clifford_peephole import (
     CliffordPeepholeOptimization,
     optimize_cliffords,
 )
-from qstack.verifier import verify_module
+from qstack.validation import validate_module
 
 
 def _module(gates):
@@ -49,8 +49,8 @@ def test_clifford_peephole_rules() -> None:
     for gate_type in (HOp, XOp, YOp, ZOp):
         source = _module([gate_type, gate_type])
         target = optimize_cliffords(source)
-        verify_module(source)
-        verify_module(target)
+        validate_module(source)
+        validate_module(target)
         assert _gates(target) == []
         assert len(_gates(source)) == 2
 

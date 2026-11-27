@@ -6,7 +6,7 @@ from xdsl.ir import Block, Region
 from qstack.dialect import BitType, QubitType
 from qstack.dialect.cliffords import CxOp, HOp
 from qstack.dialect.core import AllocOp, KernelOp, MeasureOp, ReturnOp, SelectOp, SelectorOp
-from qstack.verifier import verify_module
+from qstack.validation import validate_module
 
 
 def _kernel(name, inputs, results, body):
@@ -38,7 +38,7 @@ def _build_module() -> ModuleOp:
 
 
 def test_kernel_only_prepare_one_verifies() -> None:
-    module = _build_module(); module.verify(); verify_module(module)
+    module = _build_module(); validate_module(module)
 
 
 def test_kernel_only_prepare_one_has_no_legacy_control() -> None:

@@ -28,7 +28,7 @@ from qstack.dialect.core import (
 )
 from qstack.dialect.h2 import H2, RzOp as H2RzOp, RzzOp, U1Op, ZzOp
 from qstack.dialect.toy import EntangleOp, FlipOp, MixOp, SkewOp, Toy
-from qstack.verifier import verify_module
+from qstack.validation import validate_module
 
 
 def _print(op: ModuleOp) -> str:
@@ -165,10 +165,10 @@ def test_core_symbols_and_control_ops_use_compact_syntax_and_roundtrip() -> None
     assert "qstack.decoder @decode arity 1" in text
 
     reparsed = _parse(text, Toy)
-    verify_module(reparsed)
+    validate_module(reparsed)
 
     cloned = reparsed.clone()
-    verify_module(cloned)
+    validate_module(cloned)
     cloned_main = next(op for op in cloned.body.ops if isinstance(op, KernelOp) and op.sym_name.data == "main")
     assert tuple(cloned_main.result_types) == ()
     assert cloned_main.declared_result_types == (BitType(),)

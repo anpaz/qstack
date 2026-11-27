@@ -1,4 +1,6 @@
 from dataclasses import replace
+import subprocess
+import sys
 
 import pytest
 from xdsl.dialects.builtin import ArrayAttr, ModuleOp, StringAttr
@@ -8,13 +10,13 @@ from qstack.dialect import BitType, QubitType
 from qstack.dialect.core import AllocOp, CallOp, DecoderOp, KernelOp, MeasureOp, ReturnOp
 from qstack.dialect.toy import MixOp, SkewOp
 from qstack.passes import (
-    Encoding,
     LoweringContext,
     LoweringPass,
     PASS_HISTORY_ATTR,
     PassError,
     QubitGroup,
     Replacement,
+    Encoding,
 )
 from qstack.passes.rep3_bit import Rep3BitLowering
 from qstack.passes.rep3_phase import Rep3PhaseLowering
@@ -24,7 +26,18 @@ from qstack.passes.toy2cliffords import (
 )
 from qstack.surface.lowering import lower
 from qstack.surface.parser import parse
-from qstack.verifier import LinearityError, verify_module
+from qstack.validation import LinearityError, validate_module
+
+
+@pytest.mark.parametrize("first", ["qstack.passes.base", "qstack.verification"])
+def test_passes_and_verification_import_in_either_order(first) -> None:
+    result = subprocess.run(
+        [sys.executable, "-c", f"import {first}; import qstack.passes.base; import qstack.verification"],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def _toy(program: str):
@@ -47,7 +60,7 @@ def _linear_values(module):
 
 
 def test_encoding_derives_target_types() -> None:
-    assert Encoding(1, 3).map_types(
+    assert Rep3BitLowering.encoding.map_types(
         (BitType(), QubitType(), BitType())
     ) == (
         BitType(),
@@ -92,11 +105,6 @@ def test_only_nonidentity_qubits_group_flat_values() -> None:
     assert group.qubits == tuple(encoded_target.args[1:])
 
 
-def test_encoding_rejects_unsupported_source_width() -> None:
-    with pytest.raises(PassError, match="one source qubit"):
-        Encoding(2, 3).map_types((QubitType(), QubitType()))
-
-
 def test_lowering_builds_independently_owned_ir() -> None:
     source = _toy("mix q[0];")
     source_values = set(_linear_values(source))
@@ -104,8 +112,8 @@ def test_lowering_builds_independently_owned_ir() -> None:
 
     target = ToyToCliffordsLowering().run(source)
 
-    verify_module(source)
-    verify_module(target)
+    validate_module(source)
+    validate_module(target)
     assert any(isinstance(op, MixOp) for op in source.walk())
     assert not any(isinstance(op, MixOp) for op in target.walk())
     assert all(tuple(value.uses) == uses_before[value] for value in source_values)
@@ -129,7 +137,7 @@ def test_failed_lowering_does_not_modify_source_uses() -> None:
     else:  # pragma: no cover - guards the test setup
         raise AssertionError("skew unexpectedly lowered")
 
-    verify_module(source)
+    validate_module(source)
     assert PASS_HISTORY_ATTR not in source.attributes
     assert any(isinstance(op, SkewOp) for op in source.walk())
     assert all(tuple(value.uses) == uses_before[value] for value in values)
@@ -144,7 +152,7 @@ def test_module_verifier_rejects_malformed_pass_history(history) -> None:
     source.attributes[PASS_HISTORY_ATTR] = history
 
     with pytest.raises(LinearityError, match="must be an array of strings"):
-        verify_module(source)
+        validate_module(source)
 
 
 def test_lowering_preserves_kernel_and_callback_metadata() -> None:
@@ -209,7 +217,7 @@ def test_lowering_precomputes_recursive_call_signatures() -> None:
     )
 
     target = Rep3BitLowering().run(ModuleOp([recursive, main]))
-    verify_module(target)
+    validate_module(target)
     calls = [op for op in target.walk() if isinstance(op, CallOp)]
     assert all(len(op.arguments) == len(op.results) == 3 for op in calls)
 
@@ -247,7 +255,7 @@ def test_lowering_preserves_mixed_signature_order_while_widening_qubits() -> Non
     )
 
     target = Rep3BitLowering().run(ModuleOp([worker, main]))
-    verify_module(target)
+    validate_module(target)
     target_worker = next(
         op for op in target.body.ops if isinstance(op, KernelOp) and op.sym_name.data == "worker"
     )

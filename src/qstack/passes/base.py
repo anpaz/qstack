@@ -8,9 +8,10 @@ from dataclasses import dataclass, field
 from typing import Any, TypeAlias, cast
 
 from xdsl.dialects.builtin import ArrayAttr, ModuleOp, StringAttr
-from xdsl.ir import Attribute, Block, Operation, Region, SSAValue
+from xdsl.ir import Block, Operation, Region, SSAValue
 
 from qstack.compilation import CompilationResult, module_text
+from qstack.encoding import Encoding
 from qstack.dialect import QubitType
 from qstack.dialect.core import (
     AllocOp,
@@ -23,136 +24,22 @@ from qstack.dialect.core import (
     SelectOp,
     SelectorOp,
 )
-from qstack.verifier import (
-    PASS_HISTORY_ATTR,
+
+from .checks import (
     PassStructureError,
     check_replacements,
     check_value_pairs,
-    verify_module,
 )
+
+from qstack.passes.contracts import KernelSignature, Qubit, QubitGroup, Replacement
+from qstack.validation import PASS_HISTORY_ATTR, validate_module
+from qstack.verification.builder import witness_from_replacements
 
 logger = logging.getLogger("qstack.verification.builder")
 
+
 class PassError(Exception):
     """Raised when a qstack pass cannot transform its input."""
-
-
-@dataclass(frozen=True)
-class Encoding:
-    """Declare the qubit representation promised by a lowering.
-
-    ``Encoding(1, 3)``, for example, means that every qubit visible to the
-    source program is represented by three qubits in the target program.  The
-    lowering engine uses this declaration to widen kernel arguments, results,
-    and allocations, and to decide whether an operation handler receives a
-    single target SSA value or a :class:`QubitGroup`.
-
-    The widths are the structural part of that promise.  The pass realizes it
-    by implementing :meth:`LoweringPass.prepare_encoded_zero` and its operation
-    handlers.  The preparation must produce the encoded image of logical
-    ``|0>``; each handler must implement its source operation on encoded values.
-    A future isometry artifact will complete the semantic declaration and let a
-    verifier check both kinds of implementation against the same encoding.
-
-    The engine currently implements only ``source_width == 1`` because its
-    value map starts from one source SSA value at a time.  ``target_width`` may
-    be any positive width.  Bits and other non-qubit values always remain one
-    scalar SSA value.
-    """
-
-    source_width: int = 1
-    target_width: int = 1
-
-    @classmethod
-    def identity(cls) -> "Encoding":
-        return cls()
-
-    @property
-    def is_identity(self) -> bool:
-        return self.source_width == self.target_width == 1
-
-    def map_types(self, source_types: Sequence[Attribute]) -> tuple[Attribute, ...]:
-        if self.is_identity:
-            return tuple(source_types)
-        if self.source_width != 1:
-            raise PassError(
-                "the lowering engine currently supports only one source qubit "
-                "per encoding unit"
-            )
-        target_types: list[Attribute] = []
-        for source_type in source_types:
-            if isinstance(source_type, QubitType):
-                target_types.extend(QubitType() for _ in range(self.target_width))
-            else:
-                target_types.append(source_type)
-        return tuple(target_types)
-
-
-# An SSA handle whose qstack IR type is ``!qstack.qubit``.
-Qubit: TypeAlias = SSAValue[QubitType]
-
-
-@dataclass(frozen=True)
-class QubitGroup:
-    """The target SSA values that jointly represent one source qubit.
-
-    For a non-identity encoding, the lowering engine maps a source qubit to a
-    group and passes that group to operation handlers.  A repetition-code
-    lowering therefore receives three target qubits as one ``QubitGroup`` when
-    lowering a gate on one source qubit.
-
-    A group is bookkeeping for a single pass run.  It is not an IR value and is
-    never stored in the output module; a later pass sees the emitted target
-    qubits and builds its own mappings.
-    """
-
-    qubits: tuple[Qubit, ...]
-
-
-@dataclass(frozen=True)
-class KernelSignature:
-    """The signature a source kernel will have after the current lowering.
-
-    The engine derives these types from the pass's :class:`Encoding` before it
-    lowers any kernel bodies.  Keeping all target signatures up front lets a
-    call be rebuilt correctly even when its callee appears later in the module
-    or is recursive.  ``inputs`` contains the borrowed kernel inputs, which are
-    also the kernel's entry-block arguments.
-    """
-
-    inputs: tuple[Attribute, ...]
-    results: tuple[Attribute, ...]
-
-
-@dataclass(frozen=True)
-class Replacement:
-    """A source fragment, its target implementation, and their shared boundary.
-
-    ``source_operations`` identifies the original operations covered by this
-    transformation.  ``target_operations`` contains detached operations in
-    execution order, ready for the kernel driver to append.  A fragment may
-    cover one operation, an optimization such as ``S;S``, or a whole body.
-
-    ``inputs`` and ``outputs`` pair each source boundary value with its target
-    representation.  Bits and identity-encoded qubits have scalar partners;
-    other qubits have a ``QubitGroup`` whose width is defined by the encoding.
-    Internal source results have no boundary entry.  An unused terminal result
-    is still an output, so single-operation replacements cover every result.
-
-    Cancelling ``H;H`` has no target operations and pairs the second H result
-    with the target input.  A source ``qstack.alloc`` has no inputs: its
-    replacement holds the target allocations and any preparation of encoded
-    zero, and its one output is the prepared representation.
-
-    These records describe construction only.  They retain the two regions
-    and boundary correspondence needed for future claims, without asserting
-    semantic equivalence.
-    """
-
-    source_operations: tuple[Operation, ...]
-    target_operations: tuple[Operation, ...]
-    inputs: tuple[tuple[SSAValue, SSAValue | QubitGroup], ...]
-    outputs: tuple[tuple[SSAValue, SSAValue | QubitGroup], ...]
 
 
 @dataclass
@@ -186,6 +73,7 @@ class LoweringContext:
         """Return the one-based history position of the pass being run."""
         return len(self.history) + 1
 
+
 Handler: TypeAlias = Callable[
     [Operation, tuple[SSAValue | QubitGroup, ...], LoweringContext],
     tuple[Sequence[Operation], Sequence[SSAValue | QubitGroup]],
@@ -216,14 +104,12 @@ class LoweringPass:
     encoding = Encoding.identity()
     pass_id: str | None = None
 
-    def run(self, result: CompilationResult) -> CompilationResult:
-        """Compile one result and record this step and any supported witness."""
-        # Directly constructed IR may still enter the pipeline at a pass.
-        # The result remains the only output shape.
+    def run(self, result: ModuleOp | CompilationResult) -> CompilationResult:
+        """Transform a module or prior result and record this step and its witness."""
         if isinstance(result, ModuleOp):
             result = CompilationResult.from_module(result)
         module = result.module
-        verify_module(module)
+        validate_module(module)
         source_snapshot = module_text(module)
 
         context = self.prepare_run(module)
@@ -254,38 +140,27 @@ class LoweringPass:
             sym_name=module.properties.get("sym_name"),
         )
         output.location = module.location
-        output.verify()
-        verify_module(output)
+        validate_module(output)
         witness = None
-        if self.encoding.is_identity:
-            from qstack.verification.builder import witness_from_replacements
 
-            try:
-                witness = witness_from_replacements(
-                    module, output, context.replacements, encoding=self.encoding
-                )
-            except NotImplementedError as exc:
-                # A pass may use a claim shape the current builder cannot encode.
-                # Its compilation result stays explicitly unverified.
-                logger.debug("%s: witness not built: %s", type(self).__name__, exc)
-        return CompilationResult.from_step(
-            result, output, witness, source_snapshot=source_snapshot
-        )
+        try:
+            witness = witness_from_replacements(module, output, context.replacements, encoding=self.encoding)
+        except NotImplementedError as exc:
+            # A pass may use a claim shape the current builder cannot encode.
+            # Its compilation result stays explicitly unverified.
+            logger.debug("%s: witness not built: %s", type(self).__name__, exc)
+        return CompilationResult.from_step(result, output, witness, source_snapshot=source_snapshot)
 
     def prepare_run(self, module: ModuleOp) -> LoweringContext:
         """Analyze the source module and create this invocation's run context."""
         history_attr = module.attributes.get(PASS_HISTORY_ATTR)
         history = (
-            ()
-            if history_attr is None
-            else tuple(entry.data for entry in cast(ArrayAttr[StringAttr], history_attr))
+            () if history_attr is None else tuple(entry.data for entry in cast(ArrayAttr[StringAttr], history_attr))
         )
         signatures = {
             op.sym_name: KernelSignature(
                 inputs=self.encoding.map_types(tuple(op.input_types)),
-                results=self.encoding.map_types(
-                    tuple(op.declared_result_types)
-                ),
+                results=self.encoding.map_types(tuple(op.declared_result_types)),
             )
             for op in module.body.ops
             if isinstance(op, KernelOp)
@@ -339,18 +214,12 @@ class LoweringPass:
 
         # Entry values belong to the new kernel.  The encoding determines which
         # of them jointly represent each borrowed source argument.
-        entry_types = self.encoding.map_types(
-            tuple(argument.type for argument in source.body.block.args)
-        )
+        entry_types = self.encoding.map_types(tuple(argument.type for argument in source.body.block.args))
         target_block = Block(arg_types=entry_types)
-        entry_values = self._group_values(
-            source.body.block.args, target_block.args, context
-        )
+        entry_values = self._group_values(source.body.block.args, target_block.args, context)
         value_map = dict(self._pair_values(source.body.block.args, entry_values, context))
 
-        replacements = self.lower_body(
-            source_operations, tuple(value_map.items()), context
-        )
+        replacements = self.lower_body(source_operations, tuple(value_map.items()), context)
         self._check(
             check_replacements,
             context,
@@ -434,8 +303,7 @@ class LoweringPass:
         except ValueError as exc:
             raise self.error(
                 context,
-                f"handler returned {len(target_values)} outputs for "
-                f"{len(source_values)} source results",
+                f"handler returned {len(target_values)} outputs for " f"{len(source_values)} source results",
             ) from exc
         self._check(check_value_pairs, context, pairs, self.encoding)
         return pairs
@@ -457,9 +325,7 @@ class LoweringPass:
         context: LoweringContext,
     ) -> tuple[SSAValue | QubitGroup, ...]:
         """Group flat target IR values according to the source value types."""
-        expected_count = len(
-            self.encoding.map_types(tuple(value.type for value in source_values))
-        )
+        expected_count = len(self.encoding.map_types(tuple(value.type for value in source_values)))
         if len(target_values) != expected_count:
             raise self.error(
                 context,
@@ -468,11 +334,8 @@ class LoweringPass:
         grouped: list[SSAValue | QubitGroup] = []
         cursor = 0
         for source_value in source_values:
-            if (
-                isinstance(source_value.type, QubitType)
-                and not self.encoding.is_identity
-            ):
-                end = cursor + self.encoding.target_width
+            if isinstance(source_value.type, QubitType) and not self.encoding.is_identity:
+                end = cursor + self.encoding.physical_qubits
                 grouped.append(QubitGroup(tuple(target_values[cursor:end])))
                 cursor = end
             else:
@@ -485,9 +348,7 @@ class LoweringPass:
         values: Sequence[SSAValue | QubitGroup],
     ) -> tuple[SSAValue, ...]:
         return tuple(
-            target
-            for value in values
-            for target in (value.qubits if isinstance(value, QubitGroup) else (value,))
+            target for value in values for target in (value.qubits if isinstance(value, QubitGroup) else (value,))
         )
 
     def lower_operation(
@@ -534,10 +395,7 @@ class LoweringPass:
         the target module.  It is valid only when every operand and result is a
         scalar SSA value in the target representation.
         """
-        mapper = {
-            operand: value
-            for operand, value in zip(source.operands, mapped_operands, strict=True)
-        }
+        mapper = {operand: value for operand, value in zip(source.operands, mapped_operands, strict=True)}
         target = source.clone_without_regions(mapper)
         return [target], tuple(target.results)
 
@@ -549,11 +407,11 @@ class LoweringPass:
     ) -> tuple[Sequence[Operation], Sequence[SSAValue | QubitGroup]]:
         """Allocate the target representation of one fresh qubit and prepare ``|0>``.
 
-        One source allocation becomes ``target_width`` target allocations,
+        One source allocation becomes ``physical_qubits`` target allocations,
         grouped for a non-identity encoding, followed by the operations of
         :meth:`prepare_encoded_zero`.
         """
-        allocations = [AllocOp() for _ in range(self.encoding.target_width)]
+        allocations = [AllocOp() for _ in range(self.encoding.physical_qubits)]
         for allocation in allocations:
             copy_operation_metadata(source, allocation)
         fresh: SSAValue | QubitGroup = (
@@ -614,9 +472,7 @@ class LoweringPass:
         bit_count = len(source.bit_operands)
         bits = mapped_operands[:bit_count]
         arguments = mapped_operands[bit_count:]
-        result_types = self.encoding.map_types(
-            tuple(result.type for result in source.results)
-        )
+        result_types = self.encoding.map_types(tuple(result.type for result in source.results))
         target = SelectOp(
             callee=source.callee,
             bit_operands=bits,

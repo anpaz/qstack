@@ -14,7 +14,7 @@ Running log of every non-trivial decision, deviation from the spec, environment 
 
 13. **`@majority_vote` is added once and validated on reuse.** The pass inserts a private `qstack.decoder` declaration with signature `(!qstack.bit, !qstack.bit, !qstack.bit) -> !qstack.bit` when it inserts its first decoder. A second repetition-3 application reuses that declaration. If the symbol already exists with a different body, tag, or signature, compilation fails with `Rep3CompileError` instead of shadowing it.
 
-14. **The pass verifies its own output.** Before returning, `compile_rep3` runs both xdsl structural verification and `qstack.verifier.verify_module`. This makes malformed output a compiler failure rather than deferring detection to the caller.
+14. **The pass validates its own output.** Before returning, `compile_rep3` calls `qstack.validation.validate_module`, which includes xDSL structural verification. This makes malformed output a compiler failure rather than deferring detection to the caller.
 
 15. **Composition behavior is decoder stacking, not decoder replacement.** On the second repetition-3 application, each first-layer physical measurement is expanded to three lower-layer measurements and decoded by a newly inserted majority vote. The first-layer majority-vote op remains unchanged and consumes those three newly decoded bits. This produces the intended 9-qubit concatenation while preserving every pre-existing callback reference.
 

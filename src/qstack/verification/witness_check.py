@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from xdsl.dialects.builtin import ModuleOp
 from xdsl.ir import Operation, SSAValue
 
+from qstack.callbacks import resolve_callback
 from qstack.dialect.core import DecoderOp, KernelOp, SelectorOp
 from qstack.verification.model import Claim, Edge, Pattern, Rule, ValueRef, Witness
 from qstack.verification.patterns import extract_pattern, operation_sources
@@ -112,7 +113,7 @@ def _values(
     projection: str, *, output: bool,
 ) -> tuple[SSAValue, ...]:
     ids = claim.outputs if output else claim.inputs
-    return tuple(side.value(getattr(edges[edge_id], projection)[0]) for edge_id in ids)
+    return tuple(side.value(ref) for edge_id in ids for ref in getattr(edges[edge_id], projection))
 
 
 def _pattern_at(
@@ -210,12 +211,20 @@ def _check_acyclic(
 
 def check_witness_structure(source_module: ModuleOp, target_module: ModuleOp, witness: Witness) -> None:
     """Check coverage, bindings, and graph expansions independently of rules."""
-    if witness.source_width != 1 or witness.target_width != 1:
-        raise UnsupportedWitnessError("only identity encoding is implemented")
+    encoding = witness.encoding
+    encoded = not encoding.is_identity
+
     source_kernels, target_kernels = _kernels(source_module), _kernels(target_module)
     _require(set(source_kernels) == set(target_kernels), "kernel symbols changed without a claim")
     source_declarations, target_declarations = _declarations(source_module), _declarations(target_module)
-    _require(set(source_declarations) == set(target_declarations), "callback declarations changed without a claim")
+    _require(source_declarations.keys() <= target_declarations.keys(), "source callback declaration removed")
+    added = target_declarations.keys() - source_declarations.keys()
+    _require(not added or encoded, "callback declarations changed without a claim")
+    existing_sources = {resolve_callback(name).source for name in source_declarations}
+    for name in added:
+        if not isinstance(target_declarations[name], DecoderOp):
+            raise UnsupportedWitnessError("only introduced decoders are supported for encoded gates")
+        _require(resolve_callback(name).source not in existing_sources, f"@{name}: callback source is not fresh")
     for name, old in source_declarations.items():
         new = target_declarations[name]
         _require(old.name == new.name and old.attributes == new.attributes and old.properties == new.properties, f"callback declaration @{name} changed")
@@ -232,21 +241,27 @@ def check_witness_structure(source_module: ModuleOp, target_module: ModuleOp, wi
     for name, old_kernel in source_kernels.items():
         new_kernel = target_kernels[name]
         old_side, new_side = _KernelSide(old_kernel), _KernelSide(new_kernel)
-        _require(old_kernel.input_types == new_kernel.input_types and old_kernel.declared_result_types == new_kernel.declared_result_types and old_kernel.attributes == new_kernel.attributes, f"kernel @{name} signature changed under identity encoding")
+        _require(encoding.map_types(old_kernel.input_types) == tuple(new_kernel.input_types)
+                 and encoding.map_types(old_kernel.declared_result_types) == tuple(new_kernel.declared_result_types)
+                 and old_kernel.attributes == new_kernel.attributes, f"@{name}: kernel signature or attributes changed")
         local_claims = [claim for claim in claims.values() if claim.kernel == name]
         local_edges = {key: edge for key, edge in edges.items() if edge.kernel == name}
         producers: Counter[str] = Counter(boundaries[name].inputs)
         consumers: Counter[str] = Counter()
         coverage: dict[str, dict[int, Claim]] = {"source": {}, "target": {}}
         _require(len(boundaries[name].inputs) == len(old_kernel.input_types), f"@{name}: wrong input boundary arity")
+        offset = 0
         for index, edge_id in enumerate(boundaries[name].inputs):
             _require(edge_id in local_edges, f"@{name}: unknown input edge {edge_id}")
             edge = local_edges[edge_id]
             _require(edge.source == (ValueRef("arg", index),), f"@{name}: source input edge differs")
-            _require(edge.target == (ValueRef("arg", index),), f"@{name}: target input edge differs")
+            count = len(encoding.map_types((old_kernel.input_types[index],)))
+            _require(edge.target == tuple(ValueRef("arg", i) for i in range(offset, offset + count)), f"@{name}: target input edge differs")
+            offset += count
         for edge in local_edges.values():
-            _require(len(edge.source) == len(edge.target) == 1, f"{edge.id}: identity edge must pair one value")
-            _require(old_side.value(edge.source[0]).type == new_side.value(edge.target[0]).type, f"{edge.id}: edge types differ")
+            _require(len(edge.source) == 1, f"{edge.id}: expected one source value")
+            typ = old_side.value(edge.source[0]).type
+            _require(tuple(new_side.value(ref).type for ref in edge.target) == encoding.map_types((typ,)), f"{edge.id}: edge types differ")
         for claim in local_claims:
             _require(all(edge in local_edges for edge in (*claim.inputs, *claim.outputs)), f"{claim.id}: unknown or cross-kernel edge")
             producers.update(claim.outputs)
@@ -263,5 +278,9 @@ def check_witness_structure(source_module: ModuleOp, target_module: ModuleOp, wi
         _require(all(count == 1 for count in consumers.values()) and set(consumers) == set(local_edges), f"@{name}: each edge needs one consumer")
         old_hosts = _host_sequence(old_kernel, coverage["source"], rules, source_hosts, source_side=True)
         new_hosts = _host_sequence(new_kernel, coverage["target"], rules, target_hosts, source_side=False)
+        if encoded:
+            # New decoder uses belong to the as-yet unchecked measurement rules.
+            _check_acyclic(local_claims, boundaries[name].inputs, new_hosts)
+            new_hosts = {host: seq for host, seq in new_hosts.items() if host in existing_sources}
         _require(old_hosts == new_hosts, f"@{name}: callback host-wire order differs")
         _check_acyclic(local_claims, boundaries[name].inputs, old_hosts)

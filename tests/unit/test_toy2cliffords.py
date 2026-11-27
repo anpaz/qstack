@@ -11,7 +11,7 @@ from qstack.passes.toy2cliffords import (
 from qstack.runtime import Machine
 from qstack.surface.lowering import lower
 from qstack.surface.parser import parse
-from qstack.verifier import verify_module
+from qstack.validation import validate_module
 
 _TOY_BELL = """
 QSTACKQASM 0.1;
@@ -63,7 +63,7 @@ def test_toy_to_cliffords_replaces_supported_ops() -> None:
 
 def test_compiled_module_still_verifies_and_runs() -> None:
     module = lower_toy_to_cliffords(lower(parse(_TOY_BELL)))
-    verify_module(module)
+    validate_module(module)
     hist = dict(Machine(num_qubits=4).eval(module, shots=2000).histogram())
     # Same bell distribution as the original toy program.
     assert set(hist.keys()) <= {(0, 0), (1, 1)}

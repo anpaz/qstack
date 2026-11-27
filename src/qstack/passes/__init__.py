@@ -1,15 +1,14 @@
 """Fresh-construction lowerings and optimizations for qstack modules."""
 
+from qstack.encoding import Encoding
 from qstack.passes.base import (
-    Encoding,
     LoweringContext,
     LoweringPass,
     OptimizationPass,
     PASS_HISTORY_ATTR,
     PassError,
-    QubitGroup,
-    Replacement,
 )
+from qstack.passes.contracts import QubitGroup, Replacement
 from qstack.passes.clifford_peephole import (
     CliffordPeepholeOptimization,
     optimize_cliffords,

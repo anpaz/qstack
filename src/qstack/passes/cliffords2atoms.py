@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 
+from xdsl.dialects.builtin import ModuleOp
 from xdsl.ir import Operation, SSAValue
 
 from qstack.compilation import CompilationResult
@@ -80,6 +81,6 @@ class CliffordsToAtomsLowering(LoweringPass):
         return self._finish(source, [*before, cz, *after], cz.control_out, target)
 
 
-def lower_cliffords_to_atoms(result: CompilationResult) -> CompilationResult:
+def lower_cliffords_to_atoms(result: ModuleOp | CompilationResult) -> CompilationResult:
     """Return a fresh module with canonical Cliffords lowered to atom gates."""
     return CliffordsToAtomsLowering().run(result)
