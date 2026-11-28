@@ -29,6 +29,7 @@ from qstack.verification.witness_check import _callback_sources, _host_sequence,
 
 BIT = str(BitType())
 _DEFAULT_OUTPUT = "docket.html"
+_RULE_MARKS = {"VERIFIED": "✓", "REFUTED": "×", "UNSUPPORTED": "?", "NOT_CHECKED": "○"}
 
 
 class _Graph:
@@ -158,7 +159,7 @@ def _rule_name(rule: Rule) -> str:
 def _claim_graph(
     boundary: KernelBoundary, claims: list[Claim], witness: Witness, rules: dict[str, Rule],
     rule_links: dict[str, str], source_hosts: dict[str, tuple[str, ...]],
-    target_hosts: dict[str, tuple[str, ...]],
+    target_hosts: dict[str, tuple[str, ...]], *, rule_statuses: dict[str, str | None],
 ) -> _Graph:
     graph = _Graph(direction="TB")
     producers: dict[str, list[tuple[str, str]]] = defaultdict(list)
@@ -173,10 +174,14 @@ def _claim_graph(
         node = f"claim{i}"
         nodes[claim.id] = node
         attrs = {"href": f"#{rule_links[claim.rule]}"} if claim.rule in rule_links else {}
-        graph.node(
-            node, f"{_rule_name(rule) if rule else claim.rule}\n{claim.id}",
-            tooltip=f"{claim.id} · rule {claim.rule}", **attrs,
-        )
+        label = _rule_name(rule) if rule else claim.rule
+        tooltip = f"{claim.id} · rule {claim.rule}"
+        verdict = rule_statuses.get(claim.rule)
+        if verdict is not None and verdict in _RULE_MARKS:
+            label = f"{_RULE_MARKS[verdict]} {label}"
+            tooltip += f" · {verdict.replace('_', ' ').lower()}"
+            attrs["class"] = verdict.lower()
+        graph.node(node, f"{label}\n{claim.id}", tooltip=tooltip, **attrs)
         for port, edge_id in enumerate(claim.outputs):
             producers[edge_id].append((node, f"output {port}"))
         for port, edge_id in enumerate(claim.inputs):
@@ -221,6 +226,15 @@ def _status(status: str | None) -> str:
     return f'<span class="status {escape(status.lower())}">{escape(status.replace("_", " "))}</span>'
 
 
+def _rule_legend(verdicts: set[str | None]) -> str:
+    entries = [
+        f'<span class="{verdict.lower()}">{symbol} {verdict.replace("_", " ").capitalize()}</span>'
+        for verdict, symbol in _RULE_MARKS.items()
+        if verdict in verdicts
+    ]
+    return f'<p class="legend rule-legend"><strong>Rule verdicts</strong>{"".join(entries)}</p>' if entries else ""
+
+
 def _navigation(label: str, entries: list[tuple[str, str, str]]) -> str:
     if not entries:
         return f'<h2>{label}</h2><p class="muted">None recorded</p>'
@@ -228,6 +242,20 @@ def _navigation(label: str, entries: list[tuple[str, str, str]]) -> str:
         f'<a href="#{link}"><span>{escape(name)}</span>{annotation}</a>'
         for link, name, annotation in entries
     )
+
+
+def _backend_label(name: str, version: str | None) -> str:
+    return f"{name} {version}" if version else name
+
+
+def _backend_summary(report: VerificationReport | None) -> str:
+    if report is None:
+        return ""
+    backends = ", ".join(_backend_label(name, version) for name, version in report.backends_used)
+    label = "Rule backends used"
+    if any(rule.attempts is None for rule in report.rules):
+        label = "Recorded rule backends"
+    return f'<p><strong>{label}</strong> {escape(backends or "None recorded")}</p>'
 
 
 def _rule_panel(
@@ -239,8 +267,15 @@ def _rule_panel(
     if report and report.backend == "none":
         backend = f"<p>{escape(report.detail)}</p>"
     elif report:
-        version = f" {report.backend_version}" if report.backend_version else ""
-        backend = f'<p><strong>Verifier</strong> {escape(report.backend + version)} · {escape(report.detail)}</p>'
+        name = escape(_backend_label(report.backend, report.backend_version))
+        backend = f'<p><strong>Verifier</strong> {name} · {escape(report.detail)}</p>'
+    if report and report.attempts and len(report.attempts) > 1:
+        attempts = "".join(
+            f'<li>{escape(_backend_label(attempt.backend, attempt.backend_version))} '
+            f'{_status(attempt.status)} · {escape(attempt.detail)}</li>'
+            for attempt in report.attempts
+        )
+        backend += f'<details><summary>Backends tried</summary><ol class="sites">{attempts}</ol></details>'
     diagrams = "".join(
         f'<section><h3>{side} pattern</h3><div class="graph-frame" role="region" '
         f'aria-label="{side} pattern" tabindex="0">{_pattern_graph(pattern).svg(dot, f"{link}-{side}")}</div></section>'
@@ -358,10 +393,14 @@ def generate_docket(
             if report and not check:
                 detail = "No claim graph verdict recorded for this kernel"
             used_rules = {claim.rule for claim in claims}
-            checked_rules = sum(rule_results[rule].status == "VERIFIED" for rule in used_rules if rule in rule_results)
+            rule_statuses = {
+                rule: rule_results[rule].status if rule in rule_results else missing_status
+                for rule in used_rules
+            }
+            checked_rules = sum(verdict == "VERIFIED" for verdict in rule_statuses.values())
             graph = _claim_graph(
                 boundary, claims, witness, rules, rule_links,
-                source_hosts.get(name, {}), target_hosts.get(name, {}),
+                source_hosts.get(name, {}), target_hosts.get(name, {}), rule_statuses=rule_statuses,
             )
             rule_count = f"{checked_rules}/{len(used_rules)} rules verified" if report else ""
             graph_summary = " · ".join(filter(None, (f"{len(claims)} claims", rule_count)))
@@ -376,6 +415,7 @@ def generate_docket(
     <div class="panel-heading"><h3>Claim graph structure</h3>{_status(status)}</div>
     <span class="muted">{graph_summary}</span>
   </div>
+  {_rule_legend(set(rule_statuses.values()))}
   <div class="graph-frame" role="region" aria-label="Claim graph for @{escape(name)}" tabindex="0">
     {graph.svg(dot, f"{link}-graph")}
   </div>
@@ -397,6 +437,7 @@ def generate_docket(
             f'<span class="muted">· {escape(report.detail + report_note)}</span>'
             if report else '<span class="muted">Witness only</span>'
         ),
+        backends=_backend_summary(report),
         navigation=_navigation("Kernels", kernel_entries) + _navigation("Rules", rule_entries),
         panels="\n".join(panels),
     )

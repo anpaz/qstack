@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Sequence
 
 from qstack.compilation import ArtifactError, CompilationResult, load_artifact, module_text, parse_module
-from qstack.verification.plugins import RuleBackend, RuleResult, Status, installed_rule_backends, supports_encoding
+from qstack.verification.plugins import (
+    BackendAttempt, RuleBackend, RuleResult, Status, installed_rule_backends, supports_encoding,
+)
 from qstack.verification.builder import witness_from_replacements
 from qstack.verification.witness_check import (
     KernelResult, UnsupportedWitnessError, WitnessError, check_witness_structure,
@@ -32,6 +34,18 @@ class VerificationReport:
     kernels: tuple[KernelResult, ...] = ()
     artifact_sha256: str | None = None
 
+    @property
+    def backends_used(self) -> tuple[tuple[str, str | None], ...]:
+        """Return the recorded rule backends and their known versions."""
+        backends: dict[tuple[str, str | None], None] = {}
+        for rule in self.rules:
+            if rule.attempts is not None:
+                backends.update(dict.fromkeys((attempt.backend, attempt.backend_version) for attempt in rule.attempts))
+            elif rule.backend != "none":
+                backends[rule.backend, rule.backend_version] = None
+        versioned = {name for name, version in backends if version is not None}
+        return tuple((name, version) for name, version in backends if version is not None or name not in versioned)
+
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
 
@@ -46,6 +60,9 @@ class VerificationReport:
             rules = []
             for rule in data.pop("rules", []):
                 rule["sites"] = tuple(rule.get("sites", ()))
+                attempts = rule.get("attempts")
+                if attempts is not None:
+                    rule["attempts"] = tuple(BackendAttempt(**attempt) for attempt in attempts)
                 rules.append(RuleResult(**rule))
             kernels = tuple(KernelResult(**kernel) for kernel in data.pop("kernels", []))
             return cls(**data, rules=tuple(rules), kernels=kernels)
@@ -112,28 +129,24 @@ def verify(
     for rule in artifact.witness.rules:
         sites = tuple(claim.id for claim in artifact.witness.claims if claim.rule == rule.id)
         checked_rule = check_structural_rule(rule, source, encoding)
+        attempts: list[BackendAttempt] = []
         if isinstance(checked_rule, RuleResult):
-            outcome = RuleResult(
-                checked_rule.rule, checked_rule.backend, checked_rule.status, checked_rule.detail,
-                sites=sites,
-            )
+            outcome = checked_rule
+            attempts.append(BackendAttempt.from_result(outcome))
         else:
             outcome = RuleResult(
                 rule.id, "none", "UNSUPPORTED",
-                f"no configured rule backend supports {encoding_kind} encodings", sites=sites,
+                f"no configured rule backend supports {encoding_kind} encodings",
             )
             for backend in configured:
                 if not supports_encoding(backend, encoding_kind):
                     continue
-                checked = backend.check(checked_rule)
-                outcome = RuleResult(
-                    checked.rule, checked.backend, checked.status, checked.detail,
-                    checked.raw_result, checked.backend_version, checked.configuration, sites,
-                )
+                outcome = backend.check(checked_rule)
+                attempts.append(BackendAttempt.from_result(outcome))
                 logger.debug("rule %s at %s: %s %s", rule.id, sites, outcome.status, outcome.detail)
                 if outcome.status != "UNSUPPORTED":
                     break
-        results.append(outcome)
+        results.append(replace(outcome, sites=sites, attempts=tuple(attempts)))
     if any(item.status == "REFUTED" for item in results):
         status: Status = "REFUTED"
         detail = "one or more rules were refuted"
@@ -150,7 +163,7 @@ def verify(
 
 
 __all__ = [
-    "Circuit", "CircuitRule", "Claim", "Edge", "Gate", "KernelBoundary", "KernelResult", "Pattern", "PatternOp",
+    "BackendAttempt", "Circuit", "CircuitRule", "Claim", "Edge", "Gate", "KernelBoundary", "KernelResult", "Pattern", "PatternOp",
     "Rule", "RuleResult", "ValueRef", "VerificationReport",
     "Witness", "installed_rule_backends", "verify",
     "witness_from_replacements",

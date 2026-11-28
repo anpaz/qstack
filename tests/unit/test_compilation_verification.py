@@ -24,7 +24,7 @@ from qstack.passes.cliffords2atoms import CliffordsToAtomsLowering
 from qstack.passes.cliffords2h2 import CliffordsToH2Lowering
 from qstack.surface import compile_qasm
 from qstack.verification import (
-    Circuit, CircuitRule, Claim, Edge, KernelBoundary, Rule, ValueRef, VerificationReport, Witness,
+    Circuit, CircuitRule, Claim, Edge, KernelBoundary, Rule, RuleResult, ValueRef, VerificationReport, Witness,
     installed_rule_backends, verify, witness_from_replacements,
 )
 from qstack.verification.plugins import ExternalRuleBackend
@@ -169,6 +169,36 @@ def test_repeated_sites_check_each_rule_once():
     assert len(result.witness.rules) == 4
     assert len(calls) == 1
     assert len(next(rule for rule in report.rules if rule.backend == "matrix").sites) == 2
+
+
+def test_report_records_only_backends_that_tried_the_rule(tmp_path):
+    source, old = _program([HOp, HOp])
+    target, new = _program([])
+    result = _result(source, target, _witness(source, target, old, new), tmp_path)
+    calls = []
+
+    def backend(name, verdict, version=None):
+        def check(rule):
+            calls.append(name)
+            return RuleResult(rule.id, name, verdict, f"{name} result", backend_version=version)
+        return SimpleNamespace(name=name, check=check)
+
+    incompatible = backend("incompatible", "REFUTED")
+    incompatible.supported_encodings = ("stabilizer",)
+    report = verify(result, backends=(
+        incompatible, backend("fallback", "UNSUPPORTED"),
+        backend("checker", "VERIFIED", "2.0"), backend("unused", "REFUTED"),
+    ))
+    rewrite = next(rule for rule in report.rules if rule.rule == "rewrite")
+    assert calls == ["fallback", "checker"]
+    assert (rewrite.status, rewrite.backend) == ("VERIFIED", "checker")
+    assert [(attempt.backend, attempt.status) for attempt in rewrite.attempts] == [
+        ("fallback", "UNSUPPORTED"), ("checker", "VERIFIED"),
+    ]
+    assert report.backends_used == (("structural", None), ("fallback", None), ("checker", "2.0"))
+    path = tmp_path / "verification.json"
+    report.save(path)
+    assert VerificationReport.load(path) == report
 
 
 def test_frontend_peephole_witness_round_trips_and_verifies(tmp_path):
@@ -393,17 +423,32 @@ def test_witness_report_overlays_only_matching_check_results(tmp_path, monkeypat
     assert 'xlink:href="#rule-1"' in witness_only
     assert "Source pattern" in witness_only and "Target pattern" in witness_only
     assert "<strong>Verifier</strong>" not in witness_only
+    assert "Rule verdicts" not in witness_only
+    assert "Rule backends used" not in witness_only
+    assert ">✓ alloc</text>" not in witness_only
 
     report = verify(result, backends=())
     report_path = tmp_path / "report.json"
     report.save(report_path)
     annotated = generate_docket(result.artifact_path, report=report_path).read_text()
     assert "<strong>Verifier</strong> structural" in annotated
+    assert "<strong>Rule backends used</strong> structural</p>" in annotated
     assert "no configured rule backend supports identity encodings" in annotated
     assert "claim graph matches both kernels" in annotated
     assert '<strong>Step verdict</strong> <span class="status unsupported">UNSUPPORTED</span>' in annotated
     assert '<a href="#kernel-0"><span>@main</span><span class="rule-count muted">3/4 rules verified</span></a>' in annotated
     assert '<h3>Claim graph structure</h3><span class="status verified">VERIFIED</span>' in annotated
+    assert ">✓ alloc</text>" in annotated
+    assert ">? h · h → ∅</text>" in annotated
+    assert '<span class="unsupported">? Unsupported</span>' in annotated
+
+    rewrite = next(rule for rule in report.rules if rule.rule == "rewrite")
+    assert rewrite.attempts == ()
+    partial = replace(report, rules=(replace(rewrite, status="REFUTED"),))
+    marked = generate_docket(result, tmp_path / "partial.html", report=partial).read_text()
+    assert ">× h · h → ∅</text>" in marked
+    assert ">○ alloc</text>" in marked
+    assert '<span class="not_checked">○ Not checked</span>' in marked
 
     # The IR hashes stay the same; the checked witness changes.
     artifact = json.loads(result.artifact_path.read_text())
@@ -423,12 +468,15 @@ def test_witness_report_matches_a_copied_step_to_a_report_without_fingerprint(tm
     report = verify(original, backends=()).to_dict()
     del report["artifact_sha256"]
     del report["kernels"]
+    for rule in report["rules"]:
+        del rule["attempts"]
     report_path = tmp_path / "report.json"
     report_path.write_text(json.dumps(report))
     output = tmp_path / "witness.html"
 
     checked = generate_docket(copy, output, report=report_path).read_text()
     assert "Matched using the report’s recorded artifact" in checked
+    assert "<strong>Recorded rule backends</strong> structural</p>" in checked
     assert "NOT RECORDED" in checked
 
     artifact = json.loads(copy.artifact_path.read_text())

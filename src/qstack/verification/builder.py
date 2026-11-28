@@ -7,8 +7,9 @@ import json
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Mapping, Sequence
 
-from xdsl.dialects.builtin import ModuleOp
-from xdsl.ir import BlockArgument, OpResult, SSAValue
+from xdsl.dialects.builtin import DenseArrayBase, ModuleOp, i32
+from xdsl.ir import BlockArgument, Operation, OpResult, SSAValue
+from xdsl.irdl import AttrSizedOperandSegments
 
 from qstack.dialect.core import AllocOp, CallOp, KernelOp, MeasureOp, ReturnOp, SelectOp, UnitaryGateOp
 from qstack.encoding import Encoding
@@ -40,6 +41,19 @@ def _ref(value: SSAValue, side: _KernelSide) -> ValueRef:
             raise ValueError("replacement references a result from another kernel") from exc
         return ValueRef("result", index, value.index)
     raise TypeError("replacement references an unsupported SSA value")
+
+
+def _widening_properties_match(source: Operation, target: Operation, encoding: Encoding) -> bool:
+    if not isinstance(source, SelectOp):
+        return source.properties == target.properties
+
+    expected = dict(source.properties)
+    # The selector bits stay scalar, while its case arguments follow the encoding.
+    case_types = encoding.map_types(tuple(value.type for value in source.case_arguments))
+    expected[AttrSizedOperandSegments.attribute_name] = DenseArrayBase.from_list(
+        i32, [len(source.bit_operands), len(case_types)]
+    )
+    return expected == target.properties
 
 
 def witness_from_replacements(
@@ -119,8 +133,8 @@ def witness_from_replacements(
                 not encoding.is_identity
                 and isinstance(source_op, (CallOp, ReturnOp, SelectOp))
                 and len(target_ops) == 1
-                and source_op.name == new_pattern.operations[0].name
-                and old_pattern.operations[0].properties == new_pattern.operations[0].properties
+                and source_op.name == replacement.target_operations[0].name
+                and _widening_properties_match(source_op, replacement.target_operations[0], encoding)
             ):
                 kind = "widening"
             else:

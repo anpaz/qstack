@@ -16,6 +16,20 @@ _IDENTITY_ONLY = ("identity",)
 
 
 @dataclass(frozen=True)
+class BackendAttempt:
+    """The outcome of invoking one verifier on a rule."""
+
+    backend: str
+    status: Status
+    detail: str
+    backend_version: str | None = None
+
+    @classmethod
+    def from_result(cls, result: RuleResult) -> BackendAttempt:
+        return cls(result.backend, result.status, result.detail, result.backend_version)
+
+
+@dataclass(frozen=True)
 class RuleResult:
     rule: str
     backend: str
@@ -25,6 +39,7 @@ class RuleResult:
     backend_version: str | None = None
     configuration: dict[str, object] = field(default_factory=dict)
     sites: tuple[str, ...] = ()
+    attempts: tuple[BackendAttempt, ...] | None = None
 
 
 class RuleBackend(Protocol):

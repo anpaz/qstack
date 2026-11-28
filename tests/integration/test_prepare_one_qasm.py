@@ -4,9 +4,12 @@ from xdsl.dialects.builtin import ModuleOp
 
 from qstack.dialect import BitType, QubitType
 from qstack.dialect.core import KernelOp, SelectorOp
+from qstack.passes.rep3_bit import lower_rep3_bit
+from qstack.runtime import CallbackRegistry
 from qstack.surface.lowering import lower
 from qstack.surface.parser import parse
 from qstack.validation import validate_module
+from qstack.verification import verify
 
 PREPARE_ONE = """
 QSTACKQASM 0.1;
@@ -67,8 +70,21 @@ def test_prepare_one_passes_verifier() -> None:
     validate_module(m)
 
 
+def test_rep3_witness_covers_widened_recursive_selector() -> None:
+    result = lower_rep3_bit(_module(PREPARE_ONE), CallbackRegistry())
+    assert result.witness is not None
+    selector_rule, = (
+        rule for rule in result.witness.rules
+        if rule.source.operations[0].name == "qstack.select"
+    )
+    assert selector_rule.kind == "widening"
+    report = verify(result, backends=())
+    assert report.status == "UNSUPPORTED"
+    assert report.kernels and all(kernel.status == "VERIFIED" for kernel in report.kernels)
+
+
 def test_prepare_one_runs_1000_shots_all_one() -> None:
-    from qstack.runtime import CallbackRegistry, Machine
+    from qstack.runtime import Machine
 
     reg = CallbackRegistry()
 
