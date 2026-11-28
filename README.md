@@ -136,24 +136,22 @@ patterns and every site that uses that rule. Export requires Graphviz
 ### Generate a docket from Python
 
 Starting with a toy-dialect program named `toy_program`, run the compiler pass
-and optionally call `verify()` to include its results.
+and generate a docket. `generate_docket()` runs `verify()` and returns its report.
 
 ```python
 from qstack.passes.toy2cliffords import lower_toy_to_cliffords
-from qstack.verification import verify
-from qstack.verification.viewer import generate_docket
+from qstack.verification import generate_docket
 
 target = lower_toy_to_cliffords(toy_program)
-report = verify(target)
-
-generate_docket(target, report=report)
+report = generate_docket(target)
 ```
 
 Open `docket.html` in the current directory. It shows the step verdict, which
 rule backends were available, and whether each kernel's claim graph matched
 both IR snapshots. Each claim node carries the verdict of its rule.
 Select a rule to see its verifier and any fallback attempts. Call
-`generate_docket(target)` to view the witness on its own.
+`generate_docket(target, witness_only=True)` to export the witness without verdicts.
+That call skips verification and returns `None`.
 
 ### Save the compilation result and verification report as JSON
 
@@ -168,12 +166,13 @@ backends and the attempts for each rule.
 
 ### Generate a docket from existing files
 
-Pass the saved paths to regenerate `docket.html` from the recorded results.
+Pass the path to a saved step to verify it, or supply a saved report to reuse
+its recorded verdicts.
 
 ```python
-from qstack.verification.viewer import generate_docket
+from qstack.verification import generate_docket
 
-generate_docket("step.json", report="verification.json")
+report = generate_docket("step.json", report="verification.json")
 ```
 
 The same export is available from the command line.
@@ -182,7 +181,8 @@ The same export is available from the command line.
 python -m qstack.verification.viewer step.json --report verification.json
 ```
 
-Omit the report argument to view the saved witness on its own.
+The command verifies the saved step by default. Use `--witness-only` to export
+the witness without verdicts.
 
 ## Development
 

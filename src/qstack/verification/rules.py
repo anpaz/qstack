@@ -33,6 +33,8 @@ def check_structural_rule(rule: Rule, source: ModuleOp, encoding: Encoding) -> R
             return CircuitRule(rule.id, old, new, encoding)
         except ValueError as exc:
             return verdict("REFUTED", str(exc))
+    if rule.kind == "unsupported":
+        return verdict("UNSUPPORTED", "no rule verifier supports this rewrite shape")
     if rule.kind in ("allocation", "measurement", "widening"):
         return verdict("UNSUPPORTED", f"{rule.kind} rule check is not implemented")
     if rule.kind == "inline":

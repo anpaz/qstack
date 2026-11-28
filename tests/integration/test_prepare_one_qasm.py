@@ -12,8 +12,7 @@ from qstack.runtime import CallbackRegistry
 from qstack.surface.lowering import lower
 from qstack.surface.parser import parse
 from qstack.validation import validate_module
-from qstack.verification import verify
-from qstack.verification.viewer import generate_docket
+from qstack.verification import generate_docket, verify
 
 PREPARE_ONE = """
 QSTACKQASM 0.1;
@@ -77,10 +76,7 @@ def test_prepare_one_passes_verifier() -> None:
 def test_rep3_witness_covers_widened_recursive_selector() -> None:
     result = lower_rep3_bit(_module(PREPARE_ONE), CallbackRegistry())
     assert result.witness is not None
-    selector_rule, = (
-        rule for rule in result.witness.rules
-        if rule.source.operations[0].name == "qstack.select"
-    )
+    (selector_rule,) = (rule for rule in result.witness.rules if rule.source.operations[0].name == "qstack.select")
     assert selector_rule.kind == "widening"
     report = verify(result, backends=())
     assert report.status == "UNSUPPORTED"
@@ -90,7 +86,9 @@ def test_rep3_witness_covers_widened_recursive_selector() -> None:
 @pytest.mark.skipif(shutil.which("dot") is None, reason="HTML graph export uses Graphviz")
 def test_docket_names_selectors_and_called_kernels(tmp_path) -> None:
     result = lower_rep3_bit(_module(PREPARE_ONE), CallbackRegistry())
-    html = generate_docket(result, tmp_path / "docket.html").read_text()
+    output = tmp_path / "docket.html"
+    generate_docket(result, output, witness_only=True)
+    html = output.read_text()
 
     for name in ("select @repeat_until_one", "call @prepare_one"):
         label = f"{name} → {name}"

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, TypeAlias, cast
@@ -34,8 +33,6 @@ from .checks import (
 from qstack.passes.contracts import KernelSignature, Qubit, QubitGroup, Replacement
 from qstack.validation import PASS_HISTORY_ATTR, validate_module
 from qstack.verification.builder import witness_from_replacements
-
-logger = logging.getLogger("qstack.verification.builder")
 
 
 class PassError(Exception):
@@ -141,14 +138,7 @@ class LoweringPass:
         )
         output.location = module.location
         validate_module(output)
-        witness = None
-
-        try:
-            witness = witness_from_replacements(module, output, context.replacements, encoding=self.encoding)
-        except NotImplementedError as exc:
-            # A pass may use a claim shape the current builder cannot encode.
-            # Its compilation result stays explicitly unverified.
-            logger.debug("%s: witness not built: %s", type(self).__name__, exc)
+        witness = witness_from_replacements(module, output, context.replacements, encoding=self.encoding)
         return CompilationResult.from_step(result, output, witness, source_snapshot=source_snapshot)
 
     def prepare_run(self, module: ModuleOp) -> LoweringContext:

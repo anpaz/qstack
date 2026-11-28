@@ -65,10 +65,9 @@ def witness_from_replacements(
 ) -> Witness:
     """Normalize checked replacement records into reusable rules and a claim graph."""
     source_kernels, target_kernels = _kernels(source), _kernels(target)
-    if source_kernels.keys() < target_kernels.keys():
-        raise NotImplementedError("witnesses for introduced kernels are unsupported")
-    if set(source_kernels) != set(target_kernels) or set(replacements) != set(source_kernels):
-        raise ValueError("replacement records must cover the same kernel symbols on both sides")
+    if not source_kernels.keys() <= target_kernels.keys() or replacements.keys() != source_kernels.keys():
+        raise ValueError("replacement records must pair every source kernel with a target kernel")
+    introduced_kernels = tuple(name for name in target_kernels if name not in source_kernels)
 
     all_claims: list[Claim] = []
     source_hosts, target_hosts = _callback_sources(source), _callback_sources(target)
@@ -138,7 +137,7 @@ def witness_from_replacements(
             ):
                 kind = "widening"
             else:
-                raise NotImplementedError(f"{node_id}: nonunitary rewrite needs another rule kind")
+                kind = "unsupported"
             definition = {"kind": kind, "callee": callee, "source": asdict(old_pattern), "target": asdict(new_pattern)}
             if not encoding.is_identity:
                 definition["encoding"] = asdict(encoding)
@@ -156,4 +155,5 @@ def witness_from_replacements(
         encoding=encoding,
         rules=tuple(all_rules.values()), claims=tuple(all_claims),
         edges=tuple(all_edges), kernels=tuple(all_boundaries),
+        introduced_kernels=introduced_kernels,
     )

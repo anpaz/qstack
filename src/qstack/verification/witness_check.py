@@ -20,10 +20,6 @@ class WitnessError(ValueError):
     """The witness does not describe the actual source and target graphs."""
 
 
-class UnsupportedWitnessError(WitnessError):
-    """The witness uses a relation the current structural checker cannot handle."""
-
-
 def _require(condition: bool, message: str) -> None:
     if not condition:
         raise WitnessError(message)
@@ -213,7 +209,7 @@ def _check_acyclic(
 
 @dataclass(frozen=True)
 class KernelResult:
-    """Verdict for one kernel's claim graph and its two expansions."""
+    """Outcome of checking one kernel’s place in the witness."""
 
     kernel: str
     status: Status
@@ -229,15 +225,19 @@ def check_witness_structure(
     encoded = not encoding.is_identity
 
     source_kernels, target_kernels = _kernels(source_module), _kernels(target_module)
-    _require(set(source_kernels) == set(target_kernels), "kernel symbols changed without a claim")
+    _require(source_kernels.keys() <= target_kernels.keys(), "source kernel removed")
+    introduced = set(witness.introduced_kernels)
+    _require(
+        len(introduced) == len(witness.introduced_kernels)
+        and introduced == target_kernels.keys() - source_kernels.keys(),
+        "introduced kernels do not match the target",
+    )
     source_declarations, target_declarations = _declarations(source_module), _declarations(target_module)
     _require(source_declarations.keys() <= target_declarations.keys(), "source callback declaration removed")
     added = target_declarations.keys() - source_declarations.keys()
     _require(not added or encoded, "callback declarations changed without a claim")
     existing_sources = {resolve_callback(name).source for name in source_declarations}
     for name in added:
-        if not isinstance(target_declarations[name], DecoderOp):
-            raise UnsupportedWitnessError("only introduced decoders are supported for encoded gates")
         _require(resolve_callback(name).source not in existing_sources, f"@{name}: callback source is not fresh")
     for name, old in source_declarations.items():
         new = target_declarations[name]
@@ -293,7 +293,7 @@ def check_witness_structure(
         old_hosts = _host_sequence(old_kernel, coverage["source"], rules, source_hosts, source_side=True)
         new_hosts = _host_sequence(new_kernel, coverage["target"], rules, target_hosts, source_side=False)
         if encoded:
-            # New decoder uses belong to the as-yet unchecked measurement rules.
+            # Separate dependencies of the target from the host wires shared with the source.
             _check_acyclic(local_claims, boundaries[name].inputs, new_hosts)
             new_hosts = {host: seq for host, seq in new_hosts.items() if host in existing_sources}
         _require(old_hosts == new_hosts, f"@{name}: callback host-wire order differs")
@@ -302,13 +302,13 @@ def check_witness_structure(
     for name, old_kernel in source_kernels.items():
         try:
             check_kernel(name, old_kernel)
-        except UnsupportedWitnessError as exc:
-            if record_kernel is not None:
-                record_kernel(KernelResult(name, "UNSUPPORTED", str(exc)))
-            raise
         except (WitnessError, TypeError, ValueError, KeyError, IndexError) as exc:
             if record_kernel is not None:
                 record_kernel(KernelResult(name, "REFUTED", str(exc)))
             raise
         if record_kernel is not None:
             record_kernel(KernelResult(name, "VERIFIED", "claim graph matches both kernels"))
+
+    if record_kernel is not None:
+        for name in witness.introduced_kernels:
+            record_kernel(KernelResult(name, "UNSUPPORTED", "introduced kernel has no source counterpart"))

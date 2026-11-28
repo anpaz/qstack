@@ -162,7 +162,9 @@ class Rule:
     id: str
     source: Pattern
     target: Pattern
-    kind: Literal["identity", "gate", "inline", "allocation", "measurement", "widening"]
+    kind: Literal[
+        "identity", "gate", "inline", "allocation", "measurement", "widening", "unsupported",
+    ]
     callee: str | None = None
 
     @classmethod
@@ -219,7 +221,7 @@ class KernelBoundary:
 
 @dataclass(frozen=True)
 class Witness:
-    """A claim graph and reusable rules for one source-to-target step."""
+    """Claims for paired kernels and an inventory of target-only kernels."""
 
     source_sha256: str
     target_sha256: str
@@ -228,6 +230,7 @@ class Witness:
     edges: tuple[Edge, ...]
     kernels: tuple[KernelBoundary, ...]
     encoding: Encoding = field(default_factory=Encoding.identity)
+    introduced_kernels: tuple[str, ...] = ()
 
     @classmethod
     def bind(
@@ -240,6 +243,7 @@ class Witness:
         edges: tuple[Edge, ...],
         kernels: tuple[KernelBoundary, ...],
         encoding: Encoding = Encoding.identity(),
+        introduced_kernels: tuple[str, ...] = (),
     ) -> Witness:
         """Bind a witness to the exact IR snapshots a compiler will persist."""
         from qstack.compilation import module_text
@@ -247,11 +251,14 @@ class Witness:
         source_hash = sha256(module_text(source_module).encode("utf-8")).hexdigest()
         target_hash = sha256(module_text(target_module).encode("utf-8")).hexdigest()
         return cls(
-            source_hash, target_hash, rules, claims, edges, kernels, encoding,
+            source_hash, target_hash, rules, claims, edges, kernels, encoding, introduced_kernels,
         )
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
+        # Preserve fingerprints for artifacts with no introduced kernels.
+        if not self.introduced_kernels:
+            del data["introduced_kernels"]
         # Keep the v3 artifact format readable by older versions of qstack.
         data["source_width"] = 1
         data["target_width"] = self.encoding.physical_qubits
@@ -275,4 +282,5 @@ class Witness:
             tuple(Edge.from_dict(item) for item in data["edges"]),
             tuple(KernelBoundary.from_dict(item) for item in data["kernels"]),
             encoding,
+            tuple(str(name) for name in data.get("introduced_kernels", ())),
         )
