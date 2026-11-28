@@ -10,7 +10,7 @@ From the qstack repository root:
 python -m pip install ./verifiers/quivalence
 ```
 
-qstack discovers the installed `matrix` backend through the
+qstack discovers the installed `quivalence` backend through the
 `qstack.rule_verifiers` entry-point group. To run it directly, pass one rule
 JSON object to `python -m quivalence rule.json`; the command writes a
 JSON verdict to standard output. The check compares matrices up to one global phase, preserving the induced

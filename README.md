@@ -149,11 +149,11 @@ report = verify(target)
 generate_docket(target, report=report)
 ```
 
-Open `docket.html` in the current directory. It shows the step verdict, the
-rule backends that ran, and whether each kernel's claim graph matched both IR
-snapshots. Each claim node carries the verdict of its rule. Select a rule to
-see its verifier and any fallback attempts. Call `generate_docket(target)`
-to view the witness on its own.
+Open `docket.html` in the current directory. It shows the step verdict, which
+rule backends were available, and whether each kernel's claim graph matched
+both IR snapshots. Each claim node carries the verdict of its rule.
+Select a rule to see its verifier and any fallback attempts. Call
+`generate_docket(target)` to view the witness on its own.
 
 ### Save the compilation result and verification report as JSON
 
@@ -163,8 +163,8 @@ report.save("verification.json")
 ```
 
 `step.json` contains the witness and the source and target IR.
-`verification.json` contains the results of `verify()`, including the backend
-attempts for each rule.
+`verification.json` contains the results of `verify()`, including the available
+backends and the attempts for each rule.
 
 ### Generate a docket from existing files
 

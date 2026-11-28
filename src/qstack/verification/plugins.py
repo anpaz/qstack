@@ -82,7 +82,9 @@ class ExternalRuleBackend:
         try:
             encoding_kind = "identity" if rule.encoding.is_identity else "stabilizer"
             if not supports_encoding(self, encoding_kind):
-                return RuleResult(rule.id, self.name, "UNSUPPORTED", f"backend does not support {encoding_kind} encodings")
+                return RuleResult(
+                    rule.id, self.name, "UNSUPPORTED", f"backend does not support {encoding_kind} encodings"
+                )
             data = asdict(rule)
             if rule.encoding.is_identity:
                 # Preserve the existing plugin payload for ordinary rules.

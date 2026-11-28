@@ -33,6 +33,7 @@ class VerificationReport:
     rules: tuple[RuleResult, ...] = ()
     kernels: tuple[KernelResult, ...] = ()
     artifact_sha256: str | None = None
+    available_backends: tuple[str, ...] | None = None
 
     @property
     def backends_used(self) -> tuple[tuple[str, str | None], ...]:
@@ -65,6 +66,8 @@ class VerificationReport:
                     rule["attempts"] = tuple(BackendAttempt(**attempt) for attempt in attempts)
                 rules.append(RuleResult(**rule))
             kernels = tuple(KernelResult(**kernel) for kernel in data.pop("kernels", []))
+            if data.get("available_backends") is not None:
+                data["available_backends"] = tuple(data["available_backends"])
             return cls(**data, rules=tuple(rules), kernels=kernels)
         except (TypeError, AttributeError, ValueError) as exc:
             raise ValueError(f"malformed verification report {path}") from exc
@@ -79,10 +82,24 @@ def verify(
 
     Kernel verdicts describe claim-graph structure and expansion. Rule verdicts
     describe the local semantics checks, and the overall verdict applies to
-    the whole step. For IR validation, use :func:`qstack.validation.validate_module`.
+    the whole step. The report records installed backends and any explicit
+    backends supplied for this run. For IR validation, use
+    :func:`qstack.validation.validate_module`.
     """
+    installed = installed_rule_backends()
+    configured = installed if backends is None else tuple(backends)
+    backend_names = ["structural", *(backend.name for backend in installed)]
+    if backends is not None:
+        backend_names.extend(
+            name for backend in configured if (name := getattr(backend, "name", None))
+        )
+    available_backends = tuple(dict.fromkeys(backend_names))
+
     if result.artifact_path is None:
-        return VerificationReport("UNSUPPORTED", "result has no compilation step artifact", None)
+        return VerificationReport(
+            "UNSUPPORTED", "result has no compilation step artifact", None,
+            available_backends=available_backends,
+        )
     artifact_path = str(result.artifact_path)
     artifact_sha256 = None
     try:
@@ -96,10 +113,14 @@ def verify(
         target = parse_module(artifact.target)
     except Exception as exc:
         logger.debug("artifact %s rejected: %s", artifact_path, exc)
-        return VerificationReport("REFUTED", str(exc), artifact_path, artifact_sha256=artifact_sha256)
+        return VerificationReport(
+            "REFUTED", str(exc), artifact_path,
+            artifact_sha256=artifact_sha256, available_backends=available_backends,
+        )
     if artifact.witness is None:
         return VerificationReport(
-            "UNSUPPORTED", "compiler emitted no witness", artifact_path, artifact_sha256=artifact_sha256,
+            "UNSUPPORTED", "compiler emitted no witness", artifact_path,
+            artifact_sha256=artifact_sha256, available_backends=available_backends,
         )
     kernels: list[KernelResult] = []
     try:
@@ -108,23 +129,25 @@ def verify(
         return VerificationReport(
             "UNSUPPORTED", str(exc), artifact_path,
             kernels=tuple(kernels), artifact_sha256=artifact_sha256,
+            available_backends=available_backends,
         )
     except WitnessError as exc:
         logger.debug("artifact %s witness structure refuted: %s", artifact_path, exc)
         return VerificationReport(
             "REFUTED", str(exc), artifact_path,
             kernels=tuple(kernels), artifact_sha256=artifact_sha256,
+            available_backends=available_backends,
         )
     except (TypeError, ValueError, KeyError, IndexError) as exc:
         logger.debug("artifact %s has a malformed witness: %s", artifact_path, exc)
         return VerificationReport(
             "REFUTED", f"malformed witness: {exc}", artifact_path,
             kernels=tuple(kernels), artifact_sha256=artifact_sha256,
+            available_backends=available_backends,
         )
 
     encoding = artifact.witness.encoding
     encoding_kind = "identity" if encoding.is_identity else "stabilizer"
-    configured = tuple(backends) if backends is not None else installed_rule_backends()
     results: list[RuleResult] = []
     for rule in artifact.witness.rules:
         sites = tuple(claim.id for claim in artifact.witness.claims if claim.rule == rule.id)
@@ -159,7 +182,10 @@ def verify(
     else:
         status = "VERIFIED"
         detail = "claim graphs and rules verified"
-    return VerificationReport(status, detail, artifact_path, tuple(results), tuple(kernels), artifact_sha256)
+    return VerificationReport(
+        status, detail, artifact_path, tuple(results), tuple(kernels), artifact_sha256,
+        available_backends=available_backends,
+    )
 
 
 __all__ = [

@@ -181,7 +181,7 @@ def _claim_graph(
             label = f"{_RULE_MARKS[verdict]} {label}"
             tooltip += f" · {verdict.replace('_', ' ').lower()}"
             attrs["class"] = verdict.lower()
-        graph.node(node, f"{label}\n{claim.id}", tooltip=tooltip, **attrs)
+        graph.node(node, label, tooltip=tooltip, **attrs)
         for port, edge_id in enumerate(claim.outputs):
             producers[edge_id].append((node, f"output {port}"))
         for port, edge_id in enumerate(claim.inputs):
@@ -248,14 +248,11 @@ def _backend_label(name: str, version: str | None) -> str:
     return f"{name} {version}" if version else name
 
 
-def _backend_summary(report: VerificationReport | None) -> str:
+def _available_backends(report: VerificationReport | None) -> str:
     if report is None:
         return ""
-    backends = ", ".join(_backend_label(name, version) for name, version in report.backends_used)
-    label = "Rule backends used"
-    if any(rule.attempts is None for rule in report.rules):
-        label = "Recorded rule backends"
-    return f'<p><strong>{label}</strong> {escape(backends or "None recorded")}</p>'
+    available = ", ".join(report.available_backends or ())
+    return f'<p><strong>Available rule backends</strong> {escape(available or "Not recorded")}</p>'
 
 
 def _rule_panel(
@@ -437,7 +434,7 @@ def generate_docket(
             f'<span class="muted">· {escape(report.detail + report_note)}</span>'
             if report else '<span class="muted">Witness only</span>'
         ),
-        backends=_backend_summary(report),
+        available_backends=_available_backends(report),
         navigation=_navigation("Kernels", kernel_entries) + _navigation("Rules", rule_entries),
         panels="\n".join(panels),
     )

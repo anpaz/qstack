@@ -30,6 +30,7 @@ def test_cancellation_and_global_phase() -> None:
     cancellation = verify_rule(_rule([_gate("h", H), _gate("h", H)], []))
     assert cancellation["status"] == "VERIFIED"
     assert cancellation["rule"] == "rewrite"
+    assert cancellation["backend"] == "quivalence"
     assert json.loads(json.dumps(cancellation)) == cancellation
 
     phase = verify_rule(_rule([_gate("x", X)], [_gate("-x", NEGATIVE_X)]))
@@ -51,7 +52,9 @@ def test_cli_reports_verdict_and_exit_code(tmp_path) -> None:
         check=False, capture_output=True, text=True,
     )
     assert process.returncode == 1
-    assert json.loads(process.stdout)["status"] == "REFUTED"
+    verdict = json.loads(process.stdout)
+    assert verdict["status"] == "REFUTED"
+    assert verdict["backend"] == "quivalence"
 
 
 def test_relative_phase_is_not_global_phase() -> None:

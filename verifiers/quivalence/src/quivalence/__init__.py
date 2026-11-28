@@ -70,7 +70,7 @@ class MatrixVerifier:
         configuration = {"max_qubits": self.max_qubits, "atol": self.atol, "equivalence": "global_phase"}
         common = {
             "rule": rule_id,
-            "backend": "matrix",
+            "backend": "quivalence",
             "backend_version": _version(),
             "configuration": configuration,
         }

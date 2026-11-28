@@ -14,7 +14,7 @@ dependencies = ["numpy>=1.26"]
 dev = ["pytest>=9"]
 
 [project.entry-points."qstack.rule_verifiers"]
-matrix = "quivalence:verify_rule"
+quivalence = "quivalence:verify_rule"
 
 [tool.setuptools.packages.find]
 where = ["src"]

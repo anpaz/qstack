@@ -33,9 +33,9 @@ from qstack.verification.witness_check import _KernelSide, _callback_sources, _p
 import qstack.verification.plugins as rule_backends
 
 
-def _matrix_backend():
+def _quivalence_backend():
     for backend in installed_rule_backends():
-        if backend.name == "matrix":
+        if backend.name == "quivalence":
             return backend
     pytest.skip("install the independent quivalence distribution")
 
@@ -130,14 +130,16 @@ def test_compilation_result_has_only_latest_step(tmp_path):
     assert CompilationResult.load(second.artifact_path).artifact_path == second.artifact_path
 
 
-def test_matrix_verifies_cancellation_and_saved_artifact(tmp_path):
+def test_quivalence_verifies_cancellation_and_saved_artifact(tmp_path):
     source, old = _program([HOp, HOp])
     target, new = _program([])
     result = _result(source, target, _witness(source, target, old, new), tmp_path)
-    report = verify(result, backends=(_matrix_backend(),))
+    report = verify(result, backends=(_quivalence_backend(),))
     assert report.status == "VERIFIED"
-    assert next(rule for rule in report.rules if rule.rule == "rewrite").sites == ("site",)
-    assert verify(CompilationResult.load(result.artifact_path), backends=(_matrix_backend(),)).status == "VERIFIED"
+    rewrite = next(rule for rule in report.rules if rule.rule == "rewrite")
+    assert (rewrite.backend, rewrite.sites) == ("quivalence", ("site",))
+    assert [attempt.backend for attempt in rewrite.attempts] == ["quivalence"]
+    assert verify(CompilationResult.load(result.artifact_path), backends=(_quivalence_backend(),)).status == "VERIFIED"
     report.save(tmp_path / "report.json")
     assert VerificationReport.load(tmp_path / "report.json") == report
     assert [(item.kernel, item.status) for item in report.kernels] == [("main", "VERIFIED")]
@@ -152,13 +154,13 @@ def test_thesis_example_has_four_rules_and_seven_claims():
     assert {claim.rule for claim in witness.claims} == {rule.id for rule in witness.rules}
     gate_rule = next(rule for rule in witness.rules if rule.kind == "gate")
     assert sum(claim.rule == gate_rule.id for claim in witness.claims) == 2
-    assert verify(result, backends=(_matrix_backend(),)).status == "VERIFIED"
+    assert verify(result, backends=(_quivalence_backend(),)).status == "VERIFIED"
 
 
 def test_repeated_sites_check_each_rule_once():
     source, _ = _program([HOp, HOp, HOp, HOp])
     result = CliffordPeepholeOptimization().run(CompilationResult.from_module(source))
-    backend = _matrix_backend()
+    backend = _quivalence_backend()
     calls = []
     class CountingBackend:
         def check(self, rule):
@@ -168,10 +170,10 @@ def test_repeated_sites_check_each_rule_once():
     assert report.status == "VERIFIED"
     assert len(result.witness.rules) == 4
     assert len(calls) == 1
-    assert len(next(rule for rule in report.rules if rule.backend == "matrix").sites) == 2
+    assert len(next(rule for rule in report.rules if rule.backend == "quivalence").sites) == 2
 
 
-def test_report_records_only_backends_that_tried_the_rule(tmp_path):
+def test_report_distinguishes_available_backends_from_invocations(tmp_path, monkeypatch):
     source, old = _program([HOp, HOp])
     target, new = _program([])
     result = _result(source, target, _witness(source, target, old, new), tmp_path)
@@ -183,6 +185,8 @@ def test_report_records_only_backends_that_tried_the_rule(tmp_path):
             return RuleResult(rule.id, name, verdict, f"{name} result", backend_version=version)
         return SimpleNamespace(name=name, check=check)
 
+    installed_only = backend("installed_only", "REFUTED")
+    monkeypatch.setattr("qstack.verification.installed_rule_backends", lambda: (installed_only,))
     incompatible = backend("incompatible", "REFUTED")
     incompatible.supported_encodings = ("stabilizer",)
     report = verify(result, backends=(
@@ -195,6 +199,9 @@ def test_report_records_only_backends_that_tried_the_rule(tmp_path):
     assert [(attempt.backend, attempt.status) for attempt in rewrite.attempts] == [
         ("fallback", "UNSUPPORTED"), ("checker", "VERIFIED"),
     ]
+    assert report.available_backends == (
+        "structural", "installed_only", "incompatible", "fallback", "checker", "unused",
+    )
     assert report.backends_used == (("structural", None), ("fallback", None), ("checker", "2.0"))
     path = tmp_path / "verification.json"
     report.save(path)
@@ -205,7 +212,7 @@ def test_frontend_peephole_witness_round_trips_and_verifies(tmp_path):
     source = compile_qasm('QSTACKQASM 0.1; include "qstack/cliffords.inc"; qubit[1] q; bit[1] c; h q[0]; h q[0]; s q[0]; s q[0]; measure q[0] -> c[0];')
     result = CliffordPeepholeOptimization().run(source).save(tmp_path / "peephole.json")
     assert len(result.witness.rules) == 5
-    assert verify(CompilationResult.load(result.artifact_path), backends=(_matrix_backend(),)).status == "VERIFIED"
+    assert verify(CompilationResult.load(result.artifact_path), backends=(_quivalence_backend(),)).status == "VERIFIED"
 
 
 def test_identity_rules_need_no_backend():
@@ -222,16 +229,16 @@ def test_gate_rules_without_backend_are_unsupported():
     assert verify(result, backends=()).status == "UNSUPPORTED"
 
 
-def test_matrix_accepts_global_phase(tmp_path):
+def test_quivalence_accepts_global_phase(tmp_path):
     source, old = _program([XOp])
     target, new = _program([lambda wire: U1Op(wire, math.pi, 0)])
-    report = verify(_result(source, target, _witness(source, target, old, new), tmp_path), backends=(_matrix_backend(),))
+    report = verify(_result(source, target, _witness(source, target, old, new), tmp_path), backends=(_quivalence_backend(),))
     assert report.status == "VERIFIED"
 
 
 def test_h2_lowering_verifies_up_to_global_phase():
     source, _ = _program([XOp])
-    assert verify(CliffordsToH2Lowering().run(CompilationResult.from_module(source)), backends=(_matrix_backend(),)).status == "VERIFIED"
+    assert verify(CliffordsToH2Lowering().run(CompilationResult.from_module(source)), backends=(_quivalence_backend(),)).status == "VERIFIED"
 
 
 def test_identity_rule_cannot_hide_changed_gate(tmp_path):
@@ -378,7 +385,7 @@ def test_gate_rule_checks_output_permutations(tmp_path):
         Claim("return", "main", "return", (7,), (4,), ("b0", "b1"), ()),
     )
     witness = _bind(source, target, claims, edges, {"alloc": "identity", "swap": "gate", "measure": "identity", "return": "identity"})
-    assert verify(_result(source, target, witness, tmp_path), backends=(_matrix_backend(),)).status == "VERIFIED"
+    assert verify(_result(source, target, witness, tmp_path), backends=(_quivalence_backend(),)).status == "VERIFIED"
 
 
 def test_rules_cannot_change_gate_matrices_in_the_witness(tmp_path):
@@ -421,18 +428,25 @@ def test_witness_report_overlays_only_matching_check_results(tmp_path, monkeypat
     assert "<h1>Docket</h1>" in witness_only
     assert "Witness only" in witness_only
     assert 'xlink:href="#rule-1"' in witness_only
+    assert 'xlink:title="site · rule rewrite"' in witness_only
+    assert ">site</text>" not in witness_only
     assert "Source pattern" in witness_only and "Target pattern" in witness_only
     assert "<strong>Verifier</strong>" not in witness_only
     assert "Rule verdicts" not in witness_only
     assert "Rule backends used" not in witness_only
+    assert "Available rule backends" not in witness_only
     assert ">✓ alloc</text>" not in witness_only
 
+    installed = tuple(SimpleNamespace(name=name) for name in ("quivalence", "pauliverse", "qcec"))
+    monkeypatch.setattr("qstack.verification.installed_rule_backends", lambda: installed)
     report = verify(result, backends=())
     report_path = tmp_path / "report.json"
     report.save(report_path)
+    monkeypatch.setattr("qstack.verification.installed_rule_backends", lambda: ())
     annotated = generate_docket(result.artifact_path, report=report_path).read_text()
     assert "<strong>Verifier</strong> structural" in annotated
-    assert "<strong>Rule backends used</strong> structural</p>" in annotated
+    assert "Rule backends used" not in annotated
+    assert "<strong>Available rule backends</strong> structural, quivalence, pauliverse, qcec</p>" in annotated
     assert "no configured rule backend supports identity encodings" in annotated
     assert "claim graph matches both kernels" in annotated
     assert '<strong>Step verdict</strong> <span class="status unsupported">UNSUPPORTED</span>' in annotated
@@ -468,6 +482,7 @@ def test_witness_report_matches_a_copied_step_to_a_report_without_fingerprint(tm
     report = verify(original, backends=()).to_dict()
     del report["artifact_sha256"]
     del report["kernels"]
+    del report["available_backends"]
     for rule in report["rules"]:
         del rule["attempts"]
     report_path = tmp_path / "report.json"
@@ -476,7 +491,8 @@ def test_witness_report_matches_a_copied_step_to_a_report_without_fingerprint(tm
 
     checked = generate_docket(copy, output, report=report_path).read_text()
     assert "Matched using the report’s recorded artifact" in checked
-    assert "<strong>Recorded rule backends</strong> structural</p>" in checked
+    assert "Recorded rule backends" not in checked
+    assert "<strong>Available rule backends</strong> Not recorded</p>" in checked
     assert "NOT RECORDED" in checked
 
     artifact = json.loads(copy.artifact_path.read_text())
