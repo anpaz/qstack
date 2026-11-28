@@ -1,5 +1,8 @@
 """Phase 3b tests: lower the parsed surface tree to a qstack ModuleOp."""
 
+import shutil
+
+import pytest
 from xdsl.dialects.builtin import ModuleOp
 
 from qstack.dialect import BitType, QubitType
@@ -10,6 +13,7 @@ from qstack.surface.lowering import lower
 from qstack.surface.parser import parse
 from qstack.validation import validate_module
 from qstack.verification import verify
+from qstack.verification.viewer import generate_docket
 
 PREPARE_ONE = """
 QSTACKQASM 0.1;
@@ -81,6 +85,17 @@ def test_rep3_witness_covers_widened_recursive_selector() -> None:
     report = verify(result, backends=())
     assert report.status == "UNSUPPORTED"
     assert report.kernels and all(kernel.status == "VERIFIED" for kernel in report.kernels)
+
+
+@pytest.mark.skipif(shutil.which("dot") is None, reason="HTML graph export uses Graphviz")
+def test_docket_names_selectors_and_called_kernels(tmp_path) -> None:
+    result = lower_rep3_bit(_module(PREPARE_ONE), CallbackRegistry())
+    html = generate_docket(result, tmp_path / "docket.html").read_text()
+
+    for name in ("select @repeat_until_one", "call @prepare_one"):
+        label = f"{name} → {name}"
+        assert f">{label}</text>" in html
+        assert f"<h2>{label}</h2>" in html
 
 
 def test_prepare_one_runs_1000_shots_all_one() -> None:

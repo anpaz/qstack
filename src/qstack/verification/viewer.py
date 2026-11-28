@@ -145,7 +145,14 @@ def _host_tracks(
 
 
 def _operations(pattern: Pattern) -> str:
-    names = [op.name.rsplit(".", 1)[-1] for op in pattern.operations[:4]]
+    names = []
+    for op in pattern.operations[:4]:
+        name = op.name.rsplit(".", 1)[-1]
+        if op.name in ("qstack.select", "qstack.call"):
+            callee = dict(op.properties).get("callee")
+            if callee:
+                name = f"{name} {callee}"
+        names.append(name)
     if len(pattern.operations) > len(names):
         names.append(f"+{len(pattern.operations) - len(names)} more")
     return " · ".join(names) or "∅"
