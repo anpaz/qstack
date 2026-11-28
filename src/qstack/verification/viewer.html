@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>$filename · Docket</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --page: light-dark(#f5f7f9, #14191e);
+    --surface: light-dark(#fff, #1d252e);
+    --ink: light-dark(#172534, #edf3f7);
+    --muted: light-dark(#526171, #a9b8c5);
+    --border: light-dark(#d8e0e8, #3a4956);
+    --accent: light-dark(#075c83, #8bd6ef);
+    --selected: light-dark(#e8f4fa, #263d4c);
+    --pass: light-dark(#246143, #90e0b2);
+    --fail: light-dark(#a12b39, #ffadba);
+    --skip: light-dark(#80510a, #f3c080);
+    --qubit: light-dark(#286586, #80c6eb);
+    --bit: light-dark(#69529a, #c5afea);
+    font: 15px/1.55 system-ui, sans-serif;
+    background: var(--page);
+    color: var(--ink);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0 auto; max-width: 1440px; padding: clamp(14px, 3vw, 42px); }
+  header { border-bottom: 1px solid var(--border); margin-bottom: 22px; padding-bottom: 18px; }
+  header p, .panel-heading + p { margin: 4px 0 0; }
+  h1, h2, h3, p { overflow-wrap: anywhere; }
+  h1, h2, h3 { margin: 0; line-height: 1.25; }
+  h1 { font-size: 1.9rem; }
+  h2 { font-size: 1.3rem; }
+  h3 { font-size: 1rem; }
+  a { color: var(--accent); }
+  code { overflow-wrap: anywhere; }
+  .layout { display: grid; grid-template-columns: minmax(225px, 295px) minmax(0, 1fr); gap: 20px; }
+  .sidebar, .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+  .sidebar { align-self: start; padding: 14px; }
+  .sidebar h2 { font-size: 0.95rem; margin: 8px 5px; }
+  .sidebar h2:not(:first-child) { margin-top: 20px; }
+  .sidebar a {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--ink);
+    padding: 7px 6px; border-radius: 5px; text-decoration: none; overflow-wrap: anywhere;
+  }
+  .sidebar a:hover, .sidebar a[aria-current] { background: var(--selected); }
+  .sidebar a[aria-current] { color: var(--accent); }
+  .sidebar .rule-count { font-size: 0.8rem; text-align: end; }
+  .panel { padding: clamp(14px, 2vw, 26px); margin: 0 0 14px; }
+  .panel-heading, .graph-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 14px; }
+  .graph-heading { justify-content: space-between; margin: 18px 0 8px; }
+  .status { color: var(--muted); font-size: 0.72rem; font-weight: 650; letter-spacing: 0.025em; white-space: nowrap; }
+  .status.verified { color: var(--pass); }
+  .status.refuted { color: var(--fail); }
+  .status.unsupported { color: var(--skip); }
+  .muted { color: var(--muted); }
+  .graph-frame {
+    border: 1px solid var(--border); border-radius: 8px; overflow: auto; padding: 14px;
+    background-image: radial-gradient(var(--border) 0.6px, transparent 0.6px);
+    background-size: 14px 14px;
+  }
+  .graph-frame svg { display: block; }
+  .graph-frame svg .node > :is(path, polygon, ellipse),
+  .graph-frame svg .node a > :is(path, polygon, ellipse) { fill: var(--surface); stroke: var(--border); }
+  .graph-frame svg .node a { cursor: pointer; }
+  .graph-frame svg .node a:is(:hover, :focus) > :is(path, polygon, ellipse) {
+    fill: var(--selected); stroke: var(--accent);
+  }
+  .graph-frame svg text { fill: var(--ink); }
+  .graph-frame svg .edge { color: var(--muted); }
+  .graph-frame svg .edge.qubit { color: var(--qubit); }
+  .graph-frame svg .edge.bit { color: var(--bit); }
+  .graph-frame svg .edge.host path { stroke-dasharray: 5 4; }
+  .graph-frame svg .edge path, .graph-frame svg .edge polygon { stroke: currentColor; }
+  .graph-frame svg .edge polygon, .graph-frame svg .edge text { fill: currentColor; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 0.8rem; color: var(--muted); }
+  .patterns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 18px 0 24px; }
+  .patterns h3 { margin-bottom: 8px; }
+  .sites { margin: 8px 0 0; padding-inline-start: 22px; }
+  @media (max-width: 740px) {
+    .layout, .patterns { grid-template-columns: minmax(0, 1fr); }
+    .sidebar { max-height: 15rem; overflow: auto; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Docket</h1>
+  <p><code>$filename</code></p>
+  <p>$summary</p>
+</header>
+<div class="layout">
+  <nav class="sidebar" aria-label="Witness index">$navigation</nav>
+  <main>$panels</main>
+</div>
+<template id="wire-legend">
+  <p class="legend"><span>q · Qubit</span><span>bit · Classical bit</span><span>Dashed · Host dependency</span></p>
+</template>
+<script>
+  const panels = Array.from(document.querySelectorAll("[data-panel]"));
+  const navigation = Array.from(document.querySelectorAll(".sidebar a"));
+  const legend = document.getElementById("wire-legend");
+  for (const heading of document.querySelectorAll(".graph-heading")) {
+    heading.parentElement.append(legend.content.cloneNode(true));
+  }
+  function showPanel(focus) {
+    const active = panels.find(panel => "#" + panel.id === location.hash) || panels[0];
+    if (!active) return;
+    for (const panel of panels) panel.hidden = panel !== active;
+    for (const link of navigation) {
+      if (link.hash === "#" + active.id) link.setAttribute("aria-current", "location");
+      else link.removeAttribute("aria-current");
+    }
+    if (focus) active.focus();
+  }
+  window.addEventListener("hashchange", () => showPanel(true));
+  showPanel(false);
+</script>
+</body>
+</html>

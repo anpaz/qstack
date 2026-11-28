@@ -46,7 +46,11 @@ def test_inline_copies_callback_body_and_fresh_allocations(tmp_path):
     inline = next(rule for rule in result.witness.rules if rule.kind == "inline")
     assert inline.callee == "worker"
     assert any(op.name == "qstack.alloc" for op in inline.target.operations)
-    assert verify(CompilationResult.load(result.artifact_path), backends=()).status == "VERIFIED"
+    report = verify(CompilationResult.load(result.artifact_path), backends=())
+    assert report.status == "VERIFIED"
+    assert {item.kernel: item.status for item in report.kernels} == {
+        "worker": "VERIFIED", "main": "VERIFIED",
+    }
 
 
 def test_inline_source_is_the_original_callee_even_when_callee_is_also_inlined():

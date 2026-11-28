@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import shutil
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -23,10 +24,11 @@ from qstack.passes.cliffords2atoms import CliffordsToAtomsLowering
 from qstack.passes.cliffords2h2 import CliffordsToH2Lowering
 from qstack.surface import compile_qasm
 from qstack.verification import (
-    Circuit, CircuitRule, Claim, Edge, KernelBoundary, Rule, ValueRef, Witness,
+    Circuit, CircuitRule, Claim, Edge, KernelBoundary, Rule, ValueRef, VerificationReport, Witness,
     installed_rule_backends, verify, witness_from_replacements,
 )
 from qstack.verification.plugins import ExternalRuleBackend
+from qstack.verification.viewer import generate_docket
 from qstack.verification.witness_check import _KernelSide, _callback_sources, _pattern_at
 import qstack.verification.plugins as rule_backends
 
@@ -137,7 +139,8 @@ def test_matrix_verifies_cancellation_and_saved_artifact(tmp_path):
     assert next(rule for rule in report.rules if rule.rule == "rewrite").sites == ("site",)
     assert verify(CompilationResult.load(result.artifact_path), backends=(_matrix_backend(),)).status == "VERIFIED"
     report.save(tmp_path / "report.json")
-    assert json.loads((tmp_path / "report.json").read_text())["status"] == "VERIFIED"
+    assert VerificationReport.load(tmp_path / "report.json") == report
+    assert [(item.kernel, item.status) for item in report.kernels] == [("main", "VERIFIED")]
 
 
 def test_thesis_example_has_four_rules_and_seven_claims():
@@ -295,6 +298,8 @@ def test_locally_convex_claims_can_still_form_a_global_cycle(tmp_path):
     report = verify(_result(source, target, witness, tmp_path), backends=())
     assert report.status == "REFUTED"
     assert "claim graph is cyclic" in report.detail
+    assert [(item.kernel, item.status) for item in report.kernels] == [("main", "REFUTED")]
+    assert not report.rules
 
 
 def test_graph_patterns_ignore_independent_gate_order():
@@ -372,3 +377,66 @@ def test_previous_artifact_schema_is_explicitly_rejected(tmp_path):
     report = verify(result)
     assert report.status == "REFUTED"
     assert "artifact version 2" in report.detail
+
+
+@pytest.mark.skipif(shutil.which("dot") is None, reason="HTML graph export uses Graphviz")
+def test_witness_report_overlays_only_matching_check_results(tmp_path, monkeypatch):
+    source, old = _program([HOp, HOp])
+    target, new = _program([])
+    result = _result(source, target, _witness(source, target, old, new), tmp_path)
+    monkeypatch.chdir(tmp_path)
+    output = generate_docket(result)
+    assert output.resolve() == tmp_path.resolve() / "docket.html"
+    witness_only = output.read_text()
+    assert "<h1>Docket</h1>" in witness_only
+    assert "Witness only" in witness_only
+    assert 'xlink:href="#rule-1"' in witness_only
+    assert "Source pattern" in witness_only and "Target pattern" in witness_only
+    assert "<strong>Verifier</strong>" not in witness_only
+
+    report = verify(result, backends=())
+    report_path = tmp_path / "report.json"
+    report.save(report_path)
+    annotated = generate_docket(result.artifact_path, report=report_path).read_text()
+    assert "<strong>Verifier</strong> structural" in annotated
+    assert "no configured rule backend supports identity encodings" in annotated
+    assert "claim graph matches both kernels" in annotated
+    assert '<strong>Step verdict</strong> <span class="status unsupported">UNSUPPORTED</span>' in annotated
+    assert '<a href="#kernel-0"><span>@main</span><span class="rule-count muted">3/4 rules verified</span></a>' in annotated
+    assert '<h3>Claim graph structure</h3><span class="status verified">VERIFIED</span>' in annotated
+
+    # The IR hashes stay the same; the checked witness changes.
+    artifact = json.loads(result.artifact_path.read_text())
+    artifact["witness"]["claims"][1]["id"] = "another-site"
+    result.artifact_path.write_text(json.dumps(artifact))
+    with pytest.raises(ValueError, match="different compilation artifact"):
+        generate_docket(result.artifact_path, output, report=report)
+    assert output.read_text() == annotated
+
+
+@pytest.mark.skipif(shutil.which("dot") is None, reason="HTML graph export uses Graphviz")
+def test_witness_report_matches_a_copied_step_to_a_report_without_fingerprint(tmp_path):
+    source, old = _program([HOp, HOp])
+    target, new = _program([])
+    original = _result(source, target, _witness(source, target, old, new), tmp_path)
+    copy = original.save(tmp_path / "copy.json")
+    report = verify(original, backends=()).to_dict()
+    del report["artifact_sha256"]
+    del report["kernels"]
+    report_path = tmp_path / "report.json"
+    report_path.write_text(json.dumps(report))
+    output = tmp_path / "witness.html"
+
+    checked = generate_docket(copy, output, report=report_path).read_text()
+    assert "Matched using the report’s recorded artifact" in checked
+    assert "NOT RECORDED" in checked
+
+    artifact = json.loads(copy.artifact_path.read_text())
+    artifact["witness"]["claims"][1]["id"] = "another-site"
+    copy.artifact_path.write_text(json.dumps(artifact))
+    with pytest.raises(ValueError, match="different compilation artifact"):
+        generate_docket(copy.artifact_path, output, report=report_path)
+
+    original.artifact_path.unlink()
+    with pytest.raises(ValueError, match=r"Run verify\(\) on the saved compilation step"):
+        generate_docket(copy.artifact_path, output, report=report_path)

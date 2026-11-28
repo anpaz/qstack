@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from xdsl.dialects.builtin import ModuleOp
@@ -12,6 +13,7 @@ from qstack.callbacks import resolve_callback
 from qstack.dialect.core import DecoderOp, KernelOp, SelectorOp
 from qstack.verification.model import Claim, Edge, Pattern, Rule, ValueRef, Witness
 from qstack.verification.patterns import extract_pattern, operation_sources
+from qstack.verification.plugins import Status
 
 
 class WitnessError(ValueError):
@@ -209,7 +211,19 @@ def _check_acyclic(
     _require(visited == len(claims), "claim graph is cyclic")
 
 
-def check_witness_structure(source_module: ModuleOp, target_module: ModuleOp, witness: Witness) -> None:
+@dataclass(frozen=True)
+class KernelResult:
+    """Verdict for one kernel's claim graph and its two expansions."""
+
+    kernel: str
+    status: Status
+    detail: str
+
+
+def check_witness_structure(
+    source_module: ModuleOp, target_module: ModuleOp, witness: Witness, *,
+    record_kernel: Callable[[KernelResult], None] | None = None,
+) -> None:
     """Check coverage, bindings, and graph expansions independently of rules."""
     encoding = witness.encoding
     encoded = not encoding.is_identity
@@ -238,7 +252,7 @@ def check_witness_structure(source_module: ModuleOp, target_module: ModuleOp, wi
     _require(all(edge.kernel in source_kernels for edge in edges.values()), "edge names unknown kernel")
     source_hosts, target_hosts = _callback_sources(source_module), _callback_sources(target_module)
 
-    for name, old_kernel in source_kernels.items():
+    def check_kernel(name: str, old_kernel: KernelOp) -> None:
         new_kernel = target_kernels[name]
         old_side, new_side = _KernelSide(old_kernel), _KernelSide(new_kernel)
         _require(encoding.map_types(old_kernel.input_types) == tuple(new_kernel.input_types)
@@ -284,3 +298,17 @@ def check_witness_structure(source_module: ModuleOp, target_module: ModuleOp, wi
             new_hosts = {host: seq for host, seq in new_hosts.items() if host in existing_sources}
         _require(old_hosts == new_hosts, f"@{name}: callback host-wire order differs")
         _check_acyclic(local_claims, boundaries[name].inputs, old_hosts)
+
+    for name, old_kernel in source_kernels.items():
+        try:
+            check_kernel(name, old_kernel)
+        except UnsupportedWitnessError as exc:
+            if record_kernel is not None:
+                record_kernel(KernelResult(name, "UNSUPPORTED", str(exc)))
+            raise
+        except (WitnessError, TypeError, ValueError, KeyError, IndexError) as exc:
+            if record_kernel is not None:
+                record_kernel(KernelResult(name, "REFUTED", str(exc)))
+            raise
+        if record_kernel is not None:
+            record_kernel(KernelResult(name, "VERIFIED", "claim graph matches both kernels"))

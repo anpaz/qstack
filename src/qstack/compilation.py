@@ -87,6 +87,10 @@ class CompilationArtifact:
             "witness": None if self.witness is None else self.witness.to_dict(),
         }
 
+    def fingerprint(self) -> str:
+        """Identify the IR snapshots and the exact witness, independent of the file path."""
+        return _digest(json.dumps(self.to_dict(), sort_keys=True, separators=(",", ":")))
+
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> CompilationArtifact:
         from qstack.verification.model import Witness

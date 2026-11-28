@@ -46,6 +46,7 @@ include = ["qstack*"]
 
 [tool.setuptools.package-data]
 "qstack.surface" = ["qasm.lark", "includes/*.inc"]
+"qstack.verification" = ["viewer.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

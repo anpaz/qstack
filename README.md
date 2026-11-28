@@ -126,6 +126,62 @@ Mermaid rendering. `to_mermaid()` is always available for copying into another
 Mermaid-compatible renderer. After `%load_ext qstack.jupyter`, `dataflow` is
 already available in the notebook namespace.
 
+## Docket
+
+Docket visualizes a compilation step in your browser. Select a kernel to see
+its claim graph, then select a claim to inspect the rule's source and target
+patterns and every site that uses that rule. Export requires Graphviz
+(`dot` on PATH). The generated HTML opens offline.
+
+### Generate a docket from Python
+
+Starting with a toy-dialect program named `toy_program`, run the compiler pass
+and optionally call `verify()` to include its results.
+
+```python
+from qstack.passes.toy2cliffords import lower_toy_to_cliffords
+from qstack.verification import verify
+from qstack.verification.viewer import generate_docket
+
+target = lower_toy_to_cliffords(toy_program)
+report = verify(target)
+
+generate_docket(target, report=report)
+```
+
+Open `docket.html` in the current directory. It shows the step verdict, each
+rule's verdict and backend, and whether each kernel's claim graph matched the
+two IR snapshots. Call `generate_docket(target)` to view the witness on its
+own.
+
+### Save the compilation result and verification report as JSON
+
+```python
+target = target.save("step.json")
+report.save("verification.json")
+```
+
+`step.json` contains the witness and the source and target IR.
+`verification.json` contains the results of `verify()`.
+
+### Generate a docket from existing files
+
+Pass the saved paths to regenerate `docket.html` from the recorded results.
+
+```python
+from qstack.verification.viewer import generate_docket
+
+generate_docket("step.json", report="verification.json")
+```
+
+The same export is available from the command line.
+
+```bash
+python -m qstack.verification.viewer step.json --report verification.json
+```
+
+Omit the report argument to view the saved witness on its own.
+
 ## Development
 
 Run the test suite from the repository root:
